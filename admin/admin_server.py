@@ -35,7 +35,7 @@ from admin.routers import (
     settings_proxy, settings_llm, settings_misc,
     character, chat,
     scheduler, watch, agent, sensor, inbox,
-    garden, mobile, diary,
+    garden, mobile, diary, chat_log,
 )
 
 app.include_router(users.router,          prefix="/users",     tags=["用户"])
@@ -55,8 +55,9 @@ app.include_router(agent.router,            prefix="",           tags=["Agent"])
 app.include_router(sensor.router, prefix="", tags=["手机传感器"])
 app.include_router(inbox.router,  prefix="", tags=["文档投递"])
 app.include_router(garden.router, prefix="/garden", tags=["花园"])
-app.include_router(diary.router,  prefix="/diary",  tags=["日记"])
-app.include_router(mobile.router,  prefix="", tags=["手机端"])
+app.include_router(diary.router,     prefix="/diary",     tags=["日记"])
+app.include_router(chat_log.router,  prefix="/chat-log",  tags=["聊天日志"])
+app.include_router(mobile.router,    prefix="",           tags=["手机端"])
 
 # ── 桌宠端 WebSocket 端点 ─────────────────────────────────────────────────────
 from fastapi import WebSocket as _WebSocket
