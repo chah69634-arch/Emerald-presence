@@ -98,13 +98,6 @@ async def _flush_sleep_buffer():
     import logging
     logging.getLogger(__name__).info(f"[watch] 快照已更新: {_last_watch_data}")
 
-    # 直接触发早安，不走on_watch_event的15分钟等待
-    from core.scheduler.loop import _pipeline_send, _is_ready, _mark
-    if not _is_ready("sleep_end"):
-        return
-    _mark("sleep_end")
-    _mark("morning_greeting")  # 防止time_based早安重复触发
-
     sleep_start_str = merged.get("sleep_start", "")
     duration = merged.get("duration_minutes", 0)
     from core.config_loader import _char_name
@@ -163,15 +156,14 @@ async def _flush_sleep_buffer():
     hours = int(duration // 60)
     minutes = int(duration % 60)
     now_hour = datetime.now().hour
-    _cname = _gcfg().get("character", {}).get("name", "她")
+    _cname = get_config().get("character", {}).get("name", "他")
     if now_hour < 12:
-        await _pipeline_send(
-            f"（{_cname}看到你醒了，昨晚睡了{hours}小时{minutes}分钟，{sleep_comment}{trend_comment}）"
-        )
+        prompt = f"（{_cname}看到你醒了，昨晚睡了{hours}小时{minutes}分钟，{sleep_comment}{trend_comment}）"
     else:
-        await _pipeline_send(
-            f"（{_cname}看到你醒了，睡了{hours}小时{minutes}分钟，{sleep_comment}{trend_comment}）"
-        )
+        prompt = f"（{_cname}看到你醒了，睡了{hours}小时{minutes}分钟，{sleep_comment}{trend_comment}）"
+
+    from core import scheduler
+    await scheduler.on_watch_event("sleep_end", {**merged, "prompt": prompt})
 
 
 def _watch_secret() -> str:

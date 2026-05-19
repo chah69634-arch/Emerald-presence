@@ -123,7 +123,7 @@ birthday_midnight / birthday_eve / birthday_afternoon / birthday_night / period_
 | `sensor_aware`（tick） | 30s（可配置） | 低 | sensor_aware | sensor 实时状态主动开口，默认关闭 |
 | `hr_high` | 30min | 低 | watch | 心率>100 提醒 |
 | `hr_critical` | 1h | **高** | watch | 心率>120 告警 |
-| `sleep_end` | 2h | 低 | watch | 睡眠结束感知 |
+| `sleep_end` | 2h | 低 | watch | 睡眠结束感知；`admin/routers/watch.py` 合并睡眠片段后回到 `watch.on_watch_event("sleep_end", ...)` |
 | `sleep_report` | 20h | 低 | watch | 睡眠报告 |
 | reminders（备忘录） | 无冷却 | 低 | loop.py内联 | 到点即发，发完标记完成 |
 

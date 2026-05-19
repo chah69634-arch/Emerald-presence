@@ -49,3 +49,16 @@ async def on_watch_event(event_type: str, data: dict):
                 _mark("hr_high")
                 logger.info(f"[scheduler] 心率偏高触发 hr={hr}")
 
+    elif event_type == "sleep_end":
+        if not _is_ready("sleep_end"):
+            return
+        prompt = str(data.get("prompt") or "").strip()
+        if not prompt:
+            duration = float(data.get("duration_minutes", 0) or 0)
+            hours = int(duration // 60)
+            minutes = int(duration % 60)
+            prompt = f"（{_char_name()}看到你醒了，睡了{hours}小时{minutes}分钟）"
+        _mark("sleep_end")
+        _mark("morning_greeting")
+        await _pipeline_send(prompt, trigger_name="sleep_end")
+        logger.info("[scheduler] 睡醒关心已触发")
