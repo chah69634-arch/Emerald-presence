@@ -81,6 +81,11 @@ loop.py tick ──gating shadow log──→ logs/gating_shadow.jsonl
 只把 `_is_ready` 已 ready 的旧触发器包装成 proposal，高优先级 urgency=0.9，低优先级
 urgency=0.5。真实发送仍由旧 `_check_*()` 触发器自己决定。
 
+Phase 2 Step 3 第一批已迁移 `hr_critical`、生日四档、`period_reminder` 的原生
+`propose(ctx)`。这些触发器不再由 legacy bridge 用固定 0.9 兜底报名，而是只在真实条件满足时
+返回 `TriggerProposal`；`bypass_state_machine=True` 只跳过状态过滤，仍正常参与 urgency 竞争。
+urgency 分档统一由 `core/scheduler/urgency.py` 提供。
+
 shadow log 格式：
 
 ```json

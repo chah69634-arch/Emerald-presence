@@ -15,7 +15,14 @@ from core.sandbox import get_paths
 from core.scheduler.state_machine import TriggerState, get_state as get_current_state
 
 
-MIGRATED_TRIGGERS: frozenset[str] = frozenset()
+MIGRATED_TRIGGERS: frozenset[str] = frozenset({
+    "hr_critical",
+    "birthday_midnight",
+    "birthday_eve",
+    "birthday_afternoon",
+    "birthday_night",
+    "period_reminder",
+})
 
 
 @dataclass(frozen=True)
@@ -39,7 +46,8 @@ def collect_and_decide(uid: str, proposals: list[TriggerProposal]) -> Optional[T
 
 
 def write_shadow_tick(uid: str) -> None:
-    proposals = _adapt_legacy_triggers(uid)
+    ctx = _build_context(uid)
+    proposals = _collect_native_proposals(ctx) + _adapt_legacy_triggers(uid)
     picked, reason, candidates = _decide(uid, proposals)
     state = get_current_state(uid)
     safe_append_jsonl(
@@ -53,6 +61,41 @@ def write_shadow_tick(uid: str) -> None:
             "reason": reason,
         },
     )
+
+
+def _build_context(uid: str) -> dict:
+    return {"uid": uid, "now_ts": time.time()}
+
+
+def _collect_native_proposals(ctx: dict) -> list[TriggerProposal]:
+    proposals: list[TriggerProposal] = []
+    for propose in (
+        _watch_propose,
+        _birthday_propose,
+        _period_propose,
+    ):
+        item = propose(ctx)
+        if item is not None:
+            proposals.append(item)
+    return proposals
+
+
+def _watch_propose(ctx: dict) -> Optional[TriggerProposal]:
+    from core.scheduler.triggers.watch import propose
+
+    return propose(ctx)
+
+
+def _birthday_propose(ctx: dict) -> Optional[TriggerProposal]:
+    from core.scheduler.triggers.birthday import propose
+
+    return propose(ctx)
+
+
+def _period_propose(ctx: dict) -> Optional[TriggerProposal]:
+    from core.scheduler.triggers.period import propose
+
+    return propose(ctx)
 
 
 def _decide(uid: str, proposals: list[TriggerProposal]) -> tuple[Optional[TriggerProposal], str, list[dict]]:

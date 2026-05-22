@@ -36,6 +36,44 @@ def _is_birthday_period() -> bool:
     return _is_birthday_today()
 
 
+def propose(ctx: dict | None = None):
+    ctx = ctx or {}
+    now = ctx.get("now_dt") or datetime.now()
+    today = now.date()
+    m, d = _birthday()
+    birthday = date(today.year, m, d)
+    eve = birthday - timedelta(days=1)
+
+    trigger_name = ""
+    ratio = 0.0
+    if today == eve and now.hour >= 20:
+        trigger_name = "birthday_eve"
+        ratio = 0.0
+    elif today == birthday and now.hour == 0 and now.minute < 5:
+        trigger_name = "birthday_midnight"
+        ratio = 1.0
+    elif today == birthday and 14 <= now.hour < 18:
+        trigger_name = "birthday_afternoon"
+        ratio = 0.6
+    elif today == birthday and 21 <= now.hour < 23:
+        trigger_name = "birthday_night"
+        ratio = 0.8
+    else:
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name=trigger_name,
+        urgency=urgency_in_tier(UrgencyTier.MUST_NOT_MISS, ratio),
+        topic_source="mood_match",
+        requires_state=[TriggerState.CHATTING, TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=True,
+    )
+
+
 async def _check_birthday_midnight(force: bool = False):
     """零点告白：4月24日 00:00-00:05 触发，全年只触发一次"""
     if not force and not _is_birthday_today():

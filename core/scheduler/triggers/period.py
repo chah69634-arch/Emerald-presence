@@ -1,9 +1,54 @@
 import logging
+from datetime import date as _date, datetime
 
 from core.error_handler import log_error
 from core.scheduler.loop import _is_ready, _mark, _owner_id, _pipeline_send, _cfg, _char_name
 
 logger = logging.getLogger(__name__)
+
+
+def _days_elapsed(uid: str, today: _date | None = None) -> int | None:
+    from core.memory.user_profile import get_period_info
+
+    info = get_period_info(uid)
+    last_date_str = info.get("last_period_date")
+    if not last_date_str:
+        return None
+    last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+    return ((today or _date.today()) - last_date).days
+
+
+def propose(ctx: dict | None = None):
+    ctx = ctx or {}
+    uid = str(ctx.get("uid") or _owner_id() or "").strip()
+    if not uid:
+        return None
+    try:
+        days_elapsed = _days_elapsed(uid, ctx.get("today"))
+    except Exception:
+        logger.exception("[period] propose 读取生理期信息失败")
+        return None
+    if days_elapsed is None:
+        return None
+
+    if 0 <= days_elapsed <= 7:
+        ratio = 1 - (days_elapsed / 7)
+    elif 26 <= days_elapsed <= 30:
+        ratio = (days_elapsed - 26) / 4
+    else:
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="period_reminder",
+        urgency=urgency_in_tier(UrgencyTier.WINDOW_EVENT, ratio),
+        topic_source="mood_match",
+        requires_state=[TriggerState.CHATTING, TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=True,
+    )
 
 
 async def _check_period():
@@ -15,14 +60,9 @@ async def _check_period():
     if not oid:
         return
     try:
-        from core.memory.user_profile import get_period_info
-        info = get_period_info(oid)
-        last_date_str = info.get("last_period_date")
-        if not last_date_str:
+        days_elapsed = _days_elapsed(oid)
+        if days_elapsed is None:
             return
-        from datetime import datetime, date as _date
-        last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
-        days_elapsed = (_date.today() - last_date).days
         # 第一段：生理期中关心（0-7天内，冷却24小时）
         if 0 <= days_elapsed <= 7:
             if _is_ready("period_reminder"):
