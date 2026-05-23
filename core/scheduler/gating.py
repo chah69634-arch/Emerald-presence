@@ -73,59 +73,11 @@ def _build_context(uid: str) -> dict:
 
 
 def _collect_native_proposals(ctx: dict) -> list[TriggerProposal]:
-    proposals: list[TriggerProposal] = []
-    for propose in (
-        _watch_propose,
-        _birthday_propose,
-        _period_propose,
-    ):
-        item = propose(ctx)
-        if item is not None:
-            proposals.append(item)
-    proposals.extend(_time_based_proposals(ctx))
-    proposals.extend(_diary_proposals(ctx))
-    return proposals
-
-
-def _watch_propose(ctx: dict) -> Optional[TriggerProposal]:
-    from core.scheduler.triggers.watch import propose
-
-    return propose(ctx)
-
-
-def _birthday_propose(ctx: dict) -> Optional[TriggerProposal]:
-    from core.scheduler.triggers.birthday import propose
-
-    return propose(ctx)
-
-
-def _period_propose(ctx: dict) -> Optional[TriggerProposal]:
-    from core.scheduler.triggers.period import propose
-
-    return propose(ctx)
-
-
-def _time_based_proposals(ctx: dict) -> list[TriggerProposal]:
-    from core.scheduler.triggers.time_based import (
-        propose_daily_journal,
-        propose_morning_greeting,
-        propose_night_reminder,
-    )
+    from core.scheduler.proposer_registry import iter_proposers
 
     proposals: list[TriggerProposal] = []
-    for propose in (propose_morning_greeting, propose_night_reminder, propose_daily_journal):
-        item = propose(ctx)
-        if item is not None:
-            proposals.append(item)
-    return proposals
-
-
-def _diary_proposals(ctx: dict) -> list[TriggerProposal]:
-    from core.scheduler.triggers.diary import propose_diary_reminder, propose_diary_share_reminder
-
-    proposals: list[TriggerProposal] = []
-    for propose in (propose_diary_reminder, propose_diary_share_reminder):
-        item = propose(ctx)
+    for entry in iter_proposers():
+        item = entry.fn(ctx)
         if item is not None:
             proposals.append(item)
     return proposals

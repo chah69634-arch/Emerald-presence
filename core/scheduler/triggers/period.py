@@ -51,6 +51,15 @@ def propose(ctx: dict | None = None):
     )
 
 
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("period_reminder", propose)
+
+
+_register_proposers()
+
+
 async def _check_period():
     """读取 last_period_date，在生理期中（0-7天）或临近下次（26-30天）时关心"""
     cfg = _cfg()

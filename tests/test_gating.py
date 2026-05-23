@@ -101,3 +101,15 @@ def test_legacy_adapter_skips_migrated_triggers(monkeypatch):
     proposals = gating._adapt_legacy_triggers("u1")
 
     assert [p.trigger_name for p in proposals] == ["random_message"]
+
+
+def test_registry_reports_existing_native_trigger_names():
+    from core.scheduler.proposer_registry import registered_trigger_names
+
+    names = registered_trigger_names()
+
+    assert "hr_critical" in names
+    assert "birthday_midnight" in names
+    assert "period_reminder" in names
+    assert "morning_greeting" in names
+    assert "diary_share_reminder" in names

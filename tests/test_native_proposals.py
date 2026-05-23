@@ -64,6 +64,7 @@ def test_period_propose_uses_real_windows(monkeypatch):
 
 def test_gating_shadow_collects_native_and_remaining_legacy(monkeypatch):
     from core.scheduler import gating, loop
+    from core.scheduler import proposer_registry
     from core.scheduler.gating import TriggerProposal
     from core.scheduler.state_machine import TriggerState
 
@@ -75,9 +76,8 @@ def test_gating_shadow_collects_native_and_remaining_legacy(monkeypatch):
         bypass_state_machine=True,
     )
 
-    monkeypatch.setattr(gating, "_watch_propose", lambda ctx: None)
-    monkeypatch.setattr(gating, "_birthday_propose", lambda ctx: None)
-    monkeypatch.setattr(gating, "_period_propose", lambda ctx: native)
+    proposer_registry._reset_for_tests()
+    proposer_registry.register_proposer("period_reminder", lambda ctx: native)
     monkeypatch.setattr(loop, "_COOLDOWNS", {"period_reminder": 60, "random_message": 60})
     monkeypatch.setattr(loop, "_HIGH_PRIORITY_TRIGGERS", frozenset({"period_reminder"}))
     monkeypatch.setattr(loop, "_is_ready", lambda name: True)
@@ -85,3 +85,4 @@ def test_gating_shadow_collects_native_and_remaining_legacy(monkeypatch):
     proposals = gating._collect_native_proposals({"uid": "u1"}) + gating._adapt_legacy_triggers("u1")
 
     assert [p.trigger_name for p in proposals] == ["period_reminder", "random_message"]
+    proposer_registry._reset_for_tests()

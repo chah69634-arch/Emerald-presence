@@ -56,6 +56,15 @@ def propose(ctx: dict | None = None):
     )
 
 
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("watch_hr_critical", propose, trigger_names={"hr_critical"})
+
+
+_register_proposers()
+
+
 async def on_watch_event(event_type: str, data: dict):
     """
     接收 Watch 事件并触发主动行为。

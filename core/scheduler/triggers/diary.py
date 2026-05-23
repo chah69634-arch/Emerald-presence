@@ -193,3 +193,13 @@ def _same_day_ratio(now: datetime, start_hour: int, end_hour: int) -> float:
     if total <= 0:
         return 1.0
     return max(0.0, min(1.0, (now_minutes - start_minutes) / total))
+
+
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("diary_reminder", propose_diary_reminder)
+    register_proposer("diary_share_reminder", propose_diary_share_reminder)
+
+
+_register_proposers()

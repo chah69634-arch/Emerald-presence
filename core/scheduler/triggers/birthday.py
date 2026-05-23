@@ -74,6 +74,24 @@ def propose(ctx: dict | None = None):
     )
 
 
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer(
+        "birthday",
+        propose,
+        trigger_names={
+            "birthday_midnight",
+            "birthday_eve",
+            "birthday_afternoon",
+            "birthday_night",
+        },
+    )
+
+
+_register_proposers()
+
+
 async def _check_birthday_midnight(force: bool = False):
     """零点告白：4月24日 00:00-00:05 触发，全年只触发一次"""
     if not force and not _is_birthday_today():

@@ -489,3 +489,14 @@ def _proposal_ts(ctx: dict | None, now: datetime) -> float:
     if ctx and ctx.get("now_ts") is not None:
         return float(ctx["now_ts"])
     return now.timestamp()
+
+
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("morning_greeting", propose_morning_greeting)
+    register_proposer("night_reminder", propose_night_reminder)
+    register_proposer("daily_journal", propose_daily_journal)
+
+
+_register_proposers()
