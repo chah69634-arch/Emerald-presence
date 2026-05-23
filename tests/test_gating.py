@@ -89,20 +89,6 @@ def test_collect_and_decide_only_reads_cooldown(monkeypatch):
     assert calls == ["random_message", "random_message"]
 
 
-def test_legacy_adapter_skips_migrated_triggers(monkeypatch):
-    from core.scheduler import gating
-    from core.scheduler import loop
-
-    monkeypatch.setattr(loop, "_COOLDOWNS", {"hr_critical": 60, "random_message": 60})
-    monkeypatch.setattr(loop, "_HIGH_PRIORITY_TRIGGERS", frozenset({"hr_critical"}))
-    monkeypatch.setattr(loop, "_is_ready", lambda name: True)
-    monkeypatch.setattr(gating, "MIGRATED_TRIGGERS", frozenset({"hr_critical"}))
-
-    proposals = gating._adapt_legacy_triggers("u1")
-
-    assert [p.trigger_name for p in proposals] == ["random_message"]
-
-
 def test_registry_reports_existing_native_trigger_names():
     from core.scheduler.proposer_registry import registered_trigger_names
 
@@ -113,3 +99,46 @@ def test_registry_reports_existing_native_trigger_names():
     assert "period_reminder" in names
     assert "morning_greeting" in names
     assert "diary_share_reminder" in names
+    assert "reminders" in names
+
+
+def test_gating_no_longer_exposes_legacy_adapter():
+    from core.scheduler import gating
+
+    assert not hasattr(gating, "_adapt_legacy_triggers")
+
+
+def test_registered_triggers_match_assistant_turn_surface():
+    from core.scheduler.proposer_registry import registered_trigger_names
+
+    expected = {
+        "hr_critical",
+        "birthday_midnight",
+        "birthday_eve",
+        "birthday_afternoon",
+        "birthday_night",
+        "period_reminder",
+        "morning_greeting",
+        "night_reminder",
+        "daily_journal",
+        "diary_reminder",
+        "diary_share_reminder",
+        "random_message",
+        "hr_high",
+        "sleep_end",
+        "weather_alert",
+        "topic_followup",
+        "timenode",
+        "festival",
+        "holiday_boost",
+        "spontaneous_recall",
+        "garden_bloom",
+        "garden_harvest_expired",
+        "garden_handle_ask",
+        "garden_handle_gift",
+        "garden_handle_self",
+        "garden_vase_wilted",
+        "reminders",
+    }
+
+    assert registered_trigger_names() == expected

@@ -27,6 +27,22 @@ MIGRATED_TRIGGERS: frozenset[str] = frozenset({
     "daily_journal",
     "diary_reminder",
     "diary_share_reminder",
+    "random_message",
+    "hr_high",
+    "sleep_end",
+    "weather_alert",
+    "topic_followup",
+    "timenode",
+    "festival",
+    "holiday_boost",
+    "spontaneous_recall",
+    "garden_bloom",
+    "garden_harvest_expired",
+    "garden_handle_ask",
+    "garden_handle_gift",
+    "garden_handle_self",
+    "garden_vase_wilted",
+    "reminders",
 })
 
 
@@ -52,7 +68,7 @@ def collect_and_decide(uid: str, proposals: list[TriggerProposal]) -> Optional[T
 
 def write_shadow_tick(uid: str) -> None:
     ctx = _build_context(uid)
-    proposals = _collect_native_proposals(ctx) + _adapt_legacy_triggers(uid)
+    proposals = _collect_native_proposals(ctx)
     picked, reason, candidates = _decide(uid, proposals)
     state = get_current_state(uid)
     safe_append_jsonl(
@@ -102,45 +118,6 @@ def _decide(uid: str, proposals: list[TriggerProposal]) -> tuple[Optional[Trigge
 
     picked = max(cooldown_allowed, key=lambda p: p.urgency)
     return picked, "picked_highest_urgency", candidates
-
-
-def _adapt_legacy_triggers(uid: str) -> list[TriggerProposal]:
-    del uid
-    from core.scheduler import loop
-
-    proposals: list[TriggerProposal] = []
-    for name in loop._COOLDOWNS:
-        if name in MIGRATED_TRIGGERS:
-            continue
-        if not loop._is_ready(name):
-            continue
-        high_priority = name in loop._HIGH_PRIORITY_TRIGGERS
-        proposals.append(
-            TriggerProposal(
-                trigger_name=name,
-                urgency=0.9 if high_priority else 0.5,
-                topic_source=_topic_source_for(name),
-                requires_state=[
-                    TriggerState.CHATTING,
-                    TriggerState.QUIET,
-                    TriggerState.RESTLESS,
-                ] if high_priority else [TriggerState.QUIET],
-                bypass_state_machine=high_priority,
-            )
-        )
-    return proposals
-
-
-def _topic_source_for(trigger_name: str) -> str:
-    if trigger_name == "topic_followup":
-        return "last_mentioned"
-    if "diary" in trigger_name or trigger_name == "daily_journal":
-        return "diary"
-    if "episodic" in trigger_name or trigger_name == "spontaneous_recall":
-        return "episodic"
-    if trigger_name.startswith("garden"):
-        return "mood_match"
-    return "random"
 
 
 def _serialize_candidate(proposal: TriggerProposal, state: TriggerState | str) -> dict:
