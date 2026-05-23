@@ -487,9 +487,9 @@ async def _loop():
 
                 oid = _owner_id()
                 if oid:
-                    from core.scheduler.gating import write_shadow_tick
+                    from core.scheduler.gating import run_shadow_tick
 
-                    write_shadow_tick(oid)
+                    await run_shadow_tick(oid)
 
                 await asyncio.gather(
                     _check_morning(),
