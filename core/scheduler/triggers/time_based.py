@@ -306,6 +306,14 @@ def _classify_weather(detail: dict, now: datetime) -> tuple[str, float] | None:
 
 
 def propose_weather_alert(ctx: dict | None = None):
+    return _propose_weather_alert(ctx, required_severity="heavy")
+
+
+def propose_weather_alert_light(ctx: dict | None = None):
+    return _propose_weather_alert(ctx, required_severity="light")
+
+
+def _propose_weather_alert(ctx: dict | None = None, required_severity: str = "heavy"):
     ctx = ctx or {}
     from core.config_loader import get_config
     if not get_config().get("tools", {}).get("weather", {}).get("enabled", True):
@@ -329,7 +337,7 @@ def propose_weather_alert(ctx: dict | None = None):
     if classified is None:
         return None
     severity, ratio = classified
-    if severity != "heavy":
+    if severity != required_severity:
         return None
 
     from core.scheduler.gating import TriggerProposal
@@ -337,12 +345,14 @@ def propose_weather_alert(ctx: dict | None = None):
     from core.scheduler.state_machine import TriggerState
     from core.scheduler.urgency import UrgencyTier, urgency_in_tier
 
-    urgency_ratio = max(float(ratio), daytime_window_ratio(now, 8, 21))
+    tier = UrgencyTier.WINDOW_EVENT if severity == "heavy" else UrgencyTier.REACTIVE
+    required_state = [TriggerState.QUIET, TriggerState.RESTLESS] if severity == "heavy" else [TriggerState.QUIET]
+    urgency_ratio = max(float(ratio), daytime_window_ratio(now, 8, 21)) if severity == "heavy" else float(ratio)
     return TriggerProposal(
         trigger_name="weather_alert",
-        urgency=urgency_in_tier(UrgencyTier.WINDOW_EVENT, urgency_ratio),
+        urgency=urgency_in_tier(tier, urgency_ratio),
         topic_source="random",
-        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        requires_state=required_state,
         bypass_state_machine=False,
     )
 
@@ -583,6 +593,7 @@ def _register_proposers() -> None:
     register_proposer("night_reminder", propose_night_reminder)
     register_proposer("daily_journal", propose_daily_journal)
     register_proposer("weather_alert_heavy", propose_weather_alert, trigger_names={"weather_alert"})
+    register_proposer("weather_alert_light", propose_weather_alert_light, trigger_names={"weather_alert"})
 
 
 _register_proposers()

@@ -59,6 +59,9 @@ def _ensure_builtins_loaded() -> None:
         "core.scheduler.triggers.timenode",
         "core.scheduler.triggers.festival",
         "core.scheduler.triggers.reminders",
+        "core.scheduler.triggers.memory",
+        "core.scheduler.triggers.garden_water",
+        "core.scheduler.triggers.garden_daily",
     ):
         module = import_module(module_name)
         if module_name in sys.modules and hasattr(module, "_register_proposers"):

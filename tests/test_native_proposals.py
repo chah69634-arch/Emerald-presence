@@ -144,3 +144,84 @@ def test_reminders_propose_bypasses_state_machine(monkeypatch):
     assert proposal.trigger_name == "reminders"
     assert proposal.bypass_state_machine is True
     assert 0.70 <= proposal.urgency <= 0.89
+
+
+def test_reactive_watch_proposals_use_recent_events():
+    from core.scheduler.triggers import watch
+
+    hr = watch.propose_hr_high({
+        "now_ts": 1_000.0,
+        "heart_rate_event": {"value": 110, "hour": 14, "received_at": 990.0},
+    })
+    sleep = watch.propose_sleep_end({
+        "now_ts": 1_000.0,
+        "sleep_end_event": {"duration_minutes": 420, "received_at": 990.0},
+    })
+
+    assert hr.trigger_name == "hr_high"
+    assert sleep.trigger_name == "sleep_end"
+    assert 0.30 <= hr.urgency <= 0.49
+    assert 0.30 <= sleep.urgency <= 0.49
+
+
+def test_topic_followup_propose_uses_growth_unfollowed_topic(monkeypatch):
+    from core.scheduler.triggers import memory
+
+    monkeypatch.setattr(memory, "_cfg", lambda: {"topic_followup": True})
+    monkeypatch.setattr(memory, "_owner_id", lambda: "u1")
+    growth = "## 未跟进话题\n- 实习: 她说还没定\n"
+
+    proposal = memory.propose({
+        "now_dt": datetime(2026, 5, 25, 16, 0),
+        "character_growth": growth,
+    })
+
+    assert proposal.trigger_name == "topic_followup"
+    assert 0.30 <= proposal.urgency <= 0.49
+
+
+def test_garden_reactive_proposals_use_cached_events():
+    from core.scheduler.triggers import garden_daily, garden_water
+
+    bloom = garden_water.propose_garden_bloom({
+        "now_ts": 1_000.0,
+        "garden_bloom_events": [{"type": "bloom", "name": "雏菊", "received_at": 990.0}],
+    })
+    ask = garden_daily.propose_garden_handle_ask({
+        "now_ts": 1_000.0,
+        "garden_daily_events": [
+            {"type": "harvest_handle", "handle_action": "ask", "name": "雏菊", "received_at": 990.0}
+        ],
+    })
+
+    assert bloom.trigger_name == "garden_bloom"
+    assert ask.trigger_name == "garden_handle_ask"
+    assert 0.30 <= bloom.urgency <= 0.49
+    assert 0.30 <= ask.urgency <= 0.49
+
+
+def test_weather_light_propose_uses_reactive_tier(monkeypatch):
+    from core.scheduler.triggers import time_based
+
+    monkeypatch.setattr(time_based, "_cfg", lambda: {"enabled": True})
+    now = datetime(2026, 5, 25, 12, 0)
+    detail = {
+        "temp_c": 22,
+        "humidity": 50,
+        "precip_mm": 1.0,
+        "cloud_cover": 50,
+        "wind_kmph": 10,
+        "desc": "小雨",
+        "is_day": True,
+        "uv_index": 3,
+        "received_at": now.timestamp(),
+    }
+
+    proposal = time_based.propose_weather_alert_light({
+        "now_dt": now,
+        "now_ts": now.timestamp(),
+        "weather_detail": detail,
+    })
+
+    assert proposal.trigger_name == "weather_alert"
+    assert 0.30 <= proposal.urgency <= 0.49

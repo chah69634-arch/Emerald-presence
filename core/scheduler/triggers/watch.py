@@ -9,8 +9,10 @@ logger = logging.getLogger(__name__)
 HR_HIGH_THRESHOLD = 100
 HR_CRITICAL_THRESHOLD = 120
 HEART_RATE_PROPOSAL_TTL_SECONDS = 10 * 60
+SLEEP_END_PROPOSAL_TTL_SECONDS = 10 * 60
 
 _LAST_HEART_RATE_EVENT: dict | None = None
+_LAST_SLEEP_END_EVENT: dict | None = None
 
 
 def _remember_heart_rate(hr: int, hour: int) -> None:
@@ -24,6 +26,18 @@ def _remember_heart_rate(hr: int, hour: int) -> None:
 
 def get_last_heart_rate_event() -> dict | None:
     return dict(_LAST_HEART_RATE_EVENT) if _LAST_HEART_RATE_EVENT else None
+
+
+def _remember_sleep_end(data: dict) -> None:
+    global _LAST_SLEEP_END_EVENT
+    _LAST_SLEEP_END_EVENT = {
+        **data,
+        "received_at": time.time(),
+    }
+
+
+def get_last_sleep_end_event() -> dict | None:
+    return dict(_LAST_SLEEP_END_EVENT) if _LAST_SLEEP_END_EVENT else None
 
 
 def propose(ctx: dict | None = None):
@@ -56,10 +70,67 @@ def propose(ctx: dict | None = None):
     )
 
 
+def propose_hr_high(ctx: dict | None = None):
+    ctx = ctx or {}
+    event = ctx.get("heart_rate_event") or get_last_heart_rate_event()
+    if not event:
+        return None
+    now_ts = float(ctx.get("now_ts") or time.time())
+    received_at = float(event.get("received_at") or 0)
+    if now_ts - received_at > HEART_RATE_PROPOSAL_TTL_SECONDS:
+        return None
+    hr = int(event.get("value") or 0)
+    hour = int(event.get("hour", datetime.now().hour))
+    if 6 <= hour < 8:
+        return None
+    if not (HR_HIGH_THRESHOLD < hr <= HR_CRITICAL_THRESHOLD):
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    ratio = (hr - HR_HIGH_THRESHOLD) / (HR_CRITICAL_THRESHOLD - HR_HIGH_THRESHOLD)
+    return TriggerProposal(
+        trigger_name="hr_high",
+        urgency=urgency_in_tier(UrgencyTier.REACTIVE, ratio),
+        topic_source="mood_match",
+        requires_state=[TriggerState.QUIET],
+        bypass_state_machine=False,
+    )
+
+
+def propose_sleep_end(ctx: dict | None = None):
+    ctx = ctx or {}
+    event = ctx.get("sleep_end_event") or get_last_sleep_end_event()
+    if not event:
+        return None
+    now_ts = float(ctx.get("now_ts") or time.time())
+    received_at = float(event.get("received_at") or 0)
+    if now_ts - received_at > SLEEP_END_PROPOSAL_TTL_SECONDS:
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    duration = float(event.get("duration_minutes") or 0)
+    ratio = min(1.0, max(0.0, duration / (8 * 60)))
+    return TriggerProposal(
+        trigger_name="sleep_end",
+        urgency=urgency_in_tier(UrgencyTier.REACTIVE, ratio),
+        topic_source="mood_match",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
+
+
 def _register_proposers() -> None:
     from core.scheduler.proposer_registry import register_proposer
 
     register_proposer("watch_hr_critical", propose, trigger_names={"hr_critical"})
+    register_proposer("watch_hr_high", propose_hr_high, trigger_names={"hr_high"})
+    register_proposer("watch_sleep_end", propose_sleep_end, trigger_names={"sleep_end"})
 
 
 _register_proposers()
@@ -111,6 +182,7 @@ async def on_watch_event(event_type: str, data: dict):
                 logger.info(f"[scheduler] 心率偏高触发 hr={hr}")
 
     elif event_type == "sleep_end":
+        _remember_sleep_end(data)
         if not _is_ready("sleep_end"):
             return
         prompt = str(data.get("prompt") or "").strip()

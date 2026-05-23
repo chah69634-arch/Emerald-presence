@@ -91,3 +91,62 @@ async def _check_topic_followup(force: bool = False):
 
     except Exception as e:
         log_error("scheduler._check_topic_followup", e)
+
+
+def _followup_signal(growth: str) -> float:
+    if "未跟进话题" not in growth:
+        return 0.0
+    tail = growth.split("未跟进话题", 1)[1]
+    lines = [line.strip() for line in tail.splitlines() if line.strip().startswith("-")]
+    if not lines:
+        return 0.0
+    useful = [line for line in lines if "暂无" not in line and "无" not in line]
+    return min(1.0, len(useful) / 3)
+
+
+def propose(ctx: dict | None = None):
+    ctx = ctx or {}
+    cfg = _cfg()
+    if not cfg.get("topic_followup", True):
+        return None
+    now = ctx.get("now_dt") or datetime.now()
+    if not (14 <= now.hour < 22):
+        return None
+    oid = _owner_id()
+    if not oid:
+        return None
+    try:
+        from core.memory.character_growth import load as load_growth
+
+        growth = ctx.get("character_growth")
+        if growth is None:
+            growth = load_growth(_char_name(), oid)
+    except Exception as e:
+        log_error("scheduler.propose_topic_followup.load_growth", e)
+        return None
+    if not growth or len(growth) < 20:
+        return None
+    ratio = _followup_signal(str(growth))
+    if ratio <= 0:
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="topic_followup",
+        urgency=urgency_in_tier(UrgencyTier.REACTIVE, ratio),
+        topic_source="last_mentioned",
+        requires_state=[TriggerState.QUIET],
+        bypass_state_machine=False,
+    )
+
+
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("topic_followup", propose)
+
+
+_register_proposers()

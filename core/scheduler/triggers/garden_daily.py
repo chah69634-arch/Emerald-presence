@@ -2,6 +2,7 @@
 
 import logging
 import random
+import time
 
 from core.scheduler.loop import _is_ready, _mark, _pipeline_send, _char_name
 from core.garden import manager as garden_manager
@@ -11,6 +12,8 @@ logger = logging.getLogger(__name__)
 # 状态变更必执行；发言只有 30% 概率触发。
 # 例外：ask / gift 是社交动作，必发（不过 sample）。
 SAMPLE_TALK_PROB = 0.30
+GARDEN_EVENT_PROPOSAL_TTL_SECONDS = 24 * 3600
+_LAST_DAILY_EVENTS: list[dict] = []
 
 
 async def _check_garden_daily() -> None:
@@ -25,6 +28,7 @@ async def _check_garden_daily() -> None:
         return
 
     for event in events:
+        _remember_daily_event(event)
         await _emit(event)
 
 
@@ -90,3 +94,87 @@ async def _emit(event: dict) -> None:
                 )
                 _mark("garden_handle_self")
         # action == "silent"：什么都不做
+
+
+def _remember_daily_event(event: dict) -> None:
+    _LAST_DAILY_EVENTS.append({**event, "received_at": time.time()})
+    del _LAST_DAILY_EVENTS[:-20]
+
+
+def _proposal_for(trigger_name: str, event_type: str, action: str | None = None, ctx: dict | None = None):
+    ctx = ctx or {}
+    now_ts = float(ctx.get("now_ts") or time.time())
+    events = ctx.get("garden_daily_events") or _LAST_DAILY_EVENTS
+    matches = []
+    for event in events:
+        if event.get("type") != event_type:
+            continue
+        if action is not None and event.get("handle_action") != action:
+            continue
+        if now_ts - float(event.get("received_at") or 0) <= GARDEN_EVENT_PROPOSAL_TTL_SECONDS:
+            matches.append(event)
+    if not matches:
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    newest = max(float(event.get("received_at") or 0) for event in matches)
+    ratio = 1 - min(1.0, max(0.0, (now_ts - newest) / GARDEN_EVENT_PROPOSAL_TTL_SECONDS))
+    return TriggerProposal(
+        trigger_name=trigger_name,
+        urgency=urgency_in_tier(UrgencyTier.REACTIVE, ratio),
+        topic_source="mood_match",
+        requires_state=[TriggerState.QUIET],
+        bypass_state_machine=False,
+    )
+
+
+def propose_garden_harvest_expired(ctx: dict | None = None):
+    return _proposal_for("garden_harvest_expired", "harvest_expired", ctx=ctx)
+
+
+def propose_garden_vase_wilted(ctx: dict | None = None):
+    return _proposal_for("garden_vase_wilted", "vase_wilted", ctx=ctx)
+
+
+def propose_garden_handle_ask(ctx: dict | None = None):
+    return _proposal_for("garden_handle_ask", "harvest_handle", action="ask", ctx=ctx)
+
+
+def propose_garden_handle_gift(ctx: dict | None = None):
+    return _proposal_for("garden_handle_gift", "harvest_handle", action="gift", ctx=ctx)
+
+
+def propose_garden_handle_self(ctx: dict | None = None):
+    ctx = ctx or {}
+    now_ts = float(ctx.get("now_ts") or time.time())
+    events = ctx.get("garden_daily_events") or _LAST_DAILY_EVENTS
+    self_events = [
+        event for event in events
+        if event.get("type") == "harvest_handle"
+        and event.get("handle_action") in ("dry", "vase")
+        and now_ts - float(event.get("received_at") or 0) <= GARDEN_EVENT_PROPOSAL_TTL_SECONDS
+    ]
+    if not self_events:
+        return None
+    return _proposal_for(
+        "garden_handle_self",
+        "harvest_handle",
+        action=self_events[-1].get("handle_action"),
+        ctx={**ctx, "garden_daily_events": self_events},
+    )
+
+
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("garden_harvest_expired", propose_garden_harvest_expired)
+    register_proposer("garden_handle_ask", propose_garden_handle_ask)
+    register_proposer("garden_handle_gift", propose_garden_handle_gift)
+    register_proposer("garden_handle_self", propose_garden_handle_self)
+    register_proposer("garden_vase_wilted", propose_garden_vase_wilted)
+
+
+_register_proposers()
