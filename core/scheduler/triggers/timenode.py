@@ -14,9 +14,9 @@ from core.scheduler.loop import _is_ready, _mark, _owner_id, _pipeline_send, _cf
 logger = logging.getLogger(__name__)
 
 
-def _get_timenode() -> str | None:
+def _get_timenode(today: date | None = None) -> str | None:
     """判断今天是否是特殊时间节点，返回节点类型或None"""
-    today = date.today()
+    today = today or date.today()
     weekday = today.weekday()  # 0=周一，6=周日
     day = today.day
     month = today.month
@@ -97,3 +97,40 @@ async def _check_timenode(force: bool = False):
         logger.info(f"[scheduler] 时间节点触发: {node}")
     except Exception as e:
         log_error("scheduler._check_timenode", e)
+
+
+def propose(ctx: dict | None = None):
+    ctx = ctx or {}
+    cfg = _cfg()
+    if not cfg.get("timenode", True):
+        return None
+    now = ctx.get("now_dt") or datetime.now()
+    if not (14 <= now.hour < 20):
+        return None
+    node = _get_timenode(now.date())
+    if node is None:
+        return None
+    if not _owner_id():
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.rhythm import daytime_window_ratio
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="timenode",
+        urgency=urgency_in_tier(UrgencyTier.WINDOW_EVENT, daytime_window_ratio(now, 14, 20)),
+        topic_source="random",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
+
+
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("timenode", propose)
+
+
+_register_proposers()

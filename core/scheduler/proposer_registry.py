@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
 from importlib import import_module
+import sys
 from typing import Callable, Optional
 
 
@@ -55,8 +56,13 @@ def _ensure_builtins_loaded() -> None:
         "core.scheduler.triggers.period",
         "core.scheduler.triggers.time_based",
         "core.scheduler.triggers.diary",
+        "core.scheduler.triggers.timenode",
+        "core.scheduler.triggers.festival",
+        "core.scheduler.triggers.reminders",
     ):
-        import_module(module_name)
+        module = import_module(module_name)
+        if module_name in sys.modules and hasattr(module, "_register_proposers"):
+            module._register_proposers()
 
 
 def _reset_for_tests() -> None:

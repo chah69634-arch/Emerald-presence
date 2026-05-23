@@ -33,9 +33,9 @@ def _easter(year: int) -> date:
     return date(year, month, day)
 
 
-def _is_holiday_period() -> bool:
+def _is_holiday_period(today: date | None = None) -> bool:
     """是否在五一或国庆长假期间"""
-    today = date.today()
+    today = today or date.today()
     m, d = today.month, today.day
     if m == 5 and 1 <= d <= 5:
         return True
@@ -44,8 +44,8 @@ def _is_holiday_period() -> bool:
     return False
 
 
-def _get_today_festival() -> tuple[str, str] | None:
-    today = date.today()
+def _get_today_festival(today: date | None = None) -> tuple[str, str] | None:
+    today = today or date.today()
     m, d = today.month, today.day
     year = today.year
     char = _char_name()
@@ -182,3 +182,67 @@ async def _check_holiday_boost(force: bool = False):
         logger.info(f"[scheduler] 长假加速触发: {holiday_name}")
     except Exception as e:
         log_error("scheduler._check_holiday_boost", e)
+
+
+def propose_festival(ctx: dict | None = None):
+    ctx = ctx or {}
+    cfg = _cfg()
+    if not cfg.get("festival", True):
+        return None
+    now = ctx.get("now_dt") or datetime.now()
+    if not (14 <= now.hour < 20):
+        return None
+    if _get_today_festival(now.date()) is None:
+        return None
+    if not _owner_id():
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.rhythm import daytime_window_ratio
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="festival",
+        urgency=urgency_in_tier(UrgencyTier.WINDOW_EVENT, daytime_window_ratio(now, 14, 20)),
+        topic_source="random",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
+
+
+def propose_holiday_boost(ctx: dict | None = None):
+    ctx = ctx or {}
+    cfg = _cfg()
+    if not cfg.get("holiday_boost", True):
+        return None
+    now = ctx.get("now_dt") or datetime.now()
+    if not _is_holiday_period(now.date()):
+        return None
+    if not (10 <= now.hour < 22):
+        return None
+    if not _owner_id():
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.rhythm import daytime_window_ratio
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="holiday_boost",
+        urgency=urgency_in_tier(UrgencyTier.WINDOW_EVENT, daytime_window_ratio(now, 10, 22)),
+        topic_source="random",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
+
+
+def _register_proposers() -> None:
+    from core.scheduler.proposer_registry import register_proposer
+
+    register_proposer("festival", propose_festival)
+    register_proposer("holiday_boost", propose_holiday_boost)
+
+
+_register_proposers()

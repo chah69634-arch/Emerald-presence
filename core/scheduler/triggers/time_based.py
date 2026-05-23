@@ -9,6 +9,8 @@ from core.scheduler.loop import _is_ready, _mark, _owner_id, _pipeline_send, _cf
 
 logger = logging.getLogger(__name__)
 
+_LAST_WEATHER_DETAIL: dict | None = None
+
 
 async def _check_morning(force: bool = False):
     """早安触发：7-9点，且用户今天还没说过话。force=True 跳过时间和对话检查"""
@@ -213,6 +215,7 @@ async def _check_weather(force: bool = False):
         w = await get_weather_detail(location)
         if not w:
             return
+        _remember_weather_detail(w)
 
         temp     = w["temp_c"]
         feels    = w["feels_like"]
@@ -260,6 +263,88 @@ async def _check_weather(force: bool = False):
 
     except Exception as e:
         log_error("scheduler._check_weather", e)
+
+
+def _remember_weather_detail(detail: dict) -> None:
+    global _LAST_WEATHER_DETAIL
+    _LAST_WEATHER_DETAIL = {**detail, "received_at": time.time()}
+
+
+def get_last_weather_detail() -> dict | None:
+    return dict(_LAST_WEATHER_DETAIL) if _LAST_WEATHER_DETAIL else None
+
+
+def _classify_weather(detail: dict, now: datetime) -> tuple[str, float] | None:
+    temp = detail["temp_c"]
+    humidity = detail["humidity"]
+    precip = detail["precip_mm"]
+    cloud = detail["cloud_cover"]
+    wind = detail["wind_kmph"]
+    desc = detail["desc"]
+    is_day = detail["is_day"]
+    uv = detail["uv_index"]
+
+    if any(k in desc for k in ("暴雨", "大雨", "雷暴", "雷阵雨")) or precip > 10:
+        return "heavy", min(1.0, max(0.0, precip / 30))
+    if temp >= 30:
+        return "heavy", min(1.0, (temp - 30) / 10)
+    if temp <= -5:
+        return "heavy", min(1.0, (-5 - temp) / 15)
+    if any(k in desc for k in ("雾", "霾", "大雾")):
+        return "light", 0.6
+    if any(k in desc for k in ("小雨", "毛毛雨", "阵雨")) and precip > 0:
+        return "light", min(1.0, max(0.2, precip / 5))
+    if wind > 40:
+        return "light", min(1.0, (wind - 40) / 40)
+    if cloud < 20 and is_day and uv >= 6 and 11 <= now.hour < 14:
+        return "light", min(1.0, (uv - 6) / 5)
+    if cloud < 30 and 17 <= now.hour < 19:
+        return "light", 0.5
+    if humidity > 85 and any(k in desc for k in ("晴", "多云")):
+        return "light", min(1.0, (humidity - 85) / 15)
+    return None
+
+
+def propose_weather_alert(ctx: dict | None = None):
+    ctx = ctx or {}
+    from core.config_loader import get_config
+    if not get_config().get("tools", {}).get("weather", {}).get("enabled", True):
+        return None
+    cfg = _cfg()
+    if not cfg.get("enabled", True):
+        return None
+    now = _proposal_now(ctx)
+    if not (8 <= now.hour < 21):
+        return None
+    detail = ctx.get("weather_detail") or get_last_weather_detail()
+    if not detail:
+        return None
+    now_ts = _proposal_ts(ctx, now)
+    if now_ts - float(detail.get("received_at") or now_ts) > 6 * 3600:
+        return None
+    try:
+        classified = _classify_weather(detail, now)
+    except Exception:
+        return None
+    if classified is None:
+        return None
+    severity, ratio = classified
+    if severity != "heavy":
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.rhythm import daytime_window_ratio
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    urgency_ratio = max(float(ratio), daytime_window_ratio(now, 8, 21))
+    return TriggerProposal(
+        trigger_name="weather_alert",
+        urgency=urgency_in_tier(UrgencyTier.WINDOW_EVENT, urgency_ratio),
+        topic_source="random",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
 
 
 async def _check_daily_journal():
@@ -497,6 +582,7 @@ def _register_proposers() -> None:
     register_proposer("morning_greeting", propose_morning_greeting)
     register_proposer("night_reminder", propose_night_reminder)
     register_proposer("daily_journal", propose_daily_journal)
+    register_proposer("weather_alert_heavy", propose_weather_alert, trigger_names={"weather_alert"})
 
 
 _register_proposers()
