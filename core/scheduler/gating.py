@@ -22,6 +22,8 @@ MIGRATED_TRIGGERS: frozenset[str] = frozenset({
     "birthday_afternoon",
     "birthday_night",
     "period_reminder",
+    "morning_greeting",
+    "night_reminder",
 })
 
 
@@ -77,6 +79,7 @@ def _collect_native_proposals(ctx: dict) -> list[TriggerProposal]:
         item = propose(ctx)
         if item is not None:
             proposals.append(item)
+    proposals.extend(_time_based_proposals(ctx))
     return proposals
 
 
@@ -96,6 +99,17 @@ def _period_propose(ctx: dict) -> Optional[TriggerProposal]:
     from core.scheduler.triggers.period import propose
 
     return propose(ctx)
+
+
+def _time_based_proposals(ctx: dict) -> list[TriggerProposal]:
+    from core.scheduler.triggers.time_based import propose_morning_greeting, propose_night_reminder
+
+    proposals: list[TriggerProposal] = []
+    for propose in (propose_morning_greeting, propose_night_reminder):
+        item = propose(ctx)
+        if item is not None:
+            proposals.append(item)
+    return proposals
 
 
 def _decide(uid: str, proposals: list[TriggerProposal]) -> tuple[Optional[TriggerProposal], str, list[dict]]:

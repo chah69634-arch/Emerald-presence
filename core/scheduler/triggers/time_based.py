@@ -49,6 +49,63 @@ async def _check_night(force: bool = False):
     logger.info("[scheduler] 晚安消息已发送")
 
 
+def propose_morning_greeting(ctx: dict | None = None):
+    """Shadow proposal for morning_greeting; read-only and does not mark cooldown."""
+    cfg = _cfg()
+    if not cfg.get("morning_greeting", True):
+        return None
+    now = _proposal_now(ctx)
+    if not (7 <= now.hour < 9):
+        return None
+    from core.scheduler.rhythm import daytime_window_ratio, is_present
+
+    if not is_present(_proposal_ts(ctx, now)):
+        return None
+    oid = _owner_id()
+    if oid and _user_talked_today(oid):
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="morning_greeting",
+        urgency=urgency_in_tier(UrgencyTier.DAILY_RHYTHM, daytime_window_ratio(now, 7, 9)),
+        topic_source="random",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
+
+
+def propose_night_reminder(ctx: dict | None = None):
+    """Shadow proposal for night_reminder; read-only and does not mark cooldown."""
+    cfg = _cfg()
+    if not cfg.get("night_reminder", True):
+        return None
+    now = _proposal_now(ctx)
+    from core.scheduler.rhythm import in_night_window, is_present, night_window_ratio, triggered_on_logical_day
+
+    if not in_night_window(now):
+        return None
+    if not is_present(_proposal_ts(ctx, now)):
+        return None
+    if triggered_on_logical_day("night_reminder", now):
+        return None
+
+    from core.scheduler.gating import TriggerProposal
+    from core.scheduler.state_machine import TriggerState
+    from core.scheduler.urgency import UrgencyTier, urgency_in_tier
+
+    return TriggerProposal(
+        trigger_name="night_reminder",
+        urgency=urgency_in_tier(UrgencyTier.DAILY_RHYTHM, night_window_ratio(now)),
+        topic_source="random",
+        requires_state=[TriggerState.QUIET, TriggerState.RESTLESS],
+        bypass_state_machine=False,
+    )
+
+
 async def _check_random_message(force: bool = False):
     """随机日间消息：10-18点，每天随机触发一次。force=True 跳过时间和概率检查"""
     cfg = _cfg()
@@ -387,3 +444,17 @@ async def _check_dlq_monitor():
         log_error("scheduler._check_dlq_monitor", e)
 
     _mark("dlq_monitor")
+
+
+def _proposal_now(ctx: dict | None) -> datetime:
+    if ctx and ctx.get("now_dt") is not None:
+        return ctx["now_dt"]
+    if ctx and ctx.get("now_ts") is not None:
+        return datetime.fromtimestamp(float(ctx["now_ts"]))
+    return datetime.now()
+
+
+def _proposal_ts(ctx: dict | None, now: datetime) -> float:
+    if ctx and ctx.get("now_ts") is not None:
+        return float(ctx["now_ts"])
+    return now.timestamp()
