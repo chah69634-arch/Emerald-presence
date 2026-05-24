@@ -204,7 +204,7 @@ def test_topic_followup_new_propose_has_no_character_growth_dependency():
 
 def test_topic_followup_propose_skips_recently_followed_topic(monkeypatch, sandbox):
     from core.scheduler.triggers import memory
-    from core.scheduler.last_mentioned import mark_topic_followed
+    from core.scheduler.last_mentioned import mark_topic_followed_shadow
 
     monkeypatch.setattr(memory, "_cfg", lambda: {"topic_followup": True})
     monkeypatch.setattr(memory, "_owner_id", lambda: "u1")
@@ -221,7 +221,7 @@ def test_topic_followup_propose_skips_recently_followed_topic(monkeypatch, sandb
 ---
 """,
     )
-    mark_topic_followed("继续改实习材料", now_ts=1_000.0)
+    mark_topic_followed_shadow("继续改实习材料", now_ts=1_000.0)
 
     proposal = memory.propose({
         "now_dt": datetime(2026, 5, 25, 16, 0),
@@ -234,7 +234,7 @@ def test_topic_followup_propose_skips_recently_followed_topic(monkeypatch, sandb
 
 def test_topic_followup_propose_allows_different_topic_key(monkeypatch, sandbox):
     from core.scheduler.triggers import memory
-    from core.scheduler.last_mentioned import mark_topic_followed
+    from core.scheduler.last_mentioned import mark_topic_followed_shadow
 
     monkeypatch.setattr(memory, "_cfg", lambda: {"topic_followup": True})
     monkeypatch.setattr(memory, "_owner_id", lambda: "u1")
@@ -251,7 +251,7 @@ def test_topic_followup_propose_allows_different_topic_key(monkeypatch, sandbox)
 ---
 """,
     )
-    mark_topic_followed("继续改实习材料", now_ts=1_000.0)
+    mark_topic_followed_shadow("继续改实习材料", now_ts=1_000.0)
 
     proposal = memory.propose({
         "now_dt": datetime(2026, 5, 25, 16, 0),

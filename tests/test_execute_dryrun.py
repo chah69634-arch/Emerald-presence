@@ -197,9 +197,9 @@ async def test_sleep_end_execute_false_preserves_cross_marks(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_topic_followup_execute_dryrun_does_not_write_followed_topics(monkeypatch, sandbox):
+async def test_topic_followup_execute_dryrun_writes_shadow_only(monkeypatch, sandbox):
     from core.scheduler.triggers import memory
-    from core.scheduler.last_mentioned import load_followed_topics
+    from core.scheduler.last_mentioned import load_followed_topics, load_followed_topics_shadow
 
     monkeypatch.setattr(memory, "_cfg", lambda: {"topic_followup": True})
     monkeypatch.setattr(memory, "_owner_id", lambda: "u1")
@@ -221,18 +221,57 @@ async def test_topic_followup_execute_dryrun_does_not_write_followed_topics(monk
     result = await proposal.execute(dry_run=True)
 
     assert "继续改实习材料" in result.would_send_prompt
+    assert result.topic_key == "继续改实习材料"
     assert load_followed_topics() == {}
+    assert "继续改实习材料" in load_followed_topics_shadow()
+    row = json.loads(sandbox.execute_dryrun_log().read_text(encoding="utf-8").splitlines()[-1])
+    assert row["topic_key"] == "继续改实习材料"
+
+
+@pytest.mark.asyncio
+async def test_topic_followup_dryrun_shadow_blocks_second_propose(monkeypatch, sandbox):
+    from core.scheduler.triggers import memory
+
+    monkeypatch.setattr(memory, "_cfg", lambda: {"topic_followup": True})
+    monkeypatch.setattr(memory, "_owner_id", lambda: "u1")
+    _write_event_log(
+        sandbox,
+        "u1",
+        "2026-05-25",
+        """
+## 14:30
+**用户**：我准备继续改实习材料
+> turn_id:t1
+**叶瑄**：我记得。
+> emotion:gentle intensity:1 turn_id:t1
+---
+""",
+    )
+    ctx = {"now_dt": datetime(2026, 5, 25, 16, 0), "now_ts": 1_000.0, "uid": "u1"}
+
+    first = memory.propose(ctx)
+    assert first is not None
+    await first.execute(dry_run=True)
+
+    second = memory.propose({**ctx, "now_ts": 1_000.0 + 60})
+    assert second is None
 
 
 @pytest.mark.asyncio
 async def test_topic_followup_execute_live_writes_followed_topics(monkeypatch, sandbox):
+    from core.scheduler import execution
     from core.scheduler import loop
     from core.scheduler.triggers import memory
-    from core.scheduler.last_mentioned import load_followed_topics
+    from core.scheduler.last_mentioned import (
+        load_followed_topics,
+        load_followed_topics_shadow,
+        mark_topic_followed_shadow,
+    )
 
     async def fake_send(prompt, search_query="", trigger_name="", **kwargs):
         return None
 
+    monkeypatch.setattr(execution, "EXECUTE_MODE", "live")
     monkeypatch.setattr(loop, "_pipeline_send", fake_send)
     monkeypatch.setattr(loop, "_mark", lambda name: None)
     monkeypatch.setattr(memory, "_cfg", lambda: {"topic_followup": True})
@@ -250,12 +289,14 @@ async def test_topic_followup_execute_live_writes_followed_topics(monkeypatch, s
 ---
 """,
     )
+    mark_topic_followed_shadow("继续改实习材料", now_ts=1_000.0)
 
     proposal = memory.propose({"now_dt": datetime(2026, 5, 25, 16, 0), "uid": "u1"})
     result = await proposal.execute(dry_run=False)
 
     assert result.sent is True
     assert "继续改实习材料" in load_followed_topics()
+    assert "继续改实习材料" in load_followed_topics_shadow()
 
 
 @pytest.mark.asyncio

@@ -119,30 +119,47 @@ def is_recently_followed(
     *,
     now_ts: float | None = None,
     window_seconds: int = TOPIC_REFOLLOW_WINDOW_SECONDS,
+    shadow: bool = False,
 ) -> bool:
     if not topic_key:
         return False
-    followed_at = load_followed_topics().get(topic_key)
+    followed_at = _load_topic_state(_state_key(shadow)).get(topic_key)
     if followed_at is None:
         return False
     return (now_ts if now_ts is not None else time.time()) - followed_at < window_seconds
 
 
 def mark_topic_followed(topic_key: str, *, now_ts: float | None = None) -> None:
+    _mark_topic_state("followed_topics", topic_key, now_ts=now_ts)
+
+
+def mark_topic_followed_shadow(topic_key: str, *, now_ts: float | None = None) -> None:
+    _mark_topic_state("followed_topics_shadow", topic_key, now_ts=now_ts)
+
+
+def load_followed_topics() -> dict[str, float]:
+    return _load_topic_state("followed_topics")
+
+
+def load_followed_topics_shadow() -> dict[str, float]:
+    return _load_topic_state("followed_topics_shadow")
+
+
+def _mark_topic_state(state_key: str, topic_key: str, *, now_ts: float | None = None) -> None:
     if not topic_key:
         return
     ts = float(now_ts if now_ts is not None else time.time())
     state = _read_scheduler_state()
-    followed = state.get("followed_topics")
+    followed = state.get(state_key)
     if not isinstance(followed, dict):
         followed = {}
     followed[str(topic_key)] = ts
-    state["followed_topics"] = _prune_followed_topics(followed, now_ts=ts)
+    state[state_key] = _prune_followed_topics(followed, now_ts=ts)
     safe_write_json(get_paths().scheduler_state(), state)
 
 
-def load_followed_topics() -> dict[str, float]:
-    followed = _read_scheduler_state().get("followed_topics", {})
+def _load_topic_state(state_key: str) -> dict[str, float]:
+    followed = _read_scheduler_state().get(state_key, {})
     if not isinstance(followed, dict):
         return {}
     result: dict[str, float] = {}
@@ -152,6 +169,10 @@ def load_followed_topics() -> dict[str, float]:
         except (TypeError, ValueError):
             continue
     return result
+
+
+def _state_key(shadow: bool) -> str:
+    return "followed_topics_shadow" if shadow else "followed_topics"
 
 
 def topic_key_for(topic: str) -> str:

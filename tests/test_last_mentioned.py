@@ -75,3 +75,45 @@ def test_followed_topics_live_state_uses_scheduler_state(sandbox):
     assert raw["followed_topics"] == {"实习材料": 1_000.0}
     assert is_recently_followed("实习材料", now_ts=1_100.0)
     assert not is_recently_followed("实习材料", now_ts=1_000.0 + 4 * 24 * 3600)
+
+
+def test_followed_topics_shadow_is_separate_from_live_state(sandbox):
+    from core.scheduler.last_mentioned import (
+        is_recently_followed,
+        load_followed_topics,
+        load_followed_topics_shadow,
+        mark_topic_followed_shadow,
+    )
+
+    mark_topic_followed_shadow("实习材料", now_ts=1_000.0)
+
+    assert load_followed_topics() == {}
+    assert load_followed_topics_shadow() == {"实习材料": 1_000.0}
+    assert is_recently_followed("实习材料", now_ts=1_100.0, shadow=True)
+    assert not is_recently_followed("实习材料", now_ts=1_100.0, shadow=False)
+
+
+def test_topic_key_stays_stable_for_same_input_recall(sandbox):
+    from core.scheduler.last_mentioned import recall_last_mentioned
+
+    uid = "u1"
+    _write_event_log(
+        sandbox,
+        uid,
+        "2026-05-25",
+        """
+## 15:00
+**用户**：我准备继续改实习材料
+> turn_id:t1
+**叶瑄**：我记得。
+> emotion:gentle intensity:1 turn_id:t1
+---
+""",
+    )
+
+    keys = [
+        recall_last_mentioned(uid, now=datetime(2026, 5, 25, 16, 0)).topic_key
+        for _ in range(3)
+    ]
+
+    assert keys == ["继续改实习材料"] * 3

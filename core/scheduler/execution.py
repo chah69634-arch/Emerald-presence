@@ -21,6 +21,7 @@ class ExecuteResult:
     would_send_prompt: str
     would_mark: list[str] = field(default_factory=list)
     would_mark_done: list[str] = field(default_factory=list)
+    topic_key: str = ""
     reads_cache_ok: bool = True
     dry_run: bool = True
     sent: bool = False
@@ -39,6 +40,7 @@ async def execute_prompt(
     search_query: str = "",
     would_mark: list[str] | tuple[str, ...] | None = None,
     would_mark_done: list[str] | tuple[str, ...] | None = None,
+    topic_key: str = "",
     reads_cache_ok: bool = True,
     after_send: Optional[AfterSend] = None,
 ) -> ExecuteResult:
@@ -50,6 +52,7 @@ async def execute_prompt(
         would_send_prompt=prompt,
         would_mark=list(would_mark or []),
         would_mark_done=[str(x) for x in (would_mark_done or [])],
+        topic_key=str(topic_key or ""),
         reads_cache_ok=reads_cache_ok,
         dry_run=dry_run,
         sent=False,
@@ -73,6 +76,7 @@ async def execute_prompt(
         would_send_prompt=result.would_send_prompt,
         would_mark=result.would_mark,
         would_mark_done=result.would_mark_done,
+        topic_key=result.topic_key,
         reads_cache_ok=result.reads_cache_ok,
         dry_run=False,
         sent=True,
@@ -88,6 +92,7 @@ def write_execute_dryrun(result: ExecuteResult) -> None:
             "would_send_prompt": result.would_send_prompt,
             "would_mark": result.would_mark,
             "would_mark_done": result.would_mark_done,
+            "topic_key": result.topic_key,
             "reads_cache_ok": result.reads_cache_ok,
         },
     )

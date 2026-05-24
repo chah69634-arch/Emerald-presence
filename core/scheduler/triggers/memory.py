@@ -9,6 +9,7 @@ from core.scheduler.last_mentioned import (
     LastMentionedTopic,
     is_recently_followed,
     mark_topic_followed,
+    mark_topic_followed_shadow,
     recall_last_mentioned,
 )
 
@@ -134,7 +135,10 @@ def propose(ctx: dict | None = None):
     if not isinstance(topic, LastMentionedTopic):
         return None
     now_ts = float(ctx.get("now_ts") or now.timestamp())
-    if is_recently_followed(topic.topic_key, now_ts=now_ts):
+    from core.scheduler import execution as scheduler_execution
+
+    use_shadow_dedupe = scheduler_execution.EXECUTE_MODE == "dry_run"
+    if is_recently_followed(topic.topic_key, now_ts=now_ts, shadow=use_shadow_dedupe):
         return None
     ratio = max(0.0, min(1.0, float(topic.score)))
 
@@ -181,13 +185,17 @@ def _make_topic_followup_execute(topic: LastMentionedTopic):
     async def execute(*, dry_run: bool):
         from core.scheduler.execution import execute_prompt
 
-        return await execute_prompt(
+        result = await execute_prompt(
             trigger_name="topic_followup",
             prompt_factory=lambda: _topic_followup_prompt(topic),
             dry_run=dry_run,
             would_mark=["topic_followup"],
+            topic_key=topic.topic_key,
             after_send=lambda: mark_topic_followed(topic.topic_key),
         )
+        if dry_run:
+            mark_topic_followed_shadow(topic.topic_key)
+        return result
 
     return execute
 
