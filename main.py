@@ -339,7 +339,7 @@ async def _reply_with_tool_result(
 
     group_id = target_id if is_group else None
     context = {
-        "history":             short_term.load(user_id),
+        "history":             short_term.load_for_prompt(user_id),
         "profile":             user_profile.load(user_id),
         "relation":            user_relation.get_relation(user_id),
         "group_context":       group_context.get_recent(group_id),

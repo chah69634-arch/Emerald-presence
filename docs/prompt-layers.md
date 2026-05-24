@@ -34,7 +34,7 @@
 | `6e_inner_diary_facts` | 叶瑄昨天的记录（事件层，取前200字） | 昨日日记文件存在且含事件层 | `data/yexuan_inner/diary/` |
 | `6e_inner_diary_feeling` | 叶瑄昨天的心情（感受层，取前150字） | 昨日日记存在且命中 `emotion.down/indirect/deep` 或 `topic.relation` | `data/yexuan_inner/diary/` |
 | `7_mes_example_item` | 对话示例（few-shot） | always（有内容） | 角色卡 mes_example |
-| `9_history` | 短期对话历史（最近 20 轮） | always | `short_term.load()` |
+| `9_history` | 短期对话历史（近场保留 + 远场加权择优） | always | `short_term.load_for_prompt()` |
 | `9.5_episodic_top` | 最相关情景记忆1条（attention sweet spot） | episodic_result 非空 | 从已召回结果取第一条，不重复召回 |
 | `10_tool_result` | 本轮工具执行结果 | 有工具调用时 | `tool_dispatcher.execute()` |
 | `11_author_note` | 人设核心提醒 + 输出格式规则 + 纠偏 | always | 硬编码 + `author_note_rotator` + consistency_check |
@@ -157,6 +157,18 @@ token_estimate = sum(len(m["content"]) for m in messages)
 - `mid_term` / `6d_diary` / `6e_inner_diary` 是被动上下文，丢了不影响相关性
 - `6c_episodic` 经过 LLM 压缩 + strength 校正 + MMR 多样性筛选，是质量最高的记忆层，靠后丢
 - `5.5_lore` 是世界书设定，丢了等于角色失忆，最后丢
+
+---
+
+## 层9短期历史选择
+
+`fetch_context()` 调 `short_term.load_for_prompt()`，不是简单读取磁盘末尾 20 轮。
+
+- 磁盘保留上限：`memory.short_term_disk_rounds`，没有则回退 `memory.short_term_rounds`
+- prompt 预算：`memory.short_term_rounds`
+- 分组：优先按 `_turn_id` 把同一轮 user/assistant 连续消息绑在一起，旧数据按相邻 user+assistant 分组
+- 选择：固定保留最近 `NEAR_K=5` 组；更早的组按长度、实体、问句、数字/日期、tag、情绪信号打分择优补足预算
+- 日志：`short_term_weight` debug 会记录每组分数和是否入选
 
 ---
 

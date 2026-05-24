@@ -44,7 +44,7 @@ get_tags()（对消息打话题标签，传给 build_prompt）
     │
     ▼ 步骤1  fetch_context()
 并发拉取所有记忆数据：
-├─ short_term.load()          → history              [同步]
+├─ short_term.load_for_prompt() → history            [同步，近场保留 + 远场加权择优]
   ├─ user_relation.get_relation()→ relation             [同步]
   ├─ group_context.get_recent() → group_context         [同步]
   ├─ character_growth.load()    → growth_content        [同步]
@@ -143,7 +143,7 @@ data/
 │   ├── 角色_{uid}.felt.md        感受层版本（存在时优先读，不存在时降级到 .md）
 │   └── 角色_{uid}.fingerprint.txt  压缩版指纹（前 150 字；当前 prompt 直接从 felt/.md 取前 150 字）
 ├── profiles/{uid}.json           用户画像
-├── history/{uid}.json            短期对话历史（最近 20 轮）
+├── history/{uid}.json            短期对话历史（磁盘轮数可配；prompt 近场保留 + 远场加权择优）
 ├── mid_term/{uid}.json           中期对话摘要（12小时过期，最多20条，三时间桶）
 ├── diary_context/{uid}.json      用户日记上下文
 ├── group_context/{gid}.json      群聊最近动态（prompt 层 4 注入）

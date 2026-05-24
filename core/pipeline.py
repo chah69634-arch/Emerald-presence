@@ -104,7 +104,7 @@ class Pipeline:
         mid_term_future = loop.run_in_executor(None, mid_term.format_for_prompt, user_id)
 
         # 同步读取（内存/小文件，不值得并发）
-        history          = short_term.load(user_id)
+        history          = short_term.load_for_prompt(user_id)
         recent_group_ctx = group_context.get_recent(group_id)
         relation         = user_relation.get_relation(user_id)
         lore_entries     = self.lore_engine.match(content, history)

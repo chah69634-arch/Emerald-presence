@@ -21,11 +21,22 @@
 
 **文件**：`core/memory/short_term.py`
 
-**存什么**：最近 20 轮的纯对话（user/assistant 交替），不含工具结果。
+**存什么**：短期对话历史（user/assistant 交替），不含工具结果。磁盘保留上限优先读
+`memory.short_term_disk_rounds`，没有则回退 `memory.short_term_rounds`。
 
 **读写**：
 - 写：`post_process` 开头，每轮 `short_term.append()`
-- 读：`fetch_context` 里 `short_term.load()`，直接作为 `history` 传入 prompt 层9
+- 读：`fetch_context` 里 `short_term.load_for_prompt()`，按 prompt 预算选择后传入层9
+
+### prompt 选择策略（load_for_prompt）
+
+当历史组数不超过 `memory.short_term_rounds` 时全部注入；超过时不是简单截尾：
+
+- 先按 `_turn_id` 把同一轮 user/assistant 绑成 turn-group，旧数据回退到相邻 user+assistant 分组
+- 固定保留最近 `NEAR_K=5` 组，保障近场连续性
+- 更早的组按长度、实体、问句、数字/日期、tag 命中、情绪 tag 打分，择优补足预算
+- `_ready_signal_bonus()` 目前固定 0，预留给未来按 turn_id join mid_term/episodic 就绪状态
+- debug logger：`short_term_weight` 会记录每组分数和 selected 状态
 
 ### 风格脱敏（_sanitize_assistant_message）
 
