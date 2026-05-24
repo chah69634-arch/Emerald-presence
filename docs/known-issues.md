@@ -1,12 +1,21 @@
 # docs/known-issues.md — 已知问题与技术债
 
 > 修复前请先对照代码确认问题仍存在。修复后把条目移动到"已核对修复"或补充修复说明。
+>
+> 状态标签：
+> - `now-safe-to-fix`：不依赖 execute live soak，可按小修推进。
+> - `blocked-by-execute-live-soak`：等 3.5b / execute live 稳定后再动。
+> - `refactor-phase`：适合重构期统一处理，不作为小修插入。
+> - `boundary-doc-needed`：先补设计/行为边界，再决定是否改代码。
+> - `close-candidate`：已过时或可关闭，关闭前最后对照代码核一次。
 
 ---
 
 ## 当前仍存在
 
 ### B11：fetch_context 读写竞态
+
+**状态**：`boundary-doc-needed`
 
 **位置**：`core/pipeline.py` → `fetch_context()` / `post_process()`
 
@@ -18,6 +27,8 @@
 
 ### B12：核心情景记忆未被上限裁剪保护
 
+**状态**：`now-safe-to-fix`
+
 **位置**：`core/memory/episodic_memory.py` → `write_episode()`
 
 文档和设计原则都强调 `is_core` 记忆不应被裁掉，但 `write_episode()` 在超过 200 条时直接按 strength 排序删除最低 20 条，没有排除 `is_core=True`。`cleanup()` 手动清理路径有保护，自动写入路径没有。
@@ -27,6 +38,8 @@
 ---
 
 ### F10：trait_tracker 未接入新固化 pipeline
+
+**状态**：`refactor-phase`
 
 **位置**：`core/memory/character_growth.py` / `core/memory/fixation_pipeline.py`
 
@@ -38,6 +51,8 @@
 
 ### F11：memory 工具已注册但未暴露给正式主 LLM
 
+**状态**：`refactor-phase`
+
 **位置**：`core/tool_dispatcher.py` / `main.py` / `core/pipeline.py`
 
 `read_diary/read_watch/search_diary/get_profile/get_episodic/get_growth` 都已在 `_TOOL_REGISTRY` 注册，`execute()` 也能执行；但当前工具探针只传 `info + desktop`，而 `pipeline.run_llm()` 调主模型时没有传 tools schema。因此 Author's Note 里"必须调用 read_diary"的规则没有真实工具调用通道支撑。
@@ -47,6 +62,8 @@
 ---
 
 ### S1：仍有部分 data 路径绕过 sandbox
+
+**状态**：`now-safe-to-fix`
 
 **位置**：`core/prompt_builder.py`、`core/lore_engine.py`、`admin/routers/jailbreak_entries.py`、`admin/routers/lorebook.py`、`admin/routers/settings_misc.py`
 
@@ -58,6 +75,8 @@
 
 ### D2：调度器活跃窗口硬编码 120 秒
 
+**状态**：`blocked-by-execute-live-soak`
+
 **位置**：`core/scheduler/loop.py` → `_user_active_recently()`
 
 低优先级主动消息在用户 120 秒内活跃时跳过。窗口不可配置，边界情况较难调：用户可能已经离开，也可能仍在连续输入。
@@ -66,7 +85,33 @@
 
 ---
 
+### D9：Watch 即时路径与 execute live 接管边界未统一
+
+**状态**：`blocked-by-execute-live-soak`
+
+**位置**：`admin/routers/watch.py` / `core/scheduler/triggers/watch.py` / `core/scheduler/execution.py`
+
+当前 Watch 事件既有 proposal / dry-run 观测路径，也保留 `on_watch_event()` 内即时 `_pipeline_send()` 真实发话路径。`sleep_end` 还会跨触发器 `_mark("morning_greeting")`，live 接管时需要确认这类抑制语义不会丢失或重复。
+
+**建议**：等 3.5b / execute live soak 稳定后，再统一 Watch 事件的即时路径、proposal 执行和 cross-mark 语义。
+
+---
+
+### D10：diary_share 新旧路径去重源需要等 live 后统一
+
+**状态**：`blocked-by-execute-live-soak`
+
+**位置**：`core/scheduler/loop.py` → `mark_diary_shared()` / `core/scheduler/triggers/diary.py`
+
+`diary_share` 相关去重依赖 `_last_diary_share` 与 `scheduler_state.json`。旧真实触发器和 proposal execute live 共同存在时，去重源容易分叉。
+
+**建议**：等 execute live 接管稳定后，再统一 diary_share 的 mark / after_send / 状态持久化语义。
+
+---
+
 ### D7：叶瑄日记尚未反向进入长期认知
+
+**状态**：`refactor-phase`
 
 **位置**：`data/yexuan_inner/diary/`
 
@@ -78,6 +123,8 @@
 
 ### G2：花园写入尚未使用 safe_write / 锁
 
+**状态**：`now-safe-to-fix`
+
 **位置**：`core/garden/manager.py`
 
 `water()` / `daily_check()` 当前用普通 `Path.write_text()` 写 `plants.json` 和 `storage.json`。现在已有 `garden_water`、`garden_daily`、`water_garden` 三条写路径；虽然调度器单 worker 下冲突概率不高，但用户触发 `water_garden` 时可能与调度器扫描同一份 storage。
@@ -88,11 +135,37 @@
 
 ### G4：花园采后部分分支不离开 harvest
 
+**状态**：`boundary-doc-needed`
+
 **位置**：`core/garden/manager.py` → `daily_check()`
 
 `vase` 分支会把花从 `harvest` 移到 `vase`，但 `dry` / `gift` / `ask` 只标记 `handle_triggered`，仍留在 `harvest`。之后过期扫描仍可能把同一朵花当作 `harvest_expired` 处理。若设计上做成干花或送给用户后应离开收获区，需要补状态迁移。
 
 **建议**：明确 `dry/gift/ask` 的最终容器：移入 `history`、新增 `dried/gifted` 列表，或保留 harvest 但在过期逻辑里跳过非 fresh 状态。
+
+---
+
+### DESIGN-1：感知数据使用原则仍需补边界
+
+**状态**：`boundary-doc-needed`
+
+**位置**：`DESIGN.md` → “六、感知数据使用原则”
+
+DESIGN 中仍有待补内容：什么时候主动提起现实数据、什么时候只影响态度、哪些数据可以直接说出口、哪些应隐藏在关心里。该边界会影响 sensor / watch / diary / activity 的主动行为，不宜直接用代码先行决定。
+
+**建议**：先补设计边界，再决定对应代码行为。
+
+---
+
+### DESIGN-2：主动行为设计原则仍需补边界
+
+**状态**：`boundary-doc-needed`
+
+**位置**：`DESIGN.md` → “七、主动行为设计原则”
+
+DESIGN 中仍有待补内容：叶瑄主动联系的心态、不打扰与主动的平衡、哪些事值得打断用户、哪些事等待用户来找。该边界会影响调度器 gating / execute live 的体感判断。
+
+**建议**：先补设计边界，再继续调主动消息策略。
 
 ---
 
@@ -138,6 +211,17 @@
 
 ---
 
+## 已过时 / 可关闭候选
+
+| 编号或来源 | 状态 | 结论 |
+|---|---|---|
+| HANDOFF Step 3 卡点 | `close-candidate` | “shadow log would_pick 恒为 hr_critical”“删 `_adapt_legacy_triggers`”已不符合当前主干；当前已有原生 proposer 与 execute dry-run。关闭前对照 `core/scheduler/gating.py` / `core/scheduler/proposer_registry.py` 核一次。 |
+| short_term 加权裁剪未开 | `close-candidate` | 当前 `core/memory/short_term.py` 已有 `load_for_prompt()` 近场保留 + 远场加权择优。若仍有问题，应改记剩余边界，不再保留“未开”。 |
+| get_growth 死工具 + character_growth 模块清理 | `close-candidate` | 当前应先标注 legacy/兼容边界；是否删除等观察期或重构期再决策。 |
+| 探针输出自然语言 | `close-candidate` | 已记录为“不修”项；若无新增复现，不进入当前修复队列。 |
+
+---
+
 ## 观察项
 
 - `detect_emotion()` 只返回 neutral/happy/sad/gentle/surprised/angry；thinking 由工具探针触发，sleepy 由深夜 schedule 触发，yandere 由关键词触发，因此不是死状态。
@@ -145,7 +229,11 @@
 - `llm_output_validator` 的失败计数在内存中，debug 输出写到 `data/debug/llm_output/`，保留 7 天。
 - `/upload/ingest` 支持文档（`.txt` / `.md` / `.docx`，单文件）和图片（`.jpg` / `.jpeg` / `.png` / `.gif` / `.webp` / `.heic` / `.heif` / `.bmp`，多文件）。QQ 路径仍由 NapCat 触发，走同一组 `ingest_*` 函数。旧 `inbox.py` 曾解析 `.pdf` 但产物未进 pipeline，等同未上线；若后续需要 PDF，可接入 skill 实现。
 - event_log 的实际存储格式是 `data/event_log/{uid}/{date}.md`，不是 `.jsonl`；Phase 1 turn_sink 文档曾写错，已按代码现实修正。
+
 ### identity-1：counter 累积无上限衰减，长期可能僵死维度
+
+**状态**：`boundary-doc-needed`
+
 位置：core/memory/fixation_pipeline.py → _synthesize_identity
 counter_evidence_count 只在 LLM 重写 text 时归零，否则只增不减。
 翻转机制依赖 LLM 主动判断"旧判断已不成立并重写 text"。如果 LLM 保守
@@ -156,21 +244,21 @@ counter_evidence_count 只在 LLM 重写 text 时归零，否则只增不减。
 counter 缓慢回落），类似 episodic 的 decay。先观察实际是否发生再决定。
 
 ### identity-2：identity 注入时机依赖 fixation 链，冷启动期长
+
+**状态**：`boundary-doc-needed`
+
 新用户前几十轮对话，episodic 还没攒够触发 consolidate，user_identity.yaml
 为空，6a_user_identity 层不注入。这是预期行为（宁可不注入也不瞎猜），
 但意味着"叶瑄了解用户"有明显冷启动期。观察项：confidence 阈值 0.5 +
 maturity_factor(ev/10) 双重门槛下，实际要多少轮对话才会有第一个维度
 注入。如果太久（比如 200 轮还是空），考虑放宽 maturity_factor 或降阈值。
 
-记账未做(都在 issue 里或该进 issue):
+### 待核对记账
 
-identity-1:counter 无衰减,维度可能僵死
-identity-2:identity 冷启动期长,观察注入阈值
-short_term 加权裁剪(你最想要的那个,最大的活,还没开)
-mes_example 精简(防坍缩 vs 省 token,没动)
-时间联动注入(让叶瑄从"14:30"推出"清醒午后",没做)
-get_growth 死工具 + character_growth 模块清理(2-3 周后删)
-探针输出自然语言(记账不修)
-之前 codex 查的那 5 条里,还剩:context.max_turns 不生效、裁剪后 debug_info 失真、_layer 透传 LLM(这三条当时说"进 known-issues 下一轮",没确认你记了没)
-
-最后那条提醒你:codex 最初查的 5 条,我们只修了第 1 条(LoreEngine)和顺带处理的标签问题。第 4 条(_layer 透传 LLM)我当时说"顺手一行修了",但后面岔到 identity 去了,可能没修。还有 2(max_turns)、3(debug 失真)说好进 issue 也不确定进了没。你翻一下 known-issues.md 有没有这几条,没有的话补上——不然下周就真忘了。
+| 项 | 状态 | 说明 |
+|---|---|---|
+| context.max_turns 不生效 | `now-safe-to-fix` | 先对照 `core/memory/short_term.py` 与管理面板配置是否仍不一致，再正式展开。 |
+| 裁剪后 debug_info 失真 | `now-safe-to-fix` | 先对照 `core/prompt_builder.py` 裁剪后 `layers_activated` 是否同步更新。 |
+| `_layer` 透传 LLM | `now-safe-to-fix` | 先对照 `core/llm_client.py` 是否剥离元数据；若仍透传，独立修。 |
+| mes_example 精简 | `refactor-phase` | 属 prompt 体感与 token 策略，不作为当前小修。 |
+| 时间联动注入 | `refactor-phase` | 属 prompt/感知策略，等设计边界明确后再评估。 |
