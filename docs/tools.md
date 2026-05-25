@@ -4,15 +4,20 @@
 
 ## 工具触发路径
 
-当前真正接入主流程的触发路径有两条：
+当前真正接入主流程的触发路径有两类：
 
 ```
-路径A：探针（pipeline 之前）
-  用户消息 → 关键词快速路径（QQ入口）
-           → 极简 system prompt（get_probe_prompt）
-           → LLM 判断是否调工具
-           → 只判断 info + desktop 类
-           → 结果写入 tool_result → prompt 层10
+路径A：pre-pipeline 探针
+  QQ 用户消息 → 关键词快速路径（仅 QQ 入口）
+              → 未命中时走 get_probe_prompt + function schema
+              → 只判断 info + desktop 类
+              → 结果写入 tool_result → prompt 层10
+
+  /desktop/chat 或 /mobile/chat → get_probe_prompt + function schema
+                               → 只判断 info + desktop 类
+                               → 工具结果包装成"刚刚执行了操作..."提示 → prompt 层10
+
+  /chat 管理面板冻结入口 → 不走工具探针
 
 路径B：意图解析（pipeline 之后）
   叶瑄的回复 → _parse_and_execute_intent()
@@ -29,6 +34,9 @@
 ```python
 get_tools_schema(categories=["info", "desktop"])
 ```
+
+QQ 入口的关键词快速路径直接构造 `{"name": tool, "arguments": {}}`，适合 `get_time` /
+`water_garden` 这类无参工具；需要参数的工具仍主要依赖 LLM function_calling 填参。
 
 ---
 
@@ -50,11 +58,11 @@ get_tools_schema(categories=["info", "desktop"])
 
 | 工具名 | 触发描述 | 执行方式 |
 |---|---|---|
-| `desktop_minimize` | 最小化窗口 | 写 agent_actions.json 队列 |
-| `desktop_open_url` | 打开网址 | 写 agent_actions.json 队列 |
-| `desktop_play_pause` | 播放/暂停媒体 | 写 agent_actions.json 队列 |
-| `desktop_notify` | 发系统通知 | 写 agent_actions.json 队列 |
-| `play_song` | "放一首xx"/"我要听xx" | 网易云 API 搜索 song_id → 写队列 |
+| `desktop_minimize` | 最小化窗口 | WS action + ack，失败降级 `agent_actions.json` |
+| `desktop_open_url` | 打开网址 | WS action + ack，失败降级 `agent_actions.json` |
+| `desktop_play_pause` | 播放/暂停媒体 | WS action + ack，失败降级 `agent_actions.json` |
+| `desktop_notify` | 发系统通知 | WS action + ack，失败降级 `agent_actions.json` |
+| `play_song` | "放一首xx"/"我要听xx" | 网易云 API 搜索 song_id → WS action / 文件降级 |
 
 ### memory 类（已注册，但当前未自动接入正式对话）
 

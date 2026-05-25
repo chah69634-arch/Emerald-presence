@@ -6,7 +6,7 @@
 
 ## 项目定位
 
-角色（qq-st-bot）是一个单用户 AI 陪伴系统，通过 QQ 和桌宠两个通道与用户交互。
+角色（qq-st-bot）是一个单用户 AI 陪伴系统，通过 QQ、桌宠和手机轮询通道与用户交互。
 **判断标准只有一个：角色像不像角色。**
 
 ---
@@ -47,7 +47,10 @@ D:\ai\qq-st-bot\
 | 工具注册 + 调度 + 探针 | `core/tool_dispatcher.py` |
 | 通道注册与广播 | `channels/registry.py` |
 | 桌宠通道 WebSocket + 文件降级 | `channels/desktop_ws.py` / `channels/desktop.py` |
-| 桌宠聊天 HTTP 入口 | `admin/routers/chat.py` |
+| 桌宠聊天 HTTP 入口 | `admin/routers/chat.py` → `/desktop/chat` |
+| 手机通道 + 轮询接口 | `channels/mobile.py` / `admin/routers/mobile.py` |
+| 统一 assistant turn sink | `core/turn_sink.py` |
+| 多端 owner 对话串行锁 | `core/conversation_gate.py` |
 | 情景记忆 | `core/memory/episodic_memory.py` |
 | 情绪状态 | `core/memory/mood_state.py` |
 | 角色认知 | `core/memory/character_growth.py` |

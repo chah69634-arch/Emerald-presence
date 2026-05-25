@@ -9,7 +9,7 @@
 ```
 QQ 消息 → main.py → message_queue
 桌宠消息 → admin/routers/chat.py（POST /desktop/chat）
-手机消息 → admin/routers/chat.py（POST /mobile/chat）
+手机消息 → admin/routers/mobile.py（POST /mobile/chat）
 文件上传 → POST /upload/ingest → media_processor → 拼入用户消息
 调度器主动消息 → core/scheduler/loop.py
          ├─ state_machine：观测 owner turn / sensor tick，维护 CHATTING / QUIET / RESTLESS
@@ -20,7 +20,9 @@ QQ 消息 → main.py → message_queue
          ↓
       LLM（DeepSeek）
          ↓
-      core.turn_sink 统一写入 + channels.registry 广播到活跃通道（QQ / 桌宠 / 手机）
+      输出层
+         ├─ QQ 主入口：text_output.send() 直发 QQ（legacy）
+         └─ desktop/mobile/scheduler/sensor：core.turn_sink 写入 + channels.registry 广播活跃通道
 ```
 
 通道细节见 `docs/channels.md`。手机端当前通过 mobile 轮询通道接收主动消息，不占用桌宠 WebSocket。花园这类不进入对话 pipeline 的伴生状态，见 `docs/garden.md`。
@@ -37,8 +39,8 @@ QQ 消息 → main.py → message_queue
 ```
 用户消息
     │
-    ▼ 步骤0（在 pipeline 之前，main.py 里）
-探针判断工具（关键词快速路径 + 极简 LLM probe，只看 info+desktop 类）
+    ▼ 步骤0（在 pipeline 之前）
+探针判断工具（QQ：关键词快速路径 + LLM probe；desktop/mobile：LLM probe；只看 info+desktop 类）
 get_tags()（对消息打话题标签，传给 build_prompt）
 工具执行（结果写入 tool_result）
     │
@@ -98,12 +100,13 @@ get_tags()（对消息打话题标签，传给 build_prompt）
 
 ## 探针（probe）机制
 
-探针在 pipeline 之前，main.py 里处理，目的是在角色卡加载前就判断是否需要调工具：
+探针在 pipeline 之前处理，目的是先判断本轮是否需要调用工具：
 
 - 使用极简 system prompt（`get_probe_prompt()`），不带角色卡
+- QQ 入口有关键词快速路径；`/desktop/chat` 和 `/mobile/chat` 走 LLM probe，不走关键词快速路径
 - 只判断 info + desktop 两类工具
 - memory 类工具不走探针，靠 LLM 在正式对话中自主调用
-- 两个入口（main.py / admin/routers/chat.py）共用同一个 `get_probe_prompt()` 函数
+- QQ 入口（`main.py`）和 owner HTTP 入口（`admin/routers/chat.py`）共用同一个 `get_probe_prompt()` 函数
 
 ---
 

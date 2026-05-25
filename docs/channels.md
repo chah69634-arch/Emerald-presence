@@ -9,12 +9,17 @@
 桌宠功能已并入新客户端，"desktop" channel 名义保留，实际承载新客户端。QQ 桌宠本体已废弃。
 
 ```
-QQ 收消息 → main.handle_message → Pipeline → text_output / QQChannel
-桌宠发消息 → POST /desktop/chat → Pipeline → DesktopChannel
-调度器主动消息 → scheduler._pipeline_send → channels.registry.broadcast()
+QQ 收消息 → main.handle_message → Pipeline → text_output.send() 直发 QQ
+桌宠发消息 → POST /desktop/chat → Pipeline → HTTP 返回 reply + turn_sink fanout 到其他活跃端
+手机发消息 → POST /mobile/chat → Pipeline → HTTP 返回 reply + turn_sink fanout 到其他活跃端
+调度器主动消息 → scheduler._pipeline_send → turn_sink → channels.registry.broadcast()
                                           ├─ DesktopChannel
                                           └─ MobileChannel
 ```
+
+注意：QQ 主入口、冻结管理面板 `/chat`、`/desktop/trigger` 仍是 legacy 直发/异步
+`post_process` 路径；`/desktop/chat`、`/mobile/chat`、scheduler、sensor_aware 已走
+`core.turn_sink.record_assistant_turn()`。
 
 ---
 
@@ -23,13 +28,13 @@ QQ 收消息 → main.handle_message → Pipeline → text_output / QQChannel
 | 通道 | 文件 | 激活方式 | 发送方式 |
 |---|---|---|---|
 | QQ | `channels/qq.py` | `standalone_mode=false` 且 `qq.enabled=true` 时由 `main.py` 注册 | `core/qq_adapter.send_message()` → NapCat |
-| 桌宠 | `channels/desktop.py` | 总是注册；WS 连接或 `set_active(True)` 后活跃 | 优先 WebSocket，失败降级到 `data/channel_queue.json` |
+| 桌宠 | `channels/desktop.py` | 总是注册；WS 连接或 `set_active(True)` 后活跃 | 主动下行优先 WebSocket，失败降级到 `data/channel_queue.json` |
 | 手机 | `channels/mobile.py` | 总是注册；`POST /mobile/activate` 或 `GET /mobile/poll` 后短时活跃 | 写入 `data/mobile_queue.json`，手机端轮询读取 |
 
 `channels/registry.py` 维护通道注册表：
 - `register(channel)`：启动时注册通道。
 - `get_active()`：返回 `is_active=True` 的通道。
-- `broadcast(content, user_id, behavior=None)`：调度器主动消息会广播到所有活跃通道；`behavior` 用于传递桌面 action 包，QQ 通道会忽略它。
+- `broadcast(content, user_id, behavior=None)`：向所有活跃通道广播；`behavior` 会透传给支持动作包的通道，QQ 通道忽略它。
 
 ---
 
@@ -43,7 +48,7 @@ QQ 收消息 → main.handle_message → Pipeline → text_output / QQChannel
 |---|---|
 | `POST /mobile/activate` | 手机端上线，激活 mobile channel |
 | `POST /mobile/deactivate` | 手机端下线，停用 mobile channel |
-| `POST /mobile/chat` | 手机端发送用户消息，按 `channel="mobile"` 进入 pipeline |
+| `POST /mobile/chat` | 手机端发送用户消息，按 `channel="mobile"` 进入 pipeline，HTTP 返回本端 reply |
 | `GET /mobile/poll?limit=20&wait=55` | 拉取并清空最多 20 条手机主动消息；`wait` 可选，0-60 秒，用于后台长轮询 |
 | `POST /mobile/push` | 后端工具/调试入口：通过 `MobileChannel.send()` 写入一条主动消息 |
 
@@ -52,8 +57,9 @@ QQ 收消息 → main.handle_message → Pipeline → text_output / QQChannel
 MobileChannel 的活跃状态有 120 秒 TTL：手机端持续轮询时保持活跃；停止轮询后，调度器广播不会再写入手机队列。
 
 手机和桌宠的 owner 对话入口共享 `core/conversation_gate.py` 的 per-user 锁：
-同一用户的 `/desktop/chat` 与 `/mobile/chat` 不会并行进入 `fetch_context → LLM → post_process`，
-从而避免两端同时输入时读取同一份旧上下文并乱序写入关键记忆。
+同一用户的 `/desktop/chat` 与 `/mobile/chat` 不会并行进入 `fetch_context → LLM → post_process`。
+本端 reply 通过 HTTP response 返回；`record_assistant_turn(fanout="all", exclude_origin_channel=...)`
+会把同一回复同步到其他活跃端，避免本端重复收到一份队列消息。
 
 ---
 
@@ -90,7 +96,8 @@ MobileChannel 的活跃状态有 120 秒 TTL：手机端持续轮询时保持活
 
 ## 文件 / 图片上传
 
-三端统一走 `POST /upload/ingest`。接口同时兼容旧单文件字段 `file`，以及新多文件字段 `files`：
+三端统一走 `POST /upload/ingest`。该接口当前无鉴权，接口同时兼容旧单文件字段 `file`，
+以及新多文件字段 `files`：
 
 | 参数 | 说明 |
 |---|---|
@@ -115,10 +122,13 @@ MobileChannel 的活跃状态有 120 秒 TTL：手机端持续轮询时保持活
 
 ## 跨通道接续
 
-`Pipeline.build_prompt(..., channel="qq"|"desktop")` 会记录上一轮通道：
+`Pipeline.build_prompt(..., channel="qq"|"desktop"|"mobile")` 会记录上一轮通道：
 - 如果本轮通道和上轮不同，会在层 1 的 `perception_block` 注入一句接续提示。
 - 这只影响本轮 prompt，不写入长期记忆。
 - 工具结果不走 `perception_block`，只走层 10 `tool_result`。
+
+当前 channel name 显示映射只内置了 `qq`→QQ、`desktop`→桌宠；`mobile` 会直接显示为
+`mobile`。
 
 ---
 
