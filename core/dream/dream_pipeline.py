@@ -25,8 +25,6 @@ HARD_EXIT_KEYWORD = "/stop"
 # Marker that LLM emits when it accepts a soft-exit request
 _SOFT_EXIT_ACCEPT_MARKER = "[[EXIT_DREAM_ACCEPT]]"
 
-# Stub placeholder returned while real LLM is not yet wired
-_LLM_STUB_REPLY = "__DREAM_LLM_STUB__"
 
 
 async def dream_turn(
@@ -71,17 +69,86 @@ async def dream_turn(
     local_state = get_local_state(state)
     context_snapshot = state.get("context_snapshot", {})
 
-    # ── Stub LLM placeholder (replaced in MVP1-5) ────────────────────────────
-    reply = _LLM_STUB_REPLY
+    from core.dream.dream_log import append_turn, read_current
+
+    dream_history = read_current(uid)
+
+    # Load dream lorebook if enabled
+    lore_entries: list[str] = []
+    from core.dream.dream_settings import load as _load_settings
+    settings = _load_settings(uid)
+    if settings.get("enable_dream_lorebook", True):
+        try:
+            from core.pipeline_registry import get as _get_pipeline
+            _pl = _get_pipeline()
+            if _pl is not None:
+                lore_entries = _pl.lore_engine.match(user_msg, dream_history)
+        except Exception as e:
+            logger.debug(f"[dream_pipeline] lorebook match skipped: {e}")
+
+    # Load jailbreak from character
+    jailbreak_text = _load_jailbreak_text()
+
+    # Build dream prompt (independent assembler, no reality sanitizer)
+    from core.dream.dream_prompt import build_dream_prompt
+    from core.pipeline_registry import get as _get_pipeline2
+
+    _pl2 = _get_pipeline2()
+    if _pl2 is None:
+        return {
+            "reply": "",
+            "exit_accepted": False,
+            "force_exited": False,
+            "error": "pipeline_not_initialized",
+        }
+    character = _pl2.character
+
+    # If user is requesting a soft exit, append the accept-marker instruction
+    is_exit_request = _looks_like_exit_request(user_msg)
+    user_msg_for_llm = user_msg
+    if is_exit_request:
+        user_msg_for_llm = (
+            f"{user_msg}\n\n"
+            f"[系统提示：若角色愿意放用户醒来，在回复末尾追加标记 {_SOFT_EXIT_ACCEPT_MARKER}，"
+            f"其他情况不追加]"
+        )
+
+    messages = build_dream_prompt(
+        character=character,
+        user_id=uid,
+        user_message=user_msg_for_llm,
+        context_snapshot=context_snapshot,
+        dream_history=dream_history,
+        local_state=local_state,
+        lore_entries=lore_entries,
+        jailbreak_text=jailbreak_text,
+    )
+
+    # Call LLM — zero reality side-effects
+    from core import llm_client
+    reply = await llm_client.chat(messages)
+
+    # Detect soft exit acceptance
+    exit_accepted = False
+    if is_exit_request and _SOFT_EXIT_ACCEPT_MARKER in reply:
+        reply = reply.replace(_SOFT_EXIT_ACCEPT_MARKER, "").strip()
+        exit_accepted = True
 
     # ── Write to dream log (never to any reality store) ──────────────────────
-    from core.dream.dream_log import append_turn
     append_turn(uid, dream_id, "user", user_msg)
     append_turn(uid, dream_id, "assistant", reply)
 
+    # Transition to DREAM_CLOSING if soft exit was accepted
+    if exit_accepted:
+        from core.dream.dream_state import write_state, DreamStatus
+        state = read_state(uid)
+        state["status"] = DreamStatus.DREAM_CLOSING.value
+        write_state(uid, state)
+        await _do_close_dream(uid, dream_id, exit_type="soft")
+
     return {
         "reply": reply,
-        "exit_accepted": False,
+        "exit_accepted": exit_accepted,
         "force_exited": False,
     }
 
@@ -179,3 +246,17 @@ def _ensure_dream_id(uid: str, state: dict) -> str:
 def _looks_like_exit_request(msg: str) -> bool:
     exit_words = ["醒来", "结束梦", "想醒", "离开梦", "退出梦", "结束这个梦", "我要醒"]
     return any(w in msg for w in exit_words)
+
+
+def _load_jailbreak_text() -> str:
+    try:
+        from core.pipeline_registry import get as _get_pipeline
+        pl = _get_pipeline()
+        if pl is None:
+            return ""
+        entries = getattr(pl.character, "jailbreak_entries", []) or []
+        if entries:
+            return "\n".join(str(e) for e in entries)
+    except Exception:
+        pass
+    return ""
