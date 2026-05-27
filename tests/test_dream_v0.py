@@ -206,19 +206,24 @@ def test_dream_turn_with_body_updates_body_state_in_dream_state(sandbox, active_
 
 
 def test_body_state_not_in_reality_mood_state_json(sandbox, active_dream):
-    """body_state 数值绝不写入 yexuan_inner/mood_state.json。"""
-    import json
+    """body_state 数值绝不写入 yexuan_inner/mood_state.json。
 
+    不用 if exists 空过：无论文件是否存在都断言内容不含 body axis 名。
+    未来若 dream_turn 意外写入 mood_state（即使不含"heat"），
+    test_dream_turn_with_body_does_not_touch_mood_state 的 ABSENT 哨兵会先抓到。
+    本测试专防"body 数值具体字段渗透"这一场景。
+    """
     with patch("core.llm_client.chat", _make_fake_llm("（靠近她）")), \
          patch("core.pipeline_registry.get", return_value=_FAKE_PIPELINE):
         from core.dream import dream_pipeline
         asyncio.run(dream_pipeline.dream_turn(_UID, "靠近我，抱住"))
 
     mood_path = sandbox.mood_state()
-    if mood_path.exists():
-        content = mood_path.read_text()
-        assert "heat" not in content, "body state axis 'heat' leaked into mood_state"
-        assert "sensitivity" not in content, "body state 'sensitivity' leaked into mood_state"
+    # 无条件读：文件不存在 → content="", 断言仍执行（不空过）
+    mood_content = mood_path.read_text(encoding="utf-8") if mood_path.exists() else ""
+    assert "heat" not in mood_content, "body axis 'heat' leaked into mood_state"
+    assert "sensitivity" not in mood_content, "body axis 'sensitivity' leaked into mood_state"
+    assert "body_state" not in mood_content, "body_state key leaked into mood_state"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
