@@ -5,8 +5,13 @@ Constraints (BY CONSTRUCTION):
 - Assembled once, written into dream_state["context_snapshot"].
 - Dream turns read from the snapshot only; they never call fetch_context,
   retrieve, user_identity.load, or mood_state.get.
-- amnesia / keep_impression control what goes into the snapshot,
-  NOT whether live memory access is allowed (it never is).
+- memory_access controls what goes into the snapshot, NOT whether live
+  memory access is allowed (it never is).
+
+memory_access tiers:
+  card_only            → relationship_state + entry_reason only
+  relationship_summary → + recent_reality_context + profile_impression
+  full_snapshot        → all of the above + episodic_summary + mid_term_context
 """
 
 import logging
@@ -23,11 +28,10 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
     Called once at dream entry. The caller writes the result into
     dream_state["context_snapshot"] and never refreshes it during the dream.
     """
-    from core.dream.dream_settings import load as _load_settings
+    from core.dream.dream_settings import load as _load_settings, MemoryAccess
 
     settings = _load_settings(user_id)
-    amnesia: bool = settings.get("amnesia", False)
-    keep_impression: bool = settings.get("keep_impression", True)
+    memory_access: str = settings.get("memory_access", MemoryAccess.relationship_summary.value)
 
     snapshot: dict[str, Any] = {
         "created_at": time.time(),
@@ -35,9 +39,10 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
         "yexuan_awareness": "lucid_shared",
         "boundary": "dream_only",
         "entry_reason": entry_reason,
+        "memory_access": memory_access,
     }
 
-    # relationship state — always included
+    # relationship_state — always included regardless of tier
     try:
         from core import user_relation
         snapshot["relationship_state"] = user_relation.get_relation(user_id)
@@ -45,7 +50,15 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
         logger.warning(f"[dream_context] relationship_state failed: {e}")
         snapshot["relationship_state"] = {}
 
-    # recent reality context — always included as a short summary
+    if memory_access == MemoryAccess.card_only.value:
+        # Minimal sandbox mode: no memory context whatsoever
+        snapshot["recent_reality_context"] = ""
+        snapshot["episodic_summary"] = ""
+        snapshot["mid_term_context"] = ""
+        snapshot["profile_impression"] = ""
+        return snapshot
+
+    # relationship_summary and full_snapshot both include recent context + profile
     try:
         from core.memory import short_term
         history = short_term.load_for_prompt(user_id)
@@ -54,8 +67,16 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
         logger.warning(f"[dream_context] recent_reality_context failed: {e}")
         snapshot["recent_reality_context"] = ""
 
-    if not amnesia:
-        # episodic memory
+    try:
+        from core.memory import user_profile
+        profile = user_profile.load(user_id)
+        snapshot["profile_impression"] = _extract_impression(profile)
+    except Exception as e:
+        logger.warning(f"[dream_context] profile_impression failed: {e}")
+        snapshot["profile_impression"] = ""
+
+    if memory_access == MemoryAccess.full_snapshot.value:
+        # Full tier: also include episodic memory and mid-term context
         try:
             from core.memory.episodic_memory import retrieve, format_for_prompt
             from core.memory.mood_state import get_current as _get_mood
@@ -69,7 +90,6 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
             logger.warning(f"[dream_context] episodic failed: {e}")
             snapshot["episodic_summary"] = ""
 
-        # mid-term context
         try:
             from core.memory import mid_term
             snapshot["mid_term_context"] = mid_term.format_for_prompt(user_id)
@@ -79,17 +99,6 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
     else:
         snapshot["episodic_summary"] = ""
         snapshot["mid_term_context"] = ""
-
-    if keep_impression:
-        try:
-            from core.memory import user_profile
-            profile = user_profile.load(user_id)
-            snapshot["profile_impression"] = _extract_impression(profile)
-        except Exception as e:
-            logger.warning(f"[dream_context] profile_impression failed: {e}")
-            snapshot["profile_impression"] = ""
-    else:
-        snapshot["profile_impression"] = ""
 
     return snapshot
 

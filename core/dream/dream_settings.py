@@ -4,13 +4,23 @@ Per-uid dream session settings.
 These switches control ONLY what goes into the frozen snapshot at dream entry.
 They NEVER open live memory access during the dream — that is always blocked.
 
-amnesia=False means "include pre-dream memories in snapshot, not "enable live recall".
-All-off (amnesia=True, keep_impression=False, enable_dream_lorebook=False):
-  snapshot = character card + world book + jailbreak only — sandbox AIRP mode.
+memory_access tiers (D4_frozen_reality content):
+  card_only            — relationship_state + entry_reason only (sandbox mode)
+  relationship_summary — + recent_reality_context + profile_impression
+  full_snapshot        — + episodic_summary + mid_term_context
+
+boundary_level (D5 body projection visibility for 叶瑄):
+  vague / body_perceptible (default) / numbers_visible / threshold_break(seam)
+
+Migration from legacy booleans:
+  amnesia=True                           → card_only
+  amnesia=False, keep_impression=True    → relationship_summary
+  amnesia=False, keep_impression=False   → card_only
 """
 
 import json
 import logging
+from enum import Enum
 from typing import Any
 
 from core.safe_write import safe_write_json
@@ -18,13 +28,35 @@ from core.sandbox import get_paths, safe_user_id
 
 logger = logging.getLogger(__name__)
 
+
+class MemoryAccess(str, Enum):
+    card_only = "card_only"
+    relationship_summary = "relationship_summary"
+    full_snapshot = "full_snapshot"
+
+
 _DEFAULTS: dict[str, Any] = {
     "enable_dream_lorebook": True,
-    "amnesia": False,           # False = include pre-dream memory in snapshot
-    "keep_impression": True,    # True = include user profile impression in snapshot
+    "memory_access": MemoryAccess.relationship_summary.value,
+    "boundary_level": "body_perceptible",
     # Reserved seam — not consumed in MVP1
     "lucid_mode": "lucid_shared",
 }
+
+
+def _migrate_legacy(data: dict[str, Any]) -> dict[str, Any]:
+    """One-shot migration from old amnesia/keep_impression booleans."""
+    if "memory_access" in data:
+        return data
+    amnesia = data.get("amnesia", False)
+    keep_impression = data.get("keep_impression", True)
+    if amnesia:
+        data["memory_access"] = MemoryAccess.card_only.value
+    elif keep_impression:
+        data["memory_access"] = MemoryAccess.relationship_summary.value
+    else:
+        data["memory_access"] = MemoryAccess.card_only.value
+    return data
 
 
 def _path(user_id: str | int):
@@ -39,6 +71,7 @@ def load(user_id: str | int) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return dict(_DEFAULTS)
+        data = _migrate_legacy(data)
         return {**_DEFAULTS, **data}
     except Exception as e:
         logger.warning(f"[dream_settings] read failed uid={user_id}: {e}")
