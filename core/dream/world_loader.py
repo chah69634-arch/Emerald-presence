@@ -133,6 +133,29 @@ def match_dream_lore(
     return [e["content"] for e in matched]
 
 
+def load_dream_lore_entries(world_id: str) -> list[dict[str, Any]]:
+    """
+    Load dream-specific lorebook entries for a world.
+    Reads characters/dream_worlds/{world_id}/lorebook.yaml.
+    Returns empty list when file missing or empty.
+    """
+    if world_id not in _KNOWN_WORLDS:
+        world_id = _FALLBACK_WORLD
+    path = _WORLDS_BASE / world_id / "lorebook.yaml"
+    try:
+        import yaml  # type: ignore
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return [e for e in data if isinstance(e, dict)]
+        return []
+    except ModuleNotFoundError:
+        # YAML not available — fall back to empty
+        return []
+    except Exception as e:
+        logger.debug(f"[world_loader] lorebook load skipped {path}: {e}")
+        return []
+
+
 def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8").strip()

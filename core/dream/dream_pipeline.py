@@ -74,15 +74,16 @@ async def dream_turn(
     from core.dream.dream_settings import load as _load_settings
     settings = _load_settings(uid)
 
+    # Dream-local lorebook matching — pure function, separate from reality lorebook (C4)
     lore_entries: list[str] = []
     if settings.get("enable_dream_lorebook", True):
         try:
-            from core.pipeline_registry import get as _get_pipeline
-            _pl = _get_pipeline()
-            if _pl is not None:
-                lore_entries = _pl.lore_engine.match(user_msg, dream_history)
+            from core.dream.world_loader import load_dream_lore_entries, match_dream_lore
+            _dream_lore = load_dream_lore_entries(state.get("frozen_world", "reality_derived"))
+            if _dream_lore:
+                lore_entries = match_dream_lore(_dream_lore, user_msg, dream_history)
         except Exception as e:
-            logger.debug(f"[dream_pipeline] lorebook match skipped: {e}")
+            logger.debug(f"[dream_pipeline] dream lorebook match skipped: {e}")
 
     jailbreak_text = _load_jailbreak_text()
 
