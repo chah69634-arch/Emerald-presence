@@ -99,59 +99,112 @@ def test_impression_isolation_contract(sandbox):
 
 def test_impression_whitewash_defence(sandbox):
     """
-    Build a mocked reality turn where 叶瑄 echoes the impression_text,
-    capture that reply via short_term.append, then verify episodic_memory
-    and short_term carry no world/scene/body tokens from the original dream.
+    Real-chain I2 whitewash defence — true chain, no stubs on reflect.
 
-    This works because impression_text is structurally stripped at generation time —
-    there is nothing to launder even if the reply is fully captured.
+    Seeds a canary sentinel into impression_store, then drives two full reality
+    rounds through the real call chain:
+      load_impression_text (6g) → capture_turn → mid_term.append
+      → reflect_to_episodic (real fn, only inner LLM call mocked)
+
+    Case A (safe reply): 叶瑄's reply does NOT echo the sentinel.
+        → episodic must NOT contain the sentinel.
+
+    Case B (reverse self-check): 叶瑄's reply DOES contain the sentinel.
+        → episodic MUST contain it — proves the chain is real,
+          not a false-green empty-library assertion.
     """
+    from unittest.mock import AsyncMock, patch
+
     from core.dream.impression_store import append_impression
     from core.dream.impression_loader import load_impression_text
-    from core.memory import short_term, episodic_memory
+    from core.memory.fixation_pipeline import capture_turn, reflect_to_episodic
+    from core.memory import mid_term
+    from core.memory.episodic_memory import load_unconsolidated
 
-    # Plant a legitimately stripped impression (no scene/world content)
-    now = time.time()
-    safe_impression = "我好像在梦里有种温热的、漂浮的感觉"
-    append_impression(_UID, {
-        "dream_id": f"dream_{_UID}_ww",
-        "ts": now,
-        "last_decay_ts": now,
-        "impression_text": safe_impression,
-        "weight": 0.3,
-        "emotional_tags": ["温热", "漂浮"],
-        "exit_type": "soft",
-        "decay_after": now + 30 * 86400,
-        "marked": True,
-    })
+    SENTINEL = "ω_canary_omega_xyz"
 
-    # Verify impression_text itself has no world/scene/body tokens
-    imp_text = load_impression_text(_UID)
-    assert imp_text, "Expected non-empty impression text"
-    for tok in _WORLD_TOKENS + _BODY_NUMERIC_PATTERNS + _SCENE_ACTION_TOKENS:
-        assert tok not in imp_text, (
-            f"World/scene/body token {tok!r} found in impression_text — stripping failed"
-        )
+    def _seed(uid: str) -> None:
+        now = time.time()
+        append_impression(uid, {
+            "dream_id": f"dream_{uid}_ww",
+            "ts": now,
+            "last_decay_ts": now,
+            "impression_text": f"我好像在梦里有种{SENTINEL}的感觉",
+            "weight": 0.3,
+            "emotional_tags": ["漂浮"],
+            "exit_type": "soft",
+            "decay_after": now + 30 * 86400,
+            "marked": True,
+        })
 
-    # Simulate: 叶瑄 reads 6g impression and echoes it in a reality reply
-    echoed_reply = f"（有点出神）{safe_impression}，但说不太清楚。"
+    def _run_chain(uid: str, reply_text: str, llm_ep_json: str) -> str | None:
+        # Verify sentinel reached the 6g injection layer (fixture sanity)
+        imp_text = load_impression_text(uid)
+        assert imp_text, "load_impression_text returned empty"
+        assert SENTINEL in imp_text, "Sentinel not in 6g impression text"
 
-    # Capture via short_term (as reality post_process would)
-    short_term.append(_UID, "user", "你在想什么")
-    short_term.append(_UID, "assistant", echoed_reply)
+        # ── real capture_turn ──────────────────────────────────────────────────
+        turn_id = capture_turn(uid, "你在想什么", reply_text, emotion="gentle")
+        assert turn_id
 
-    # Captured content must not carry any world/scene tokens from the dream
-    history_json = json.dumps(short_term.load_for_prompt(_UID), ensure_ascii=False)
-    for tok in _WORLD_TOKENS + _BODY_NUMERIC_PATTERNS + _SCENE_ACTION_TOKENS:
-        assert tok not in history_json, (
-            f"Token {tok!r} appeared in captured reality history — laundering detected"
-        )
+        # ── write mid_term directly (skip summarize_to_midterm's LLM call) ─────
+        mid_id = f"mt_{uid}_{int(time.time() * 1000)}"
+        mid_term.append(uid, f"本轮摘要：{reply_text[:80]}", mid_id=mid_id, source_turn_id=turn_id)
 
-    # Episodic memory (empty since we didn't call reflect_to_episodic) also clean
-    ep = episodic_memory.retrieve(_UID, topic="梦", top_k=5)
-    ep_json = json.dumps(ep, ensure_ascii=False)
-    for tok in _WORLD_TOKENS + _BODY_NUMERIC_PATTERNS:
-        assert tok not in ep_json
+        # ── real reflect_to_episodic (only inner llm_client.chat is mocked) ────
+        async def _reflect():
+            with patch("core.llm_client.chat", AsyncMock(return_value=llm_ep_json)):
+                return await reflect_to_episodic(uid, [mid_id], trigger="eager")
+
+        return asyncio.run(_reflect())
+
+    # ── Case A: safe reply — sentinel NOT in 叶瑄's output ────────────────────
+    UID_A = f"{_UID}_ww_a"
+    _seed(UID_A)
+
+    safe_ep = json.dumps({
+        "raw_facts": ["用户问叶瑄在想什么", "叶瑄给出了模糊的回答"],
+        "topic_keywords": ["情感", "思念"],
+        "emotion_peak": "gentle",
+        "emotion_texture": "温和",
+        "emotion_arc": "平稳",
+        "user_state": "curious",
+        "narrative_summary": "叶瑄感到有些出神，说不清楚在想什么",
+        "strength": 0.5,
+    }, ensure_ascii=False)
+
+    ep_id_a = _run_chain(UID_A, "（有点出神）说不太清楚，只是感觉有点不一样。", safe_ep)
+    assert ep_id_a is not None, "reflect_to_episodic returned None in safe-reply case"
+
+    ep_json_a = json.dumps(load_unconsolidated(UID_A), ensure_ascii=False)
+    assert SENTINEL not in ep_json_a, (
+        f"Sentinel {SENTINEL!r} leaked into episodic (safe-reply case) — I2 violated"
+    )
+
+    # ── Case B: reverse self-check — sentinel IN 叶瑄's reply ─────────────────
+    UID_B = f"{_UID}_ww_b"
+    _seed(UID_B)
+
+    reverse_ep = json.dumps({
+        "raw_facts": [f"叶瑄的回复中明确提到了 {SENTINEL}"],
+        "topic_keywords": ["情感", SENTINEL],
+        "emotion_peak": "gentle",
+        "emotion_texture": "漂浮",
+        "emotion_arc": "平稳",
+        "user_state": "curious",
+        "narrative_summary": f"叶瑄提到了 {SENTINEL} 这个词",
+        "strength": 0.5,
+    }, ensure_ascii=False)
+
+    ep_id_b = _run_chain(UID_B, f"（有点出神）{SENTINEL}，说不清楚。", reverse_ep)
+    assert ep_id_b is not None, (
+        "reflect_to_episodic returned None in reverse self-check — chain is broken"
+    )
+
+    ep_json_b = json.dumps(load_unconsolidated(UID_B), ensure_ascii=False)
+    assert SENTINEL in ep_json_b, (
+        f"Sentinel not captured in episodic (reverse self-check) — chain is not real"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
