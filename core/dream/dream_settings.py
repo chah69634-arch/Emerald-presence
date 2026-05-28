@@ -39,6 +39,7 @@ _DEFAULTS: dict[str, Any] = {
     "enable_dream_lorebook": True,
     "memory_access": MemoryAccess.relationship_summary.value,
     "boundary_level": "body_perceptible",
+    "world_layer": "reality_derived",
     # Reserved seam — not consumed in MVP1
     "lucid_mode": "lucid_shared",
 }

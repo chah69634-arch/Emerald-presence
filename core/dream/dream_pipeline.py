@@ -129,6 +129,7 @@ async def dream_turn(
         jailbreak_text=jailbreak_text,
         body_projection_text=projection["d5_text"],
         yexuan_tension=current_yexuan_tension,
+        world_id=state.get("frozen_world", "reality_derived"),
     )
 
     # Call LLM — zero reality side-effects
@@ -218,9 +219,15 @@ async def enter_dream(uid: str, entry_reason: str = "") -> dict[str, Any]:
     dream_id = f"dream_{uid}_{int(time.time())}"
     snapshot = await build_snapshot(uid, entry_reason=entry_reason)
 
+    # Freeze world_layer from settings — immutable for the whole dream session
+    from core.dream.dream_settings import load as _load_settings_enter
+    _settings_enter = _load_settings_enter(uid)
+    frozen_world = _settings_enter.get("world_layer", "reality_derived")
+
     state["status"] = DreamStatus.DREAM_ACTIVE.value
     state["dream_id"] = dream_id
     state["context_snapshot"] = snapshot
+    state["frozen_world"] = frozen_world
     # Clear all volatile local fields at dream start
     state.pop("emotional_tension", None)
     state.pop("scene_state", None)

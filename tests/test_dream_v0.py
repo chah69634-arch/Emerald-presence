@@ -99,21 +99,16 @@ def test_identity_stable_across_world_ruleset_change():
     )
     system_default = msgs_default[0]["content"]
 
-    # Patch D2 to an alternative world ruleset (simulates v1 world pack injection)
-    import core.dream.dream_prompt as dp
-    original_d2 = dp._D2_WORLD_RULESET_REALITY_DERIVED
-    try:
-        dp._D2_WORLD_RULESET_REALITY_DERIVED = _AlternativeWorldRuleset.TEXT
-        msgs_alt = build_dream_prompt(
-            character=_FAKE_CHARACTER,
-            user_id=_UID,
-            user_message="你好",
-            context_snapshot=snapshot,
-            dream_history=[],
-            local_state=local_state,
-        )
-    finally:
-        dp._D2_WORLD_RULESET_REALITY_DERIVED = original_d2
+    # Use abo world package for the alternative world (simulates v1 world pack injection)
+    msgs_alt = build_dream_prompt(
+        character=_FAKE_CHARACTER,
+        user_id=_UID,
+        user_message="你好",
+        context_snapshot=snapshot,
+        dream_history=[],
+        local_state=local_state,
+        world_id="abo",
+    )
 
     system_alt = msgs_alt[0]["content"]
 
@@ -139,14 +134,16 @@ def test_identity_stable_across_world_ruleset_change():
 
 def test_pronoun_correctness_in_d1_and_d2():
     """D1 和 D2 文案中叶瑄自称正确（他/他的），无"她"错位。"""
-    from core.dream.dream_prompt import _D1_LUCID_AWARENESS, _D2_WORLD_RULESET_REALITY_DERIVED
+    from core.dream.dream_prompt import _D1_LUCID_AWARENESS
+    from core.dream.world_loader import load_world
 
     # D1: should reference 叶瑄 as 他
     assert "他知道" in _D1_LUCID_AWARENESS
     assert "他仍是他自己" in _D1_LUCID_AWARENESS or "他在梦里仍是他自己" in _D1_LUCID_AWARENESS
 
-    # D2: should reference 叶瑄 as 叶瑄/他
-    assert "叶瑄始终是他" in _D2_WORLD_RULESET_REALITY_DERIVED
+    # D2: reality_derived ruleset should reference 叶瑄 as 叶瑄/他
+    d2_text = load_world("reality_derived").ruleset
+    assert "叶瑄始终是他" in d2_text
 
 
 def test_pronoun_correctness_in_mes_example():
