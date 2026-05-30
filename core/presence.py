@@ -1,17 +1,19 @@
-from core.sandbox import get_paths
+from core.sandbox import get_paths, _TRANSITION_CHARACTER_INNER
 from core.safe_write import safe_write_json
 import time, json
 
 
 def update_last_message(user_id: str) -> None:
     """记录用户本次说话时间"""
-    p = get_paths()._p("yexuan_inner", "presence.json")
+    p = get_paths().presence()
     try:
         data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     except Exception:
         data = {}
     data[user_id] = {"last_message_at": time.time()}
     safe_write_json(p, data)
+    if _TRANSITION_CHARACTER_INNER:
+        safe_write_json(get_paths()._p("yexuan_inner", "presence.json"), data)
 
 
 def get_last_seen_text(user_id: str) -> str:
@@ -26,7 +28,7 @@ def get_last_seen_text(user_id: str) -> str:
     - 7天以上："很久前"
     没有记录时返回空字符串。
     """
-    p = get_paths()._p("yexuan_inner", "presence.json")
+    p = get_paths().presence()
     try:
         data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
         last = data.get(user_id, {}).get("last_message_at", 0)

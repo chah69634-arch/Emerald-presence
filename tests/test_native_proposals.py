@@ -3,7 +3,7 @@ import inspect
 
 
 def _write_event_log(paths, uid: str, date_text: str, body: str) -> None:
-    day_dir = paths.event_log() / uid
+    day_dir = paths.user_memory_root(uid) / "event_log"
     day_dir.mkdir(parents=True, exist_ok=True)
     (day_dir / f"{date_text}.md").write_text(body, encoding="utf-8")
 

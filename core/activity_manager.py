@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from core.sandbox import get_paths
+from core.sandbox import get_paths, _TRANSITION_CHARACTER_INNER
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,9 @@ def _save_state(state: dict) -> None:
     p = get_paths().activity_state()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    if _TRANSITION_CHARACTER_INNER:
+        old = get_paths()._p("yexuan_inner", "activity_state.json")
+        old.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def _load_thinking_about(uid: str = "") -> str:
     """

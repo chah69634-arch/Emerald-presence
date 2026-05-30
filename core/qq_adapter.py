@@ -19,8 +19,6 @@ from core.error_handler import log_error
 
 logger = logging.getLogger(__name__)
 
-BLACKLIST_FILE = Path("data/blacklist.yaml")
-
 # 黑名单缓存（字符串列表）
 _blacklist: list[str] = []
 # 消息接收回调（由 main.py 通过 on_message 注入）
@@ -37,10 +35,12 @@ _pending_responses: dict[str, "asyncio.Future"] = {}
 
 def _load_blacklist():
     """加载黑名单，文件不存在时使用空列表"""
+    from core.sandbox import get_paths
     global _blacklist
     try:
-        if BLACKLIST_FILE.exists():
-            with open(BLACKLIST_FILE, "r", encoding="utf-8") as f:
+        bf = get_paths().blacklist()
+        if bf.exists():
+            with open(bf, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             _blacklist = [str(uid) for uid in data.get("blacklist", [])]
         else:

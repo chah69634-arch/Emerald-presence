@@ -661,6 +661,20 @@ async def _check_dlq_monitor():
         logger.warning(
             f"DLQ 中有 {total} 个未处理失败任务 ({breakdown})。最近错误样本: {sample_str}"
         )
+        # 超出条数上限时删最旧（文件名以 ms_ts 开头，字典序 = 时间序）
+        from core.config_loader import get_config
+        max_files = int(get_config().get("retention", {}).get("dead_letter_queue", {}).get("max_files", 200))
+        if total > max_files:
+            oldest = sorted(json_files, key=lambda f: f.name)[:total - max_files]
+            pruned = 0
+            for f in oldest:
+                try:
+                    f.unlink()
+                    pruned += 1
+                except Exception:
+                    pass
+            if pruned:
+                logger.info("[dlq_monitor] 已删除 %d 个最旧 DLQ 文件（上限 %d）", pruned, max_files)
     except Exception as e:
         log_error("scheduler._check_dlq_monitor", e)
 

@@ -4,15 +4,14 @@ GET /diary/{date} — 返回单篇日记（含正文）
 """
 
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from admin.auth import verify_token
+from core.sandbox import get_paths
 
 router = APIRouter()
 
-DIARY_DIR = Path(__file__).parent.parent.parent / "data" / "yexuan_inner" / "diary"
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 _FILE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}\.md$')
 _STOP_CHARS = '。！？'
@@ -48,8 +47,9 @@ def _strip_body(content: str) -> str:
 @router.get("/list", summary="获取日记列表")
 async def list_diary(auth=Depends(verify_token)):
     entries = []
-    if DIARY_DIR.exists():
-        for f in DIARY_DIR.iterdir():
+    diary_dir = get_paths().yexuan_inner_diary()
+    if diary_dir.exists():
+        for f in diary_dir.iterdir():
             if not _FILE_RE.match(f.name):
                 continue
             content = f.read_text(encoding='utf-8')
@@ -66,7 +66,7 @@ async def list_diary(auth=Depends(verify_token)):
 async def get_diary(date: str, auth=Depends(verify_token)):
     if not _DATE_RE.match(date):
         raise HTTPException(status_code=422, detail="date format must be YYYY-MM-DD")
-    path = DIARY_DIR / f"{date}.md"
+    path = get_paths().yexuan_inner_diary() / f"{date}.md"
     if not path.exists():
         raise HTTPException(status_code=404, detail="diary not found")
     content = path.read_text(encoding='utf-8')

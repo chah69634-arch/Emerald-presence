@@ -17,35 +17,65 @@
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from core.error_handler import log_error
+from core.migration import for_read
 from core.sandbox import get_paths, safe_user_id
 
 logger = logging.getLogger(__name__)
 
 
-def _log_root() -> Path:
-    return get_paths().event_log()
-
 _HIGH_INTENSITY_WORDS = {"心疼", "难过", "哭", "气死", "开心", "喜欢", "想你", "爱你"}
 _MED_INTENSITY_WORDS  = {"想", "记得", "担心", "等你", "在意"}
 
-
-def _day_file(user_id: str, date: datetime) -> Path:
-    """返回指定用户、指定日期的日志文件路径"""
-    return _log_root() / safe_user_id(user_id) / f"{date.strftime('%Y-%m-%d')}.md"
+_TURN_ID_RE = re.compile(r"turn_id:(\S+)")
 
 
-def _full_log_file(user_id: str) -> Path:
-    """返回用户的完整导出日志路径"""
-    return _log_root() / safe_user_id(user_id) / "full_log.md"
+def _event_log_write_dir(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写目录：始终写新布局 memory/{char_id}/{uid}/event_log/。"""
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "event_log"
 
 
-def _ensure_dir(user_id: str):
-    """确保用户日志目录存在"""
-    (_log_root() / safe_user_id(user_id)).mkdir(parents=True, exist_ok=True)
+def _event_log_read_dir(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """读目录：新目录存在时读新，否则降级旧路径。"""
+    uid = safe_user_id(user_id)
+    new = get_paths().user_memory_root(uid, char_id=char_id) / "event_log"
+    old = get_paths()._p("event_log") / uid
+    return for_read(new, old)
+
+
+def _day_file_read(user_id: str, date: datetime, *, char_id: str = "yexuan") -> Path:
+    """读：指定日期日志文件，新存在读新，否则降级旧路径。"""
+    uid = safe_user_id(user_id)
+    date_str = date.strftime("%Y-%m-%d")
+    new = get_paths().user_memory_root(uid, char_id=char_id) / "event_log" / f"{date_str}.md"
+    old = get_paths()._p("event_log") / uid / f"{date_str}.md"
+    return for_read(new, old)
+
+
+def _day_file_write(user_id: str, date: datetime, *, char_id: str = "yexuan") -> Path:
+    """写：指定日期日志文件，始终写新布局，保证目录存在。"""
+    uid = safe_user_id(user_id)
+    d = get_paths().user_memory_root(uid, char_id=char_id) / "event_log"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{date.strftime('%Y-%m-%d')}.md"
+
+
+def _full_log_file_write(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写：full_log.md，始终写新布局。"""
+    uid = safe_user_id(user_id)
+    d = get_paths().user_memory_root(uid, char_id=char_id) / "event_log"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "full_log.md"
+
+
+def _ensure_dir(user_id: str, *, char_id: str = "yexuan"):
+    """确保用户日志写入目录存在（写新布局）。"""
+    _event_log_write_dir(user_id, char_id=char_id).mkdir(parents=True, exist_ok=True)
 
 
 def _calc_intensity(content: str, emotion: str) -> int:
@@ -88,6 +118,65 @@ def _split_blocks(text: str) -> list:
     if current:
         blocks.append(current)
     return blocks
+
+
+def _block_key(block_lines: list) -> str:
+    """块级去重键：优先用 turn_id，否则用有效行拼接。"""
+    for line in block_lines:
+        m = _TURN_ID_RE.search(line)
+        if m:
+            return f"turn_id:{m.group(1)}"
+    sig = [
+        line.strip()
+        for line in block_lines
+        if line.strip() and line.strip() != "---" and not line.strip().startswith("> emotion:")
+    ]
+    return "\n".join(sig)
+
+
+def _merge_day_texts(text_a: str, text_b: str) -> str:
+    """合并同一天两处路径的日志文本，按时间排序并去重。"""
+    seen: set = set()
+    merged: list = []
+
+    for block in _split_blocks(text_a) + _split_blocks(text_b):
+        key = _block_key(block)
+        if key and key not in seen:
+            seen.add(key)
+            merged.append(block)
+
+    def _block_time(block: list) -> str:
+        first = block[0] if block else ""
+        return first[3:].strip() if first.startswith("## ") else ""
+
+    merged.sort(key=_block_time)
+    return "\n".join("\n".join(block) for block in merged)
+
+
+def _read_day_union(new_dir: Path, old_dir: Path, date_str: str) -> str:
+    """
+    Union 读取新旧两处目录中同一天的日志文件。
+    只匹配 YYYY-MM-DD.md，不读 .gz 归档。
+    """
+    new_file = new_dir / f"{date_str}.md"
+    old_file = old_dir / f"{date_str}.md"
+
+    text_new = ""
+    text_old = ""
+    try:
+        if new_file.exists():
+            text_new = new_file.read_text(encoding="utf-8").strip()
+    except Exception as e:
+        log_error("event_log._read_day_union.new", e)
+    try:
+        if old_file.exists():
+            text_old = old_file.read_text(encoding="utf-8").strip()
+    except Exception as e:
+        log_error("event_log._read_day_union.old", e)
+
+    if text_new and text_old:
+        return _merge_day_texts(text_new, text_old)
+    return text_new or text_old
 
 
 def append(
@@ -138,12 +227,12 @@ def append(
     try:
         _ensure_dir(user_id)
 
-        day_path = _day_file(user_id, now)
+        day_path = _day_file_write(user_id, now)
         if not _already_appended(day_path, line, turn_id):
             with open(day_path, "a", encoding="utf-8") as f:
                 f.write(chunk)
 
-        full_path = _full_log_file(user_id)
+        full_path = _full_log_file_write(user_id)
         if not _already_appended(full_path, line, turn_id):
             with open(full_path, "a", encoding="utf-8") as f:
                 f.write(chunk)
@@ -164,11 +253,12 @@ def _already_appended(path: Path, line: str, turn_id: str | None) -> bool:
         return False
 
 
-def get_recent_days(user_id: str, days: int = 3) -> str:
+def get_recent_days(user_id: str, days: int = 3, *, char_id: str = "yexuan") -> str:
     """
     读取最近 N 天的日志原文，拼接成一个字符串返回。
-    只读按天分割的文件，不读 full_log.md。
-    如果某天没有日志就跳过，不报错。
+    同时读取新路径 memory/{char_id}/{uid}/event_log/ 与旧路径 event_log/{uid}/，
+    对每天的内容做 union 合并（按 turn_id 或全行去重）。
+    只读按天分割的 YYYY-MM-DD.md 文件，不读 full_log.md 和 .gz 归档。
 
     参数：
         user_id - 用户 QQ 号
@@ -177,17 +267,20 @@ def get_recent_days(user_id: str, days: int = 3) -> str:
     返回：
         拼接后的日志文本，空则返回空字符串
     """
+    uid = safe_user_id(user_id)
+    new_dir = get_paths().user_memory_root(uid, char_id=char_id) / "event_log"
+    old_dir = get_paths()._p("event_log") / uid
+
     parts = []
     today = datetime.now()
 
     for i in range(days):
         target_day = today - timedelta(days=i)
-        path = _day_file(user_id, target_day)
+        date_str = target_day.strftime("%Y-%m-%d")
         try:
-            if path.exists():
-                text = path.read_text(encoding="utf-8").strip()
-                if text:
-                    parts.append(f"# {target_day.strftime('%Y-%m-%d')}\n{text}")
+            text = _read_day_union(new_dir, old_dir, date_str)
+            if text:
+                parts.append(f"# {date_str}\n{text}")
         except Exception as e:
             log_error("event_log.get_recent_days", e)
 
@@ -296,6 +389,27 @@ def get_highlights(user_id: str, days: int = 2, max_lines: int = 5) -> str:
     candidates.sort(key=lambda x: x[0], reverse=True)
     selected = [c for _, c in candidates[:max_lines]]
     return "；".join(selected) if selected else ""
+
+
+def cleanup_event_log(user_id: str) -> None:
+    """归档超出窗口的按天文件，并对 full_log.md 按大小滚动。
+    按天文件：>= day_archive_days 天的 .md → .md.gz（search 窗口 30 天不受影响）。
+    full_log.md：超过 full_log_max_size_mb → gzip 归档 + 清空。
+    """
+    from core.config_loader import get_config
+    from core.safe_write import archive_old_day_files, rotate_jsonl_if_needed
+
+    cfg = get_config().get("forensic_logs", {}).get("event_log", {})
+    cutoff_days = int(cfg.get("day_archive_days", 30))
+    dir_path = _event_log_write_dir(user_id)
+    archived = archive_old_day_files(dir_path, cutoff_days=cutoff_days)
+    if archived:
+        logger.info("[event_log] 已归档 %d 个按天文件 (uid=%s)", archived, user_id)
+
+    full_log = _full_log_file_write(user_id)
+    max_bytes = int(cfg.get("full_log_max_size_mb", 10) * 1024 * 1024)
+    keep_n = int(cfg.get("full_log_keep", 3))
+    rotate_jsonl_if_needed(full_log, max_bytes=max_bytes, keep_n=keep_n)
 
 
 class EventLog:

@@ -29,7 +29,7 @@ from core.garden.constants import (
     HANDLE_GIFT_THRESHOLD,
 )
 from core.safe_write import safe_write_json
-from core.sandbox import get_paths
+from core.sandbox import get_paths, _TRANSITION_CHARACTER_INNER
 
 logger = logging.getLogger(__name__)
 _garden_lock = threading.RLock()
@@ -38,11 +38,21 @@ _garden_lock = threading.RLock()
 # ── 路径 helpers ───────────────────────────────────────────────────────────────
 
 def _plants_path() -> Path:
+    """写路径：始终指向新布局。"""
     return get_paths().garden() / "plants.json"
 
 
 def _storage_path() -> Path:
+    """写路径：始终指向新布局。"""
     return get_paths().garden() / "storage.json"
+
+
+def _read_plants_path() -> Path:
+    return _plants_path()
+
+
+def _read_storage_path() -> Path:
+    return _storage_path()
 
 
 # ── JSON I/O ──────────────────────────────────────────────────────────────────
@@ -57,6 +67,10 @@ def _load(path: Path, default):
 def _save(path: Path, data) -> None:
     if not safe_write_json(path, data):
         raise OSError(f"failed to write garden state: {path}")
+    if _TRANSITION_CHARACTER_INNER:
+        old_dir = get_paths()._p("garden")
+        old_path = old_dir / path.name
+        safe_write_json(old_path, data)
 
 
 # ── 内部工具函数 ───────────────────────────────────────────────────────────────
@@ -88,10 +102,10 @@ def _resolve_slot_for_mood(mood: str) -> str | None:
 
 def _bootstrap() -> dict:
     """plants.json 不存在则初始化五槽位；storage.json 不存在则初始化空仓库。返回 plants 数据。"""
-    plants_path = _plants_path()
-    storage_path = _storage_path()
+    read_plants = _read_plants_path()
+    read_storage = _read_storage_path()
 
-    if not plants_path.exists():
+    if not read_plants.exists():
         now = time.time()
         slots = {}
         for flower in FLOWERS:
@@ -105,12 +119,12 @@ def _bootstrap() -> dict:
                 "bloomed_at": None,
             }
         data = {"slots": slots}
-        _save(plants_path, data)
+        _save(_plants_path(), data)
     else:
-        data = _load(plants_path, {"slots": {}})
+        data = _load(read_plants, {"slots": {}})
 
-    if not storage_path.exists():
-        _save(storage_path, {"harvest": [], "vase": [], "history": []})
+    if not read_storage.exists():
+        _save(_storage_path(), {"harvest": [], "vase": [], "history": []})
 
     return data
 
@@ -160,7 +174,7 @@ def water(slot_key: str, *, reason: str) -> dict:
         events = []
         if bloomed:
             plant["bloomed_at"] = time.time()
-            storage = _load(_storage_path(), {"harvest": [], "vase": [], "history": []})
+            storage = _load(_read_storage_path(), {"harvest": [], "vase": [], "history": []})
             _on_bloom(plant, storage)
             _save(_storage_path(), storage)
             meta = _flower_meta(plant["flower_id"])
@@ -222,7 +236,7 @@ def daily_check() -> list:
     """
     with _garden_lock:
         _bootstrap()
-        storage = _load(_storage_path(), {"harvest": [], "vase": [], "history": []})
+        storage = _load(_read_storage_path(), {"harvest": [], "vase": [], "history": []})
         now = time.time()
         events = []
 
@@ -302,7 +316,7 @@ def get_state() -> dict:
     with _garden_lock:
         data = _bootstrap()
         slots = data["slots"]
-        storage = _load(_storage_path(), {"harvest": [], "vase": [], "history": []})
+        storage = _load(_read_storage_path(), {"harvest": [], "vase": [], "history": []})
 
         result_slots = []
         for flower in FLOWERS:

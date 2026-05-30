@@ -96,12 +96,14 @@ def get_current_note(paths=None) -> str:
         from core.sandbox import get_paths
         paths = get_paths()
 
+    from core.sandbox import _TRANSITION_CHARACTER_INNER
+
     pool_path = paths.author_notes_pool()
-    state_path = paths.author_note_state()
+    write_state_path = paths.author_note_state()
 
     try:
         pool = _load_pool(pool_path)
-        state = _load_state(state_path)
+        state = _load_state(write_state_path)
 
         if not _should_switch(state):
             current_id = state.get("current_id")
@@ -125,7 +127,9 @@ def get_current_note(paths=None) -> str:
         state["last_switched_at"] = datetime.now().isoformat(timespec="seconds")
         state["history"] = history[:30]
 
-        _save_state(state_path, state)
+        _save_state(write_state_path, state)
+        if _TRANSITION_CHARACTER_INNER:
+            _save_state(paths._p("yexuan_inner", "author_note_state.json"), state)
         logger.info(f"[author_note_rotator] 切换到 note id={chosen['id']}")
         return chosen["content"]
 

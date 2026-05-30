@@ -24,7 +24,7 @@ from admin.auth import verify_token
 from core.config_loader import get_config
 from core.memory.user_profile import load as _load_profile, save as _save_profile
 from core.memory import realtime_state
-from core.sandbox import get_paths
+from core.sandbox import get_paths, _TRANSITION_CHARACTER_INNER
 
 router = APIRouter()
 
@@ -250,5 +250,9 @@ async def receive_activity_snapshot(payload: dict):
     """桌宠端每5分钟推送一次屏幕活动快照，写入文件供 prompt_builder 读取。"""
     payload["received_at"] = time.time()
     p = get_paths().activity_snapshot()
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    if _TRANSITION_CHARACTER_INNER:
+        old = get_paths()._p("activity_snapshot.json")
+        old.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return {"status": "ok"}

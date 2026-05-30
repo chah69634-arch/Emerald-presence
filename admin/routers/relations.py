@@ -2,9 +2,9 @@
 关系管理路由
 注意：路由顺序很重要：/blacklist 等具体路由必须在 /{user_id} 之前注册，
       否则 FastAPI 会把 "blacklist" 当作 user_id 参数匹配。
+路径由 DataPaths.relations() / DataPaths.blacklist() 决定。
 """
 
-from pathlib import Path
 from typing import Optional
 
 import yaml
@@ -12,28 +12,28 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from admin.auth import verify_token
+from core.sandbox import get_paths
 
 router = APIRouter()
-
-RELATIONS_FILE = Path("data/relations.yaml")
-BLACKLIST_FILE = Path("data/blacklist.yaml")
 
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 def _read_relations() -> dict:
     """读取 relations.yaml，返回 relations 字段内容"""
-    if not RELATIONS_FILE.exists():
+    rf = get_paths().relations()
+    if not rf.exists():
         return {}
-    with open(RELATIONS_FILE, "r", encoding="utf-8") as f:
+    with open(rf, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return data.get("relations", {})
 
 
 def _write_relations(relations: dict):
     """将 relations 字典写回 relations.yaml"""
-    RELATIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(RELATIONS_FILE, "w", encoding="utf-8") as f:
+    rf = get_paths().relations()
+    rf.parent.mkdir(parents=True, exist_ok=True)
+    with open(rf, "w", encoding="utf-8") as f:
         yaml.dump(
             {"relations": relations},
             f,
@@ -45,17 +45,19 @@ def _write_relations(relations: dict):
 
 def _read_blacklist() -> list[str]:
     """读取 blacklist.yaml，返回字符串列表"""
-    if not BLACKLIST_FILE.exists():
+    bf = get_paths().blacklist()
+    if not bf.exists():
         return []
-    with open(BLACKLIST_FILE, "r", encoding="utf-8") as f:
+    with open(bf, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return [str(uid) for uid in data.get("blacklist", [])]
 
 
 def _write_blacklist(blacklist: list[str]):
     """将黑名单列表写回 blacklist.yaml"""
-    BLACKLIST_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(BLACKLIST_FILE, "w", encoding="utf-8") as f:
+    bf = get_paths().blacklist()
+    bf.parent.mkdir(parents=True, exist_ok=True)
+    with open(bf, "w", encoding="utf-8") as f:
         yaml.dump(
             {"blacklist": blacklist},
             f,

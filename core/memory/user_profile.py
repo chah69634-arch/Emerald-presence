@@ -27,18 +27,24 @@ _DEFAULT_PROFILE = {
 }
 
 
-def _profile_path(user_id: str) -> Path:
-    """返回该用户的画像文件路径"""
-    d = get_paths().profiles()
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{safe_user_id(user_id)}.json"
+def _profile_read_path(user_id: str, *, char_id: str = "yexuan") -> Path:
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "profile.json"
+
+
+def _profile_write_path(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局。"""
+    uid = safe_user_id(user_id)
+    p = get_paths().user_memory_root(uid, char_id=char_id) / "profile.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def load(user_id: str) -> dict:
     """
     读取用户画像，文件不存在时返回空模板
     """
-    path = _profile_path(user_id)
+    path = _profile_read_path(user_id)
     try:
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -192,7 +198,7 @@ async def extract_and_update(user_id: str, recent_messages: list[dict]):
 
 def _save(user_id: str, profile: dict):
     """把画像写回磁盘"""
-    path = _profile_path(user_id)
+    path = _profile_write_path(user_id)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=2)
@@ -224,7 +230,7 @@ _AFFECTION_LEVELS = [
 
 def get_affection(user_id: str) -> int:
     """读取用户好感度，默认 0"""
-    path = _profile_path(user_id)
+    path = _profile_read_path(user_id)
     try:
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -237,16 +243,17 @@ def get_affection(user_id: str) -> int:
 
 def add_affection(user_id: str, delta: int):
     """增减好感度，结果限制在 0-1000"""
-    path = _profile_path(user_id)
+    read_path = _profile_read_path(user_id)
+    write_path = _profile_write_path(user_id)
     try:
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
+        if read_path.exists():
+            with open(read_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             data = dict(_DEFAULT_PROFILE)
         current = int(data.get("affection", 0))
         data["affection"] = max(0, min(1000, current + delta))
-        with open(path, "w", encoding="utf-8") as f:
+        with open(write_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log_error("user_profile.add_affection", e)
@@ -254,15 +261,16 @@ def add_affection(user_id: str, delta: int):
 
 def set_affection(user_id: str, value: int):
     """直接设置好感度（管理员用）"""
-    path = _profile_path(user_id)
+    read_path = _profile_read_path(user_id)
+    write_path = _profile_write_path(user_id)
     try:
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
+        if read_path.exists():
+            with open(read_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             data = dict(_DEFAULT_PROFILE)
         data["affection"] = max(0, min(1000, int(value)))
-        with open(path, "w", encoding="utf-8") as f:
+        with open(write_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log_error("user_profile.set_affection", e)
@@ -287,15 +295,16 @@ def get_period_info(user_id: str) -> dict:
 
 def set_period_date(user_id: str, date_str: str):
     """设置上次生理期日期（格式：YYYY-MM-DD）"""
-    path = _profile_path(user_id)
+    read_path = _profile_read_path(user_id)
+    write_path = _profile_write_path(user_id)
     try:
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
+        if read_path.exists():
+            with open(read_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             data = dict(_DEFAULT_PROFILE)
         data["last_period_date"] = date_str
-        with open(path, "w", encoding="utf-8") as f:
+        with open(write_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log_error("user_profile.set_period_date", e)

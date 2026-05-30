@@ -226,11 +226,17 @@ def _log_turn_group_score(user_id, group: list[dict], selected: bool, total: flo
     )
 
 
-def _history_path(user_id: str) -> Path:
-    """返回该用户的历史文件路径"""
-    d = get_paths().history()
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{safe_user_id(user_id)}.json"
+def _history_path(user_id: str, *, char_id: str = "yexuan") -> Path:
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "history.json"
+
+
+def _history_write_path(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局。"""
+    uid = safe_user_id(user_id)
+    p = get_paths().user_memory_root(uid, char_id=char_id) / "history.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def load(user_id: str) -> list[dict]:
@@ -363,7 +369,7 @@ def append(user_id: str, role: str, content: str, turn_id: str | None = None) ->
 
 def _save(user_id: str, history: list[dict]) -> bool:
     """把历史记录写回磁盘"""
-    path = _history_path(user_id)
+    path = _history_write_path(user_id)
     try:
         return safe_write_json(path, history)
     except Exception as e:

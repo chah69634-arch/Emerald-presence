@@ -22,6 +22,7 @@ Invariants:
 """
 
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException
 
@@ -44,8 +45,11 @@ _ENUM_VALIDATORS: dict[str, frozenset] = {
 }
 
 _PATCH_ALLOWED = frozenset({
-    "memory_access", "boundary_level", "world_layer", "lucid_mode", "enable_dream_lorebook",
+    "memory_access", "boundary_level", "world_layer", "lucid_mode",
+    "enable_dream_lorebook", "jailbreak_preset",
 })
+
+_SAFE_PRESET_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 def _owner_uid() -> str:
@@ -179,6 +183,12 @@ async def dream_settings_patch(body: dict):
         errors.append(
             f"enable_dream_lorebook 必须为 bool，收到：{updates['enable_dream_lorebook']!r}"
         )
+    if "jailbreak_preset" in updates:
+        val = updates["jailbreak_preset"]
+        if not isinstance(val, str) or not _SAFE_PRESET_RE.match(val):
+            errors.append(
+                f"jailbreak_preset={val!r} 非法，只允许字母/数字/下划线/短横线（1-64字符）"
+            )
     if errors:
         raise HTTPException(status_code=422, detail="; ".join(errors))
 

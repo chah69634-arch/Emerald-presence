@@ -85,7 +85,8 @@ async def dream_turn(
         except Exception as e:
             logger.debug(f"[dream_pipeline] dream lorebook match skipped: {e}")
 
-    jailbreak_text = _load_jailbreak_text()
+    jailbreak_preset = settings.get("jailbreak_preset", "default")
+    jailbreak_text, jailbreak_preset_status = _load_preset_text(jailbreak_preset)
 
     from core.pipeline_registry import get as _get_pipeline2
     _pl2 = _get_pipeline2()
@@ -134,6 +135,8 @@ async def dream_turn(
         local_state=local_state,
         lore_entries=lore_entries,
         jailbreak_text=jailbreak_text,
+        jailbreak_preset_name=jailbreak_preset,
+        jailbreak_preset_status=jailbreak_preset_status,
         body_projection_text=projection["d5_text"],
         yexuan_tension=current_yexuan_tension,
         world_id=state.get("frozen_world", "reality_derived"),
@@ -297,15 +300,39 @@ def _looks_like_exit_request(msg: str) -> bool:
     return any(w in msg for w in exit_words)
 
 
-def _load_jailbreak_text() -> str:
-    try:
-        from core.pipeline_registry import get as _get_pipeline
-        pl = _get_pipeline()
-        if pl is None:
-            return ""
-        entries = getattr(pl.character, "jailbreak_entries", []) or []
-        if entries:
-            return "\n".join(str(e) for e in entries)
-    except Exception:
-        pass
-    return ""
+def _load_preset_text(preset_name: str) -> tuple[str, str]:
+    """
+    Load D0 jailbreak content from characters/dream_presets/{preset_name}.md.
+    Returns (text, status): status is "" | "fallback" | "disabled".
+    Falls back to default.md if named preset is missing; returns disabled if default missing too.
+    """
+    import re
+    from pathlib import Path
+
+    _PRESETS_BASE = Path("characters/dream_presets")
+
+    if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", preset_name):
+        logger.warning("[dream_pipeline] preset name %r rejected, using default", preset_name)
+        preset_name = "default"
+
+    def _read(name: str) -> str | None:
+        p = _PRESETS_BASE / f"{name}.md"
+        try:
+            if p.exists():
+                return p.read_text(encoding="utf-8").strip() or None
+        except Exception as exc:
+            logger.warning("[dream_pipeline] cannot read preset %r: %s", name, exc)
+        return None
+
+    text = _read(preset_name)
+    if text is not None:
+        return text, ""
+
+    if preset_name != "default":
+        default_text = _read("default")
+        if default_text is not None:
+            logger.warning("[dream_pipeline] preset %r missing, fallback to default", preset_name)
+            return default_text, "fallback"
+
+    logger.warning("[dream_pipeline] D0 disabled: preset %r and default both missing/empty", preset_name)
+    return "", "disabled"

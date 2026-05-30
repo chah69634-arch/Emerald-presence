@@ -7,12 +7,17 @@ import time
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
-from core.safe_write import safe_append_jsonl
+from core.safe_write import rotate_jsonl_if_needed, safe_append_jsonl
 from core.sandbox import get_paths
 
 
-# TODO(policy.yaml): keep as the single rollback switch for scheduler gating execution.
 EXECUTE_MODE = "live"
+
+
+def _forensic_rotation_params() -> tuple[int, int]:
+    from core.config_loader import get_config
+    cfg = get_config().get("forensic_logs", {})
+    return int(cfg.get("max_size_mb", 5) * 1024 * 1024), int(cfg.get("keep", 5))
 
 
 def is_live_mode() -> bool:
@@ -105,8 +110,9 @@ async def execute_prompt(
 
 
 def write_execute_dryrun(result: ExecuteResult) -> None:
+    path = get_paths().execute_dryrun_log()
     safe_append_jsonl(
-        get_paths().execute_dryrun_log(),
+        path,
         {
             "ts": time.time(),
             "trigger_name": result.trigger_name,
@@ -117,12 +123,15 @@ def write_execute_dryrun(result: ExecuteResult) -> None:
             "reads_cache_ok": result.reads_cache_ok,
         },
     )
+    max_bytes, keep_n = _forensic_rotation_params()
+    rotate_jsonl_if_needed(path, max_bytes=max_bytes, keep_n=keep_n)
 
 
 def write_execute_blocked(result: ExecuteResult) -> None:
     """记录"本该发但 pipeline 返回空"的事实；不改任何发送/mark/重试行为。"""
+    path = get_paths().execute_dryrun_log()
     safe_append_jsonl(
-        get_paths().execute_dryrun_log(),
+        path,
         {
             "ts": time.time(),
             "trigger_name": result.trigger_name,
@@ -133,3 +142,5 @@ def write_execute_blocked(result: ExecuteResult) -> None:
             "blocked": True,
         },
     )
+    max_bytes, keep_n = _forensic_rotation_params()
+    rotate_jsonl_if_needed(path, max_bytes=max_bytes, keep_n=keep_n)

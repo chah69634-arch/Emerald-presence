@@ -10,7 +10,8 @@ from datetime import datetime, date
 from typing import Optional
 
 from core.error_handler import log_error
-from core.sandbox import get_paths
+from core.migration import for_read
+from core.sandbox import get_paths, safe_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ _COOLDOWNS: dict[str, int] = {
     "episodic_decay":      20 * 3600,   # 情景记忆衰减：20小时
     "spontaneous_recall":   4 * 3600,   # 主动回忆：4小时冷却
     "dlq_monitor":         24 * 3600,   # DLQ 扫描：24小时
+    "log_maintenance":     24 * 3600,   # forensic 日志归档/滚动：24小时
     "episodic_sweep":      30 * 60,     # mid_term 老化扫描：30分钟
     "garden_water":        30 * 60,     # 花园自动浇水：30分钟
     "garden_daily":        24 * 3600,   # 花园每日扫描：harvest/vase 状态
@@ -63,11 +65,37 @@ _COOLDOWNS: dict[str, int] = {
 # 冷却跟踪 {trigger_name: last_unix_timestamp}
 _last_trigger: dict[str, float] = {}
 
-def _load_scheduler_state():
-    """启动时从文件读回冷却状态"""
+def _migrate_scheduler_state_once():
+    """一次性迁移：拆分旧 scheduler_state.json → cooldowns + user_state，完成后删旧文件。"""
+    old_path = get_paths()._p("scheduler_state.json")
+    if not old_path.exists():
+        return
     try:
         import json
-        p = get_paths().scheduler_state()
+        data = json.loads(old_path.read_text(encoding="utf-8"))
+        cooldowns_path = get_paths().scheduler_cooldowns()
+        if not cooldowns_path.exists():
+            cooldowns_path.parent.mkdir(parents=True, exist_ok=True)
+            cooldowns_path.write_text(
+                json.dumps({"triggers": data.get("triggers", {})}), encoding="utf-8"
+            )
+        user_path = get_paths().scheduler_user_state()
+        if not user_path.exists():
+            user_path.parent.mkdir(parents=True, exist_ok=True)
+            user_data = {k: v for k, v in data.items() if k != "triggers"}
+            user_path.write_text(json.dumps(user_data), encoding="utf-8")
+        old_path.unlink()
+        logger.info("[scheduler] scheduler_state.json 已拆分迁移 → cooldowns + user_state")
+    except Exception as e:
+        logger.warning("[scheduler] scheduler_state 迁移失败: %s", e)
+
+
+def _load_scheduler_state():
+    """启动时从 scheduler_cooldowns.json 读回冷却状态。"""
+    _migrate_scheduler_state_once()
+    try:
+        import json
+        p = get_paths().scheduler_cooldowns()
         if p.exists():
             d = json.loads(p.read_text(encoding="utf-8"))
             triggers = d.get("triggers", {})
@@ -82,9 +110,9 @@ _load_scheduler_state()
 # 上次主动分享日记的时间戳（由 diary_tool 调用 mark_diary_shared 更新）
 def _get_last_diary_share() -> float:
     try:
-        p = get_paths().scheduler_state()
+        import json
+        p = get_paths().scheduler_user_state()
         if p.exists():
-            import json
             d = json.loads(p.read_text(encoding="utf-8"))
             return float(d.get("last_diary_share", 0))
     except Exception:
@@ -126,6 +154,11 @@ def _cfg() -> dict:
     return get_config().get("scheduler", {})
 
 
+def _cfg_retention() -> dict:
+    from core.config_loader import get_config
+    return get_config().get("retention", {})
+
+
 def _is_ready(name: str) -> bool:
     """检查触发器是否已度过冷却期"""
     elapsed = time.time() - _last_trigger.get(name, 0)
@@ -133,11 +166,11 @@ def _is_ready(name: str) -> bool:
 
 
 def _mark(name: str):
-    """记录触发时间，同时持久化"""
+    """记录触发时间，同时持久化到 scheduler_cooldowns.json。"""
     _last_trigger[name] = time.time()
     try:
         import json
-        p = get_paths().scheduler_state()
+        p = get_paths().scheduler_cooldowns()
         p.parent.mkdir(parents=True, exist_ok=True)
         existing = {}
         if p.exists():
@@ -251,7 +284,10 @@ async def _pipeline_send(
 def _user_talked_today(user_id: str) -> bool:
     """检查用户今天在事件日志中是否有记录"""
     today = date.today().strftime("%Y-%m-%d")
-    p = get_paths().event_log() / user_id / f"{today}.md"
+    uid = safe_user_id(user_id)
+    new_p = get_paths().user_memory_root(uid) / "event_log" / f"{today}.md"
+    old_p = get_paths()._p("event_log") / uid / f"{today}.md"
+    p = for_read(new_p, old_p)
     return p.exists() and p.stat().st_size > 10
 
 
@@ -260,7 +296,7 @@ def mark_diary_shared():
     _last_diary_share = time.time()
     try:
         import json
-        p = get_paths().scheduler_state()
+        p = get_paths().scheduler_user_state()
         p.parent.mkdir(parents=True, exist_ok=True)
         existing = {}
         if p.exists():
@@ -294,6 +330,52 @@ async def _check_sensor_aware():
             feed_sensor_tick(oid, event_count)
     except Exception:
         logger.exception("[scheduler] sensor_aware_tick 失败")
+
+
+# ── 资产 retention 与日志归档维护（每24小时执行一次）
+async def _check_log_maintenance():
+    if not _is_ready("log_maintenance"):
+        return
+    oid = _owner_id()
+    if not oid:
+        return
+    ret = _cfg_retention()
+    # 每个 GC 步骤独立保护：单步失败不阻塞其余步骤，也不导致 loop 挂掉
+    try:
+        from core.memory.event_log import cleanup_event_log
+        cleanup_event_log(oid)
+    except Exception as e:
+        log_error("scheduler.log_maintenance.event_log", e)
+    try:
+        from core.tools.reminder import prune_done_reminders
+        prune_done_reminders(oid, cutoff_days=int(ret.get("reminders", {}).get("prune_done_days", 30)))
+    except Exception as e:
+        log_error("scheduler.log_maintenance.reminders", e)
+    try:
+        from core.dream.dream_log import prune_archive
+        prune_archive(max_files=int(ret.get("dreams_archive", {}).get("max_files", 200)))
+    except Exception as e:
+        log_error("scheduler.log_maintenance.dreams_archive", e)
+    try:
+        from core.media_processor import gc_inbox, gc_image_cache
+        gc_inbox(max_age_days=int(ret.get("inbox", {}).get("max_age_days", 7)))
+        _ic = ret.get("image_cache", {})
+        gc_image_cache(
+            max_age_days=int(_ic.get("max_age_days", 30)),
+            max_files=int(_ic.get("max_files", 500)),
+        )
+    except Exception as e:
+        log_error("scheduler.log_maintenance.media", e)
+    try:
+        from core.memory.observation_compaction import compact_observations
+        _obs_path = get_paths().observations()
+        compact_observations(
+            _obs_path,
+            max_raw=int(ret.get("observations", {}).get("max_raw", 100)),
+        )
+    except Exception as e:
+        log_error("scheduler.log_maintenance.observations", e)
+    _mark("log_maintenance")  # 无论各步是否失败，都标记以免 24h 内重复触发
 
 
 # ── 备忘录到点提醒
@@ -522,6 +604,7 @@ async def _loop():
                     _check_holiday_boost(),
                     check_activity_switch(),
                     _check_dlq_monitor(),
+                    _check_log_maintenance(),
                     _check_episodic_sweep(),
                     _check_garden_water(),
                     _check_garden_daily(),

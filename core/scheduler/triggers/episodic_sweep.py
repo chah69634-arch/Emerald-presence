@@ -21,18 +21,27 @@ async def _check_episodic_sweep() -> None:
 
     _mark("episodic_sweep")
 
+    uids: set[str] = set()
+
+    # v1 布局：memory/{char_id}/ 下有 mid_term.json 的子目录
+    char_root = get_paths().memory_char_root()
+    if char_root.exists():
+        uids.update(
+            d.name for d in char_root.iterdir()
+            if d.is_dir() and (d / "mid_term.json").exists()
+        )
+
+    # legacy 布局：data/mid_term/{uid}.json
     mid_term_dir = get_paths().mid_term()
-    if not mid_term_dir.exists():
+    if mid_term_dir.exists():
+        uids.update(f.stem for f in mid_term_dir.glob("*.json"))
+
+    if not uids:
         return
 
-    uid_files = list(mid_term_dir.glob("*.json"))
-    if not uid_files:
-        return
+    logger.debug(f"[scheduler.episodic_sweep] 扫描 {len(uids)} 个 uid")
 
-    logger.debug(f"[scheduler.episodic_sweep] 扫描 {len(uid_files)} 个 uid")
-
-    for uid_file in uid_files:
-        uid = uid_file.stem
+    for uid in uids:
         try:
             await _sweep_uid(uid)
         except Exception as e:

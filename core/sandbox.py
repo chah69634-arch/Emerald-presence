@@ -1,218 +1,24 @@
 """
-测试沙盒隔离 — DataPaths 单例
-production 模式：路径前缀 data/
-test 模式：路径前缀 data/test_sandbox/{test_session_id}/
+测试沙盒隔离 — DataPaths 单例（胶水层）
+实现层：core/data_paths.py；迁移辅助：core/migration.py
 """
 
 import logging
-import re
-import shutil
-from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
-_SAFE_USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
-
-def _read_config_mode() -> str:
-    try:
-        import yaml
-        with open(_CONFIG_PATH, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-        return cfg.get("mode", "production")
-    except Exception:
-        return "production"
-
-
-class DataPaths:
-    def __init__(self, mode: str | None = None, test_session_id: str | None = None):
-        if mode is None:
-            mode = _read_config_mode()
-        self.mode = mode
-
-        if mode == "test":
-            if test_session_id is None:
-                test_session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.test_session_id = test_session_id
-            self._base = Path("data") / "test_sandbox" / test_session_id
-        else:
-            self.test_session_id = None
-            self._base = Path("data")
-
-    def _p(self, *parts: str | Path) -> Path:
-        clean_parts = []
-        for part in parts:
-            path = Path(part)
-            if path.is_absolute() or path.anchor:
-                raise ValueError(f"unsafe data path part: {part!r}")
-            if any(segment == ".." for segment in path.parts):
-                raise ValueError(f"unsafe data path part: {part!r}")
-            clean_parts.append(path)
-
-        target = self._base.joinpath(*clean_parts)
-        base_resolved = self._base.resolve()
-        target_resolved = target.resolve()
-        try:
-            target_resolved.relative_to(base_resolved)
-        except ValueError as e:
-            raise ValueError(f"data path escapes sandbox: {target}") from e
-        return target
-
-    # ── 桌宠端轮询文件（方案A：前缀同步到 config.yaml 的 data_prefix 字段）──────
-    def channel_queue(self) -> Path:
-        return self._p("channel_queue.json")
-
-    def mobile_queue(self) -> Path:
-        return self._p("mobile_queue.json")
-
-    def agent_actions(self) -> Path:
-        return self._p("agent_actions.json")
-
-    # ── 日志 / 状态 ────────────────────────────────────────────────────────────
-    def error_log(self) -> Path:
-        return self._p("error.log")
-
-    def scheduler_state(self) -> Path:
-        return self._p("scheduler_state.json")
-
-    # ── 记忆根目录 ─────────────────────────────────────────────────────────────
-    def character_growth(self) -> Path:
-        return self._p("character_growth")
-
-    def diary_context(self) -> Path:
-        return self._p("diary_context")
-
-    def pet_file(self) -> Path:
-        return self._p("pet.json")
-
-    def episodic_memory(self) -> Path:
-        return self._p("episodic_memory")
-
-    def memory_index(self) -> Path:
-        return self._p("memory_index")
-
-    def event_log(self) -> Path:
-        return self._p("event_log")
-
-    def group_context(self) -> Path:
-        return self._p("group_context")
-
-    def yexuan_inner_diary(self) -> Path:
-        return self._p("yexuan_inner", "diary")
-
-    def history(self) -> Path:
-        return self._p("history")
-
-    def profiles(self) -> Path:
-        return self._p("profiles")
-
-    def reminders(self) -> Path:
-        return self._p("reminders")
-
-    def diary_fallback(self) -> Path:
-        return self._p("diary_fallback")
-
-    def pending_perception_dir(self) -> Path:
-        p = self._p("pending_perception")
-        p.mkdir(parents=True, exist_ok=True)
-        return p
-
-    def activity_snapshot(self) -> Path:
-        return self._p("activity_snapshot.json")
-
-    def inbox_dir(self) -> Path:
-        p = self._p("inbox")
-        p.mkdir(parents=True, exist_ok=True)
-        return p
-
-    def image_cache_dir(self) -> Path:
-        p = self._p("image_cache")
-        p.mkdir(parents=True, exist_ok=True)
-        return p
-
-    def mood_state(self) -> Path:
-        return self._p("yexuan_inner", "mood_state.json")
-
-    def activity_pool(self) -> Path:
-        return self._p("yexuan_inner", "activity_pool.yaml")
-
-    def activity_state(self) -> Path:
-        return self._p("yexuan_inner", "activity_state.json")
-
-    def observations(self) -> Path:
-        return self._p("yexuan_inner", "observations.jsonl")
-
-    def mid_term(self) -> Path:
-        return self._p("mid_term")
-
-    def dreams_tmp_dir(self) -> Path:
-        return self._p("dreams", "tmp")
-
-    def dreams_archive_dir(self) -> Path:
-        return self._p("dreams", "archive")
-
-    def dreams_summaries_dir(self) -> Path:
-        return self._p("dreams", "summaries")
-
-    def dreams_impressions_dir(self) -> Path:
-        return self._p("dreams", "impressions")
-
-    def dream_state_path(self, user_id: str | int) -> Path:
-        return self._p("dreams", "state", safe_user_id(user_id), "dream_state.json")
-
-    def dream_settings_path(self, user_id: str | int) -> Path:
-        return self._p("dreams", "settings", safe_user_id(user_id) + ".json")
-
-    def garden(self) -> Path:
-        return self._p("garden")
-
-    def author_notes_pool(self) -> Path:
-        return Path("characters/yexuan_author_notes.json")
-
-    def author_note_state(self) -> Path:
-        return self._p("yexuan_inner", "author_note_state.json")
-
-    def trait_state(self) -> Path:
-        return self._p("yexuan_inner", "trait_state.json")
-
-    def dead_letter_queue(self) -> Path:
-        return self._p("dead_letter_queue")
-
-    def fixation_state_dir(self) -> Path:
-        return self._p("fixation_state")
-
-    def fixation_log(self) -> Path:
-        return self._p("logs", "fixation.jsonl")
-
-    def trigger_state_log(self) -> Path:
-        return self._p("logs", "trigger_state.jsonl")
-
-    def gating_shadow_log(self) -> Path:
-        return self._p("logs", "gating_shadow.jsonl")
-
-    def execute_dryrun_log(self) -> Path:
-        return self._p("logs", "execute_dryrun.jsonl")
-
-    def debug_llm_output_dir(self) -> Path:
-        return self._p("debug", "llm_output")
-
-    def user_identity_dir(self) -> Path:
-        return self._p("user_identity")
-
-    def cleanup(self):
-        if self.mode != "test":
-            raise RuntimeError("只有 test 模式才能执行 cleanup()")
-        sandbox_dir = Path("data") / "test_sandbox" / self.test_session_id
-        if sandbox_dir.exists():
-            shutil.rmtree(sandbox_dir)
-            logger.info(f"[sandbox] 已清理沙盒目录: {sandbox_dir}")
-        else:
-            logger.info(f"[sandbox] 沙盒目录不存在，无需清理: {sandbox_dir}")
-
-
-# ── 单例 ───────────────────────────────────────────────────────────────────────
+from core.data_paths import (  # noqa: E402
+    DataPaths, safe_user_id,
+    _LAYOUT_CHARACTER_INNER, _LAYOUT_REALITY, _LAYOUT_DREAM,
+    _TRANSITION_CHARACTER_INNER,
+)
+from core.migration import (  # noqa: E402
+    for_read, get_fallback_stats, reset_fallback_hit_count,
+    _FALLBACK_RECENT_MAX,
+)
 
 _instance: DataPaths | None = None
 
@@ -222,14 +28,6 @@ def get_paths() -> DataPaths:
     if _instance is None:
         _instance = DataPaths()
     return _instance
-
-
-def safe_user_id(value: str | int) -> str:
-    """Return a user id safe for use as a filename stem or directory name."""
-    safe = str(value)
-    if not safe or not _SAFE_USER_ID_RE.fullmatch(safe):
-        raise ValueError(f"unsafe user_id: {value!r}")
-    return safe
 
 
 def init_paths(mode: str | None = None, test_session_id: str | None = None) -> DataPaths:

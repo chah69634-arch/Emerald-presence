@@ -31,10 +31,17 @@ _VALID_KEYS = {k for k, _ in IDENTITY_DIMENSIONS}
 _REQUIRED_FIELDS = {"text", "confidence", "evidence_count", "last_updated"}
 
 
-def _identity_file(user_id: str) -> Path:
-    d = get_paths().user_identity_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{safe_user_id(user_id)}.yaml"
+def _identity_read_file(user_id: str, *, char_id: str = "yexuan") -> Path:
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "identity.yaml"
+
+
+def _identity_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局，保证父目录存在。"""
+    uid = safe_user_id(user_id)
+    p = get_paths().user_memory_root(uid, char_id=char_id) / "identity.yaml"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 async def load(user_id: str) -> dict:
@@ -44,7 +51,7 @@ async def load(user_id: str) -> dict:
     未知维度 key 记 warning 并跳过；维度数据缺必要字段同样 warning 并跳过整个维度。
     不带检索语义，不更新 strength。
     """
-    path = _identity_file(user_id)
+    path = _identity_read_file(user_id)
     async with uid_lock(user_id):
         if not path.exists():
             return {}
@@ -82,7 +89,7 @@ async def save(user_id: str, identity_dict: dict) -> bool:
     允许部分维度未填，不报错。
     成功返回 True，失败返回 False（不抛异常）。
     """
-    path = _identity_file(user_id)
+    write_path = _identity_write_file(user_id)
 
     filtered = {}
     for key, value in identity_dict.items():
@@ -93,9 +100,9 @@ async def save(user_id: str, identity_dict: dict) -> bool:
 
     async with uid_lock(user_id):
         try:
-            if path.exists():
-                bak = path.parent / (path.name + ".bak")
-                shutil.copy2(path, bak)
+            if write_path.exists():
+                bak = write_path.parent / (write_path.name + ".bak")
+                shutil.copy2(write_path, bak)
         except Exception as e:
             logger.warning(f"[user_identity] 备份失败 uid={user_id}: {e}")
 
@@ -105,7 +112,7 @@ async def save(user_id: str, identity_dict: dict) -> bool:
             sort_keys=False,
             default_flow_style=False,
         )
-        return safe_write_text(path, text)
+        return safe_write_text(write_path, text)
 
 
 async def format_for_prompt(user_id: str, min_confidence: float = 0.5) -> str:

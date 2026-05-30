@@ -88,7 +88,7 @@ async def update(
         from core.memory.trait_tracker import count_traits_in_history, update_trait_state
         from core.memory import short_term as _short_term
 
-        traits_path = Path("data/yexuan_traits.yaml")
+        traits_path = get_paths().yexuan_traits()
         with open(traits_path, encoding="utf-8") as _f:
             traits = yaml.safe_load(_f)["yexuan_traits"]
 
@@ -96,7 +96,8 @@ async def update(
         history_lines = [msg["content"] for msg in recent]
 
         counts = count_traits_in_history(history_lines, traits)
-        update_trait_state(counts, get_paths().trait_state())
+        _new_trait = get_paths().trait_state()
+        update_trait_state(counts, _new_trait, write_path=_new_trait)
         logger.debug(f"[character_growth] trait 统计完成: {user_id}")
     except Exception as _e:
         log_error("character_growth.trait_tracking", _e)

@@ -24,6 +24,8 @@ from enum import Enum
 from typing import Any
 
 from core.safe_write import safe_write_json
+from core.data_paths import _LAYOUT_DREAM
+from core.migration import for_read
 from core.sandbox import get_paths, safe_user_id
 
 logger = logging.getLogger(__name__)
@@ -40,8 +42,8 @@ _DEFAULTS: dict[str, Any] = {
     "memory_access": MemoryAccess.relationship_summary.value,
     "boundary_level": "body_perceptible",
     "world_layer": "reality_derived",
-    # Reserved seam — not consumed in MVP1
     "lucid_mode": "lucid_shared",
+    "jailbreak_preset": "default",
 }
 
 
@@ -64,8 +66,17 @@ def _path(user_id: str | int):
     return get_paths().dream_settings_path(user_id)
 
 
+def _read_path(user_id: str | int):
+    """S6 读降级：v1 新路径不存在时 fallback 到 legacy 路径。写始终走 _path()。"""
+    new = _path(user_id)
+    if _LAYOUT_DREAM == "legacy":
+        return new
+    old = get_paths()._p("dreams", "settings", safe_user_id(user_id) + ".json")
+    return for_read(new, old)
+
+
 def load(user_id: str | int) -> dict[str, Any]:
-    path = _path(user_id)
+    path = _read_path(user_id)
     if not path.exists():
         return dict(_DEFAULTS)
     try:

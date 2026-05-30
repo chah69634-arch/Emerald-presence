@@ -14,7 +14,6 @@ from core.config_loader import get_config
 
 router = APIRouter()
 CONFIG_FILE = Path("config.yaml")
-JAILBREAK_PRESETS_DIR = Path("data/jailbreak_presets")
 
 # ─── 工具开关 ──────────────────────────────────────────────────────────────────
 

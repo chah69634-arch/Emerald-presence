@@ -5,6 +5,16 @@ characters/*.json
 characters/*.txt
 !characters/character_template.json
 !characters/character_author_notes_template.json
+!characters/*.example.json
+# characters/dream_presets/ — 私人梦境预设（不含 .example），ignore-but-authored
+characters/dream_presets/
+# content/characters/ 内 ignore-but-authored 私人本体（.example.yaml 仍 track）
+# 以下路径是 activity_pool / yexuan_traits / author_notes_pool accessor 的新 primary 目标
+content/characters/*/*.yaml
+content/characters/*/*_author_notes.json
+!content/characters/**/*.example.yaml
+!content/characters/**/*.example.json
+# content/ (authored static) と defaults/ (seed) は track 対象 — ignore 除外不要
 config.yaml
 .claude/
 assets/stickers/*

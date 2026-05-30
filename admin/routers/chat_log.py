@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from admin.auth import verify_token
 from core.config_loader import get_config
-from core.sandbox import get_paths
+from core.migration import for_read
+from core.sandbox import get_paths, safe_user_id
 
 router = APIRouter()
 
@@ -27,7 +28,10 @@ def _log_dir() -> Path:
     owner = _owner_qq()
     if not owner:
         raise HTTPException(status_code=500, detail="owner_id not configured")
-    return get_paths().event_log() / owner
+    uid = safe_user_id(owner)
+    new = get_paths().user_memory_root(uid) / "event_log"
+    old = get_paths()._p("event_log") / uid
+    return for_read(new, old)
 
 
 def _parse_day(text: str) -> list[dict]:

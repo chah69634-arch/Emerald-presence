@@ -1,5 +1,5 @@
 """
-Impression store — data/dreams/impressions/{uid}.json
+Impression store — data/dreams/{char_id}/impressions/{uid}.json
 
 Physical isolation contract (I1):
   ★ Only impression_loader reads this directory.

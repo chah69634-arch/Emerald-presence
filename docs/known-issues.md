@@ -257,3 +257,13 @@ maturity_factor(ev/10) 双重门槛下，实际要多少轮对话才会有第一
 | `_layer` 透传 LLM | `now-safe-to-fix` | 先对照 `core/llm_client.py` 是否剥离元数据；若仍透传，独立修。 |
 | mes_example 精简 | `refactor-phase` | 属 prompt 体感与 token 策略，不作为当前小修。 |
 | 时间联动注入 | `refactor-phase` | 属 prompt/感知策略，等设计边界明确后再评估。 |
+
+2026.5.30迁移data，拆完sandbox剩下的一点架构优美债
+TD-001 sandbox retirement
+→ 50+ 文件依赖
+→ conftest 依赖
+→ 兼容层必须保留
+
+TD-002 _sb 命名
+→ 只是不好看
+→ 真改还撞 _dp()

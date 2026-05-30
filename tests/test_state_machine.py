@@ -71,19 +71,25 @@ def test_restless_returns_to_quiet_after_sensor_silence(monkeypatch):
     assert sm.get_state("u1") == sm.TriggerState.QUIET
 
 
-def test_state_persists_inside_scheduler_state_without_clobbering_existing_keys(monkeypatch):
+def test_state_persists_inside_scheduler_user_state_without_clobbering(monkeypatch):
     sm, _, paths = _fresh_state_machine(monkeypatch)
-    paths.scheduler_state().write_text(
-        json.dumps({"triggers": {"random_message": 123.0}, "last_diary_share": 456.0}),
-        encoding="utf-8",
+    # cooldowns lives in a separate file — set up pre-existing data
+    paths.scheduler_cooldowns().write_text(
+        json.dumps({"triggers": {"random_message": 123.0}}), encoding="utf-8"
+    )
+    # pre-existing user_state (e.g. last_diary_share)
+    paths.scheduler_user_state().write_text(
+        json.dumps({"last_diary_share": 456.0}), encoding="utf-8"
     )
 
     sm.notify_owner_turn("u1")
-    raw = json.loads(paths.scheduler_state().read_text(encoding="utf-8"))
+    raw = json.loads(paths.scheduler_user_state().read_text(encoding="utf-8"))
 
-    assert raw["triggers"] == {"random_message": 123.0}
     assert raw["last_diary_share"] == 456.0
     assert raw["trigger_state"]["u1"]["state"] == "CHATTING"
+    # cooldowns file must be untouched by state_machine
+    cooldowns_raw = json.loads(paths.scheduler_cooldowns().read_text(encoding="utf-8"))
+    assert cooldowns_raw["triggers"] == {"random_message": 123.0}
 
     sm._reset_for_tests()
     assert sm.get_state("u1") == sm.TriggerState.CHATTING

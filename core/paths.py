@@ -1,3 +1,4 @@
+# 规划占位：未来路径架构的命名空间，当前未启用，不与 core/data_paths.py 冲突。
 """
 Future data taxonomy path helpers.
 

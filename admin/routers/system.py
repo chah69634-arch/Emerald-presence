@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 
 from admin.auth import verify_token
 from core.config_loader import get_config
+from core.migration import get_fallback_stats
 from core.sandbox import get_paths
 
 router = APIRouter()
@@ -22,8 +23,13 @@ async def get_status(auth=Depends(verify_token)):
     from core import message_queue
 
     cfg = get_config()
-    history_dir = get_paths().history()
-    user_count = len(list(history_dir.glob("*.json"))) if history_dir.exists() else 0
+    # v1: 从 memory_char_root 枚举用户子目录；legacy: 扫 history/ *.json
+    char_root = get_paths().memory_char_root()
+    if char_root.exists():
+        user_count = sum(1 for d in char_root.iterdir() if d.is_dir())
+    else:
+        history_dir = get_paths().history()
+        user_count = len(list(history_dir.glob("*.json"))) if history_dir.exists() else 0
 
     return {
         "status": "running",
@@ -37,6 +43,7 @@ async def get_status(auth=Depends(verify_token)):
             "admin_host":       cfg.get("admin", {}).get("host",   "127.0.0.1"),
             "admin_port":       cfg.get("admin", {}).get("port",   8080),
         },
+        "fallback_migration": get_fallback_stats(),
     }
 
 

@@ -18,13 +18,22 @@ EXPIRE_SECONDS = 12 * 3600
 MAX_EVENTS = 20
 
 
-def _file(uid: str):
-    return get_paths().mid_term() / f"{safe_user_id(uid)}.json"
+def _read_file(uid: str, *, char_id: str = "yexuan") -> Path:
+    safe_uid = safe_user_id(uid)
+    return get_paths().user_memory_root(safe_uid, char_id=char_id) / "mid_term.json"
+
+
+def _write_file(uid: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局，保证父目录存在。"""
+    safe_uid = safe_user_id(uid)
+    p = get_paths().user_memory_root(safe_uid, char_id=char_id) / "mid_term.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def load(uid: str) -> list[dict]:
     """读取所有未过期事件，按 ts 升序返回。文件不存在返回 []。"""
-    path = _file(uid)
+    path = _read_file(uid)
     if not path.exists():
         return []
     try:
@@ -51,11 +60,11 @@ def append(
     summary = summary.strip()
     if not summary:
         return
-    path = _file(uid)
+    read_path = _read_file(uid)
+    write_path = _write_file(uid)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
+        if read_path.exists():
+            data = json.loads(read_path.read_text(encoding="utf-8"))
             events = data.get("events", [])
         else:
             events = []
@@ -72,18 +81,19 @@ def append(
             "promoted_to_episodic_id": None,
         }
         events.append(entry)
-        safe_write_json(path, {"events": events})
+        safe_write_json(write_path, {"events": events})
     except Exception as e:
         log_error("mid_term.append", e)
 
 
 def mark_promoted(uid: str, mid_id: str, ep_id: str) -> None:
     """将 mid_term 里某条 entry 的 promoted_to_episodic_id 字段置为 ep_id。幂等。"""
-    path = _file(uid)
+    read_path = _read_file(uid)
+    write_path = _write_file(uid)
     try:
-        if not path.exists():
+        if not read_path.exists():
             return
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(read_path.read_text(encoding="utf-8"))
         events = data.get("events", [])
         found = False
         for e in events:
@@ -92,7 +102,7 @@ def mark_promoted(uid: str, mid_id: str, ep_id: str) -> None:
                 found = True
                 break
         if found:
-            safe_write_json(path, {"events": events})
+            safe_write_json(write_path, {"events": events})
     except Exception as e:
         log_error("mid_term.mark_promoted", e)
 

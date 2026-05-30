@@ -16,19 +16,23 @@ router = APIRouter()
 # ── 工具函数 ─────────────────────────────────────────────────────────────────
 
 def _get_known_users() -> list[str]:
-    """扫描 history/ 和 profiles/ 目录，收集所有已知用户 ID"""
+    """扫描 history/ / profiles/（legacy）和 memory/{char_id}/（v1）目录，收集所有已知用户 ID。"""
     from core.sandbox import get_paths
     user_ids: set[str] = set()
 
+    # legacy 扫描（含过渡期仍存在旧文件的情况）
     history_dir = get_paths().history()
     if history_dir.exists():
-        for f in history_dir.glob("*.json"):
-            user_ids.add(f.stem)
+        user_ids.update(f.stem for f in history_dir.glob("*.json"))
 
     profiles_dir = get_paths().profiles()
     if profiles_dir.exists():
-        for f in profiles_dir.glob("*.json"):
-            user_ids.add(f.stem)
+        user_ids.update(f.stem for f in profiles_dir.glob("*.json"))
+
+    # v1 扫描：memory/{char_id}/ 下每个子目录名即为 uid
+    char_root = get_paths().memory_char_root()
+    if char_root.exists():
+        user_ids.update(d.name for d in char_root.iterdir() if d.is_dir())
 
     return sorted(user_ids)
 

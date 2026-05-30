@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from core.safe_write import safe_append_jsonl
+from core.safe_write import rotate_jsonl_if_needed, safe_append_jsonl
 from core.sandbox import get_paths
 from core.scheduler.execution import ExecuteFn, is_live_mode
 from core.scheduler.state_machine import TriggerState, get_state as get_current_state
@@ -57,6 +57,11 @@ class TriggerProposal:
     execute: Optional[ExecuteFn] = None
 
 
+def _shadow_cfg() -> dict:
+    from core.config_loader import get_config
+    return get_config().get("scheduler", {}).get("gating_shadow", {})
+
+
 def is_trigger_ready(trigger_name: str) -> bool:
     from core.scheduler.loop import _is_ready
 
@@ -69,12 +74,16 @@ def collect_and_decide(uid: str, proposals: list[TriggerProposal]) -> Optional[T
 
 
 def write_shadow_tick(uid: str) -> Optional[TriggerProposal]:
+    cfg = _shadow_cfg()
+    if not cfg.get("enabled", True):
+        return None
     ctx = _build_context(uid)
     proposals = _collect_native_proposals(ctx)
     picked, reason, candidates = _decide(uid, proposals)
     state = get_current_state(uid)
+    log_path = get_paths().gating_shadow_log()
     safe_append_jsonl(
-        get_paths().gating_shadow_log(),
+        log_path,
         {
             "ts": time.time(),
             "uid": uid,
@@ -84,6 +93,9 @@ def write_shadow_tick(uid: str) -> Optional[TriggerProposal]:
             "reason": reason,
         },
     )
+    max_bytes = int(cfg.get("max_size_mb", 5) * 1024 * 1024)
+    keep_n = int(cfg.get("keep", 3))
+    rotate_jsonl_if_needed(log_path, max_bytes=max_bytes, keep_n=keep_n)
     return picked
 
 

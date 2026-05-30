@@ -305,6 +305,64 @@ def parse_file_bytes(data: bytes, filename: str) -> str | None:
     return None
 
 
+def gc_inbox(max_age_days: int = 7) -> int:
+    """删除 inbox/ 中超过 max_age_days 天未被访问的裸上传文件。返回删除数。"""
+    inbox_dir = get_paths().inbox_dir()
+    if not inbox_dir.exists():
+        return 0
+    cutoff = time.time() - max_age_days * 86400
+    count = 0
+    for f in inbox_dir.iterdir():
+        if not f.is_file():
+            continue
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                count += 1
+        except Exception as e:
+            logger.error("[media_processor] inbox GC 失败 %s: %s", f.name, e)
+    if count:
+        logger.info("[media_processor] inbox GC: 已删 %d 个旧文件", count)
+    return count
+
+
+def gc_image_cache(max_age_days: int = 30, max_files: int = 500) -> int:
+    """删除 image_cache/ 中过期或超量的 sha256 缓存条目。返回删除条数。
+    先按条数上限裁剪（删最旧），再按龄删；两条件 OR。
+    """
+    cache_dir = get_paths().image_cache_dir()
+    if not cache_dir.exists():
+        return 0
+    all_jsons = list(cache_dir.glob("*.json"))
+    if not all_jsons:
+        return 0
+    cutoff_ts = time.time() - max_age_days * 86400
+
+    entries: list[tuple[float, Path]] = []
+    for f in all_jsons:
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+            ct = payload.get("created_at")
+            ctime = float(ct) if ct else f.stat().st_mtime
+        except Exception:
+            ctime = f.stat().st_mtime
+        entries.append((ctime, f))
+
+    entries.sort()  # 最旧在前
+    excess = max(0, len(entries) - max_files)
+    count = 0
+    for i, (ctime, f) in enumerate(entries):
+        if i < excess or ctime < cutoff_ts:
+            try:
+                f.unlink()
+                count += 1
+            except Exception as e:
+                logger.error("[media_processor] image_cache GC 失败 %s: %s", f.name, e)
+    if count:
+        logger.info("[media_processor] image_cache GC: 已删 %d 条", count)
+    return count
+
+
 async def ingest_file_bytes(data: bytes, filename: str) -> tuple[str, Path] | None:
     """落盘到 data/inbox/ + 解析。"""
     original_name = Path(filename or "file").name or "file"

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from threading import RLock
 
-from core.safe_write import safe_append_jsonl, safe_write_json
+from core.safe_write import rotate_jsonl_if_needed, safe_append_jsonl, safe_write_json
 from core.sandbox import get_paths
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ class TriggerStateMachine:
 
     def _load(self) -> None:
         try:
-            p = get_paths().scheduler_state()
+            p = get_paths().scheduler_user_state()
             if not p.exists():
                 return
             raw = json.loads(p.read_text(encoding="utf-8"))
@@ -241,7 +241,7 @@ class TriggerStateMachine:
 
     def _persist(self) -> None:
         try:
-            p = get_paths().scheduler_state()
+            p = get_paths().scheduler_user_state()
             existing = {}
             if p.exists():
                 existing = json.loads(p.read_text(encoding="utf-8"))
@@ -258,8 +258,9 @@ class TriggerStateMachine:
         reason: str,
         ts: float,
     ) -> None:
+        path = get_paths().trigger_state_log()
         safe_append_jsonl(
-            get_paths().trigger_state_log(),
+            path,
             {
                 "ts": ts,
                 "uid": uid,
@@ -267,6 +268,13 @@ class TriggerStateMachine:
                 "to": to_state.value,
                 "reason": reason,
             },
+        )
+        from core.config_loader import get_config
+        cfg = get_config().get("forensic_logs", {})
+        rotate_jsonl_if_needed(
+            path,
+            max_bytes=int(cfg.get("max_size_mb", 5) * 1024 * 1024),
+            keep_n=int(cfg.get("keep", 5)),
         )
 
 

@@ -8,7 +8,7 @@ import logging
 import time
 from pathlib import Path
 
-from core.sandbox import get_paths
+from core.sandbox import get_paths, _TRANSITION_CHARACTER_INNER
 from core.safe_write import safe_write_json
 from core.llm_output_validator import record_failure, is_paused, reset
 
@@ -48,13 +48,17 @@ _DEFAULT = {
 }
 
 
-def _path() -> Path:
+def _write_path() -> Path:
+    return get_paths().mood_state()
+
+
+def _read_path() -> Path:
     return get_paths().mood_state()
 
 
 def load() -> dict:
     try:
-        return json.loads(_path().read_text(encoding="utf-8"))
+        return json.loads(_read_path().read_text(encoding="utf-8"))
     except Exception:
         return dict(_DEFAULT)
 
@@ -73,7 +77,9 @@ def save(state: dict) -> None:
         record_failure("mood_state", str(state), "")
         return
 
-    safe_write_json(_path(), state)
+    safe_write_json(_write_path(), state)
+    if _TRANSITION_CHARACTER_INNER:
+        safe_write_json(get_paths()._p("yexuan_inner", "mood_state.json"), state)
     reset("mood_state")
 
 

@@ -3,7 +3,7 @@ from datetime import datetime
 
 
 def _write_event_log(paths, uid: str, date_text: str, body: str) -> None:
-    day_dir = paths.event_log() / uid
+    day_dir = paths.user_memory_root(uid) / "event_log"
     day_dir.mkdir(parents=True, exist_ok=True)
     (day_dir / f"{date_text}.md").write_text(body, encoding="utf-8")
 
@@ -65,13 +65,13 @@ def test_recall_last_mentioned_skips_no_recent_followable_topic(sandbox):
 def test_followed_topics_live_state_uses_scheduler_state(sandbox):
     from core.scheduler.last_mentioned import is_recently_followed, mark_topic_followed
 
-    state_path = sandbox.scheduler_state()
-    state_path.write_text(json.dumps({"triggers": {"random_message": 1.0}}), encoding="utf-8")
+    user_state_path = sandbox.scheduler_user_state()
+    user_state_path.write_text(json.dumps({"last_diary_share": 1.0}), encoding="utf-8")
 
     mark_topic_followed("实习材料", now_ts=1_000.0)
 
-    raw = json.loads(state_path.read_text(encoding="utf-8"))
-    assert raw["triggers"] == {"random_message": 1.0}
+    raw = json.loads(user_state_path.read_text(encoding="utf-8"))
+    assert raw["last_diary_share"] == 1.0
     assert raw["followed_topics"] == {"实习材料": 1_000.0}
     assert is_recently_followed("实习材料", now_ts=1_100.0)
     assert not is_recently_followed("实习材料", now_ts=1_000.0 + 4 * 24 * 3600)

@@ -85,19 +85,20 @@ def test_state_get_mood_state_unchanged(sandbox):
     assert mood_path.exists(), "Positive control: mood_state.update() should create the file"
 
 
-def test_state_get_scheduler_state_unchanged(sandbox):
+def test_state_get_scheduler_files_unchanged(sandbox):
     """
-    GET /dream/state does not touch scheduler_state.json.
+    GET /dream/state does not touch scheduler_cooldowns.json or scheduler_user_state.json.
     """
     from admin.routers.dream import dream_state_get
 
-    sched_path = sandbox.scheduler_state()
-    assert not sched_path.exists()
+    assert not sandbox.scheduler_cooldowns().exists()
+    assert not sandbox.scheduler_user_state().exists()
 
     with patch("admin.routers.dream._owner_uid", return_value=_UID):
         asyncio.run(dream_state_get())
 
-    assert not sched_path.exists(), "GET /dream/state must not touch scheduler_state.json"
+    assert not sandbox.scheduler_cooldowns().exists(), "GET /dream/state must not touch scheduler_cooldowns.json"
+    assert not sandbox.scheduler_user_state().exists(), "GET /dream/state must not touch scheduler_user_state.json"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

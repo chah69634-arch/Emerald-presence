@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from core.error_handler import log_error
-from core.sandbox import get_paths
+from core.sandbox import get_paths, safe_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +25,21 @@ _TIME_FMTS = [
 ]
 
 
-def _path(user_id: str) -> Path:
-    d = get_paths().reminders()
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"{user_id}.json"
+def _read_path(user_id: str, *, char_id: str = "yexuan") -> Path:
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "reminders.json"
+
+
+def _write_path(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局。"""
+    uid = safe_user_id(user_id)
+    p = get_paths().user_memory_root(uid, char_id=char_id) / "reminders.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def _load(user_id: str) -> list:
-    p = _path(user_id)
+    p = _read_path(user_id)
     try:
         if p.exists():
             with open(p, "r", encoding="utf-8") as f:
@@ -44,7 +51,7 @@ def _load(user_id: str) -> list:
 
 def _save(user_id: str, items: list):
     try:
-        with open(_path(user_id), "w", encoding="utf-8") as f:
+        with open(_write_path(user_id), "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log_error("reminder._save", e)
@@ -109,6 +116,30 @@ def mark_done(user_id: str, reminder_id: str):
             item["done"] = True
             break
     _save(user_id, items)
+
+
+def prune_done_reminders(user_id: str, cutoff_days: int = 30) -> int:
+    """删除 done=True 且 remind_at 早于 cutoff_days 天前的备忘录。返回删除数。"""
+    items = _load(user_id)
+    cutoff = datetime.now() - timedelta(days=cutoff_days)
+    kept, pruned = [], 0
+    for item in items:
+        if not item.get("done"):
+            kept.append(item)
+            continue
+        try:
+            remind_at = datetime.strptime(item["remind_at"], "%Y-%m-%d %H:%M")
+        except Exception:
+            kept.append(item)
+            continue
+        if remind_at >= cutoff:
+            kept.append(item)
+        else:
+            pruned += 1
+    if pruned:
+        _save(user_id, kept)
+        logger.info("[reminder] 已清理 %d 条旧 done 备忘录 (uid=%s)", pruned, user_id)
+    return pruned
 
 
 def get_due_reminders(user_id: str) -> list:

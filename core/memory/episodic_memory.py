@@ -17,27 +17,41 @@ from core.llm_output_validator import record_failure
 logger = logging.getLogger(__name__)
 
 
-def _mem_file(user_id: str) -> Path:
-    r = get_paths().episodic_memory()
-    r.mkdir(parents=True, exist_ok=True)
-    return r / f"{safe_user_id(user_id)}.json"
+def _mem_read_file(user_id: str, *, char_id: str = "yexuan") -> Path:
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "episodic.json"
 
 
-def _index_file(user_id: str) -> Path:
-    r = get_paths().memory_index()
-    r.mkdir(parents=True, exist_ok=True)
-    return r / f"{safe_user_id(user_id)}.json"
+def _mem_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局。"""
+    uid = safe_user_id(user_id)
+    p = get_paths().user_memory_root(uid, char_id=char_id) / "episodic.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _index_read_file(user_id: str, *, char_id: str = "yexuan") -> Path:
+    uid = safe_user_id(user_id)
+    return get_paths().user_memory_root(uid, char_id=char_id) / "memory_index.json"
+
+
+def _index_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局。"""
+    uid = safe_user_id(user_id)
+    p = get_paths().user_memory_root(uid, char_id=char_id) / "memory_index.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def _load_memories(user_id: str) -> list:
     try:
-        return json.loads(_mem_file(user_id).read_text(encoding="utf-8"))
+        return json.loads(_mem_read_file(user_id).read_text(encoding="utf-8"))
     except Exception:
         return []
 
 
 def _save_memories(user_id: str, memories: list) -> None:
-    safe_write_json(_mem_file(user_id), memories)
+    safe_write_json(_mem_write_file(user_id), memories)
 
 
 def load_unconsolidated(user_id: str) -> list[dict]:
@@ -53,13 +67,13 @@ def load_unconsolidated(user_id: str) -> list[dict]:
 
 def _load_index(user_id: str) -> dict:
     try:
-        return json.loads(_index_file(user_id).read_text(encoding="utf-8"))
+        return json.loads(_index_read_file(user_id).read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
 def _save_index(user_id: str, index: dict) -> None:
-    _index_file(user_id).write_text(
+    _index_write_file(user_id).write_text(
         json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 

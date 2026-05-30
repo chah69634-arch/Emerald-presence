@@ -22,18 +22,6 @@ def test_datapaths_fixed_paths_still_generate(sandbox, tmp_path):
     assert sandbox.channel_queue() == tmp_path / "channel_queue.json"
 
 
-def test_activity_pool_uses_test_sandbox_session_path():
-    paths = DataPaths(mode="test", test_session_id="unit_session")
-
-    assert paths.activity_pool() == (
-        Path("data")
-        / "test_sandbox"
-        / "unit_session"
-        / "yexuan_inner"
-        / "activity_pool.yaml"
-    )
-
-
 def test_debug_llm_output_dir_uses_test_sandbox_session_path():
     paths = DataPaths(mode="test", test_session_id="unit_session")
 

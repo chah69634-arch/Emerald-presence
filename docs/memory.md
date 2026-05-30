@@ -6,15 +6,17 @@
 
 ## 记忆层一览
 
-| 记忆类型 | 文件 | 更新时机 | prompt 位置 |
+| 记忆类型 | 文件（S6 新路径） | 更新时机 | prompt 位置 |
 |---|---|---|---|
-| 短期历史 | `data/history/{uid}.json` | 每轮实时写 | 层9 |
-| 事件流水账 | `data/event_log/{uid}/` | 每轮实时写 | 层6b（搜索后） |
-| 中期记忆 | `data/mid_term/{uid}.json` | 每轮慢队列压缩 | `mid_term` |
-| 情景记忆 | `data/episodic_memory/{uid}.json` | mid_term 显著情绪 eager 晋升，或 sweep 老化晋升 | 层6c |
-| 用户稳定行为模式 | `data/user_identity/{uid}.yaml` | fixation pipeline 达阈值后固化更新 | 层6a |
-| 角色认知（legacy/兼容） | `data/character_growth/叶瑄_{uid}.md` | 旧 handler / 工具查询仍保留，当前主链路不自动入队 | 当前主 prompt 不注入 |
-| 情绪状态 | `data/yexuan_inner/mood_state.json` | 每轮 post_process / 工具触发 / 深夜调度 | 层1内嵌软提示 |
+| 短期历史 | `data/memory/{char_id}/{uid}/history.json` | 每轮实时写 | 层9 |
+| 事件流水账 | `data/memory/{char_id}/{uid}/event_log/{date}.md` | 每轮实时写 | 层6b（搜索后） |
+| 中期记忆 | `data/memory/{char_id}/{uid}/mid_term.json` | 每轮慢队列压缩 | `mid_term` |
+| 情景记忆 | `data/memory/{char_id}/{uid}/episodic.json` | mid_term 显著情绪 eager 晋升，或 sweep 老化晋升 | 层6c |
+| 用户稳定行为模式 | `data/memory/{char_id}/{uid}/identity.yaml` | fixation pipeline 达阈值后固化更新 | 层6a |
+| 角色认知（legacy/兼容） | `data/characters/{char_id}/character_growth/角色_{uid}.md` | 旧 handler / 工具查询仍保留，当前主链路不自动入队 | 当前主 prompt 不注入 |
+| 情绪状态 | `data/characters/{char_id}/inner/mood_state.json` | 每轮 post_process / 工具触发 / 深夜调度 | 层1内嵌软提示 |
+
+> **V9 布局稳定**：所有累积型路径的 `for_read` 降级读分支已删除；S5/S6 旧型目录已归档至 `data/_legacy_retired/`。event_log union 读（30 天窗口内老化文件）保留至窗口过期后清理。
 
 ---
 
@@ -271,7 +273,7 @@ episodic_result = format_for_prompt(
 ## 三点五、中期记忆（mid_term）
 
 **文件**：`core/memory/mid_term.py`
-**存储**：`data/mid_term/{uid}.json`
+**存储**：`data/memory/{char_id}/{uid}/mid_term.json`（S6；旧 `data/mid_term/{uid}.json` 降级读）
 
 ### 定位
 
@@ -321,7 +323,7 @@ prompt 层位于 `6c_episodic` 和 `6d_diary` 之间，参数名 `mid_term_conte
 ## 四、用户稳定行为模式（user_identity）
 
 **文件**：`core/memory/user_identity.py`
-**存储**：`data/user_identity/{uid}.yaml`
+**存储**：`data/memory/{char_id}/{uid}/identity.yaml`（S6；旧 `data/user_identity/{uid}.yaml` 降级读）
 
 ### 定位
 
@@ -421,7 +423,7 @@ capture_turn → summarize_to_midterm → reflect_to_episodic → consolidate_to
 
 文件：`core/memory/trait_tracker.py`
 
-trait 统计逻辑目前仍在 legacy `character_growth.update()` 内：调用时会统计最近40条对话里各性格特质的关键词命中次数，维护最近5次的滑动窗口。累计命中≤2次的特质标记为 `underrepresented`，写入 `data/yexuan_inner/trait_state.json`。
+trait 统计逻辑目前仍在 legacy `character_growth.update()` 内：调用时会统计最近40条对话里各性格特质的关键词命中次数，维护最近5次的滑动窗口。累计命中≤2次的特质标记为 `underrepresented`，写入 `data/characters/yexuan/inner/trait_state.json`。
 
 当前主路径 `fixation_pipeline.consolidate_to_identity()` 没有调用 `trait_tracker`，因此只走新固化
 pipeline 时，`trait_state.json` 可能不会刷新。这是已知技术债，见 `docs/known-issues.md`。
@@ -436,7 +438,7 @@ author_note_rotator 每次选 note 时读取此文件，命中 underrepresented 
 
 **文件**：`core/memory/mood_state.py`
 
-**存哪**：`data/yexuan_inner/mood_state.json`（全局唯一，不区分用户）
+**存哪**：`data/characters/yexuan/inner/mood_state.json`（全局唯一，不区分用户）
 
 ### 数据结构
 
@@ -575,7 +577,7 @@ consolidate_to_identity
 | `source_mid_ids` | 来源 mid_id 列表 |
 | `consolidated_at` | 已被 consolidate_to_identity（或 legacy growth handler）消费时填时间戳，否则 None |
 
-**fixation_state**（`data/fixation_state/{uid}.json`，重启不丢状态）：
+**fixation_state**（`data/memory/{char_id}/{uid}/fixation_state.json`，S6；旧 `data/fixation_state/{uid}.json` 降级读；重启不丢状态）：
 | 字段 | 含义 |
 |---|---|
 | `last_consolidated_at` | 上次固化时间戳 |
@@ -660,6 +662,16 @@ cleanup_stale 1小时后兜底删除。
 ---
 
 ## 变更记录
+
+### 2026-05-29 — S6 per-user 记忆布局迁移
+
+**背景**：各类 per-user 记忆文件散落在十几个平级目录（`history/`、`mid_term/`、`episodic_memory/` 等），难以整体归档或按用户清理。
+
+**改动**：`_LAYOUT_REALITY = "v1"`，写入统一落 `data/memory/{char_id}/{uid}/`；旧型目录已在 V9 归档至 `data/_legacy_retired/`，`for_read` 降级读分支已全部删除。
+
+**涉及文件**：`core/sandbox.py`、`core/data_registry.py`、`core/memory/short_term.py`、`core/memory/mid_term.py`、`core/memory/episodic_memory.py`、`core/memory/user_profile.py`、`core/memory/user_identity.py`、`core/memory/diary_context.py`、`core/tools/reminder.py`、`core/memory/fixation_pipeline.py`、`core/memory/event_log.py`、`core/scheduler/last_mentioned.py`、`core/scheduler/loop.py`、`admin/routers/chat_log.py`、`admin/routers/users.py`、`admin/routers/system.py`、`core/scheduler/triggers/episodic_sweep.py`、`tools/extract_observations.py`、`ARCHITECTURE.md`、`docs/memory.md`
+
+---
 
 ### 2026-05-14 — 信息固化 pipeline 重构（`v-fixation-pipeline`）
 

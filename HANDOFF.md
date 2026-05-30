@@ -95,7 +95,10 @@ shadow log（data/logs/gating_shadow.jsonl）显示 would_pick **恒为 hr_criti
 - 高优先级（hr_critical/生日/period_reminder）保留 bypass_state_machine=True
 - 迁移一个验证一个,旧 _is_ready/_mark 路径同步关闭
 - 仍是 shadow 对比期还是真接管,需要用户决定（建议:Step 3 先继续 shadow,确认真实 urgency 下决策合理,再 Step 3.5 真接管）
-
+hr_critical recent-window 默认 10min,codex 引入,待集中
+删 watch.py hr_critical 即时 _pipeline_send,发话归 gating(数据本就定期读,无即时性损失)
+diary_share 去重源头(_last_diary_share)新旧路径分叉,真接管前统一
+Step3.5: sleep_end 即时路径 _mark(morning_greeting) 的跨触发器抑制,真接管时须在 gating 复制,防双重早安、Step4: topic_followup 改读 event_log last_mentioned,切断 character_growth(冻结)依赖
 ## 给新窗口助手的提醒
 
 - 别裸答,先看 docs/trigger-decision-layer.md 和 docs/assistant-turn-sink.md（用户会提供或已在项目文件里）

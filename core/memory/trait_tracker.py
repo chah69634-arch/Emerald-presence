@@ -36,9 +36,17 @@ def count_traits_in_history(history_lines: list[str], traits: list[dict]) -> dic
     return counts
 
 
-def update_trait_state(counts: dict[str, int], state_path: Path) -> None:
+def update_trait_state(
+    counts: dict[str, int],
+    state_path: Path,
+    *,
+    write_path: Path | None = None,
+) -> None:
     """
-    维护滑动窗口 state，计算 underrepresented traits，写回 state_path。
+    维护滑动窗口 state，计算 underrepresented traits，写回 state_path（或 write_path）。
+
+    state_path: 读取源（调用方可传 for_read(new, old) 实现 S5 降级读）
+    write_path: 写入目标；为 None 时写回 state_path（向后兼容）
 
     state 结构：
     {
@@ -84,5 +92,6 @@ def update_trait_state(counts: dict[str, int], state_path: Path) -> None:
         logger.warning("[trait_tracker] state['underrepresented'] 不是 list，跳过写入")
         return
 
-    safe_write_json(state_path, state)
+    _write_to = write_path if write_path is not None else state_path
+    safe_write_json(_write_to, state)
     logger.debug(f"[trait_tracker] underrepresented={underrepresented}")

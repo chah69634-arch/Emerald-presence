@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Literal
 
 from core.error_handler import log_error
-from core.safe_write import safe_append_jsonl, safe_write_json, safe_write_text
-from core.sandbox import get_paths
+from core.safe_write import rotate_jsonl_if_needed, safe_append_jsonl, safe_write_json, safe_write_text
+from core.sandbox import get_paths, safe_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -134,13 +134,22 @@ _IDENTITY_SYSTEM_PROMPT = """\
 # fixation_state 读写
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _state_file(uid: str) -> Path:
-    return get_paths().fixation_state_dir() / f"{uid}.json"
+def _state_read_file(uid: str, *, char_id: str = "yexuan") -> Path:
+    safe_uid = safe_user_id(uid)
+    return get_paths().user_memory_root(safe_uid, char_id=char_id) / "fixation_state.json"
+
+
+def _state_write_file(uid: str, *, char_id: str = "yexuan") -> Path:
+    """写路径：始终写新布局。"""
+    safe_uid = safe_user_id(uid)
+    p = get_paths().user_memory_root(safe_uid, char_id=char_id) / "fixation_state.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def _load_fixation_state(uid: str) -> dict:
     """读取 fixation_state，缺失字段按默认值填充，不阻塞读路径。"""
-    path = _state_file(uid)
+    path = _state_read_file(uid)
     try:
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -153,9 +162,7 @@ def _load_fixation_state(uid: str) -> dict:
 
 
 def _save_fixation_state(uid: str, state: dict) -> None:
-    path = _state_file(uid)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    safe_write_json(path, state)
+    safe_write_json(_state_write_file(uid), state)
 
 
 def _should_consolidate(state: dict) -> bool:
@@ -193,7 +200,15 @@ def _log_fixation(
     record.update(extra)
     if detail:
         record["detail"] = detail
-    safe_append_jsonl(get_paths().fixation_log(), record)
+    path = get_paths().fixation_log()
+    safe_append_jsonl(path, record)
+    from core.config_loader import get_config
+    cfg = get_config().get("forensic_logs", {})
+    rotate_jsonl_if_needed(
+        path,
+        max_bytes=int(cfg.get("max_size_mb", 5) * 1024 * 1024),
+        keep_n=int(cfg.get("keep", 5)),
+    )
     if status == "error":
         logger.warning(f"[fixation.{job}] uid={uid} error: {detail}")
     else:

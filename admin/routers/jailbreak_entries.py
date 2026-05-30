@@ -1,8 +1,7 @@
 """
 破限预设条目化管理
-存储：data/jailbreak_entries.json
+存储路径由 DataPaths.jailbreak_entries() 决定
 """
-from pathlib import Path
 from typing import Optional
 import json
 import uuid
@@ -12,23 +11,25 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from admin.auth import verify_token
+from core.sandbox import get_paths
 
 router = APIRouter()
-_PATH = Path("data/jailbreak_entries.json")
 
 
 def _read() -> dict:
-    if _PATH.exists():
+    p = get_paths().jailbreak_entries()
+    if p.exists():
         try:
-            return json.loads(_PATH.read_text(encoding="utf-8"))
+            return json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {"entries": []}
 
 
 def _write(data: dict):
-    _PATH.parent.mkdir(parents=True, exist_ok=True)
-    _PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    p = get_paths().jailbreak_entries()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _reload():
@@ -50,7 +51,8 @@ async def get_entries(auth=Depends(verify_token)):
 
 @router.get("/jailbreak-entries/export/json", summary="导出破限条目JSON")
 async def export_entries(auth=Depends(verify_token)):
-    content = _PATH.read_text(encoding="utf-8") if _PATH.exists() else '{"entries":[]}'
+    p = get_paths().jailbreak_entries()
+    content = p.read_text(encoding="utf-8") if p.exists() else '{"entries":[]}'
     return Response(content=content, media_type="application/json",
                     headers={"Content-Disposition": "attachment; filename=jailbreak_entries.json"})
 

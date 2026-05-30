@@ -1,6 +1,6 @@
 """
 用户关系管理模块
-读取 data/relations.yaml，提供用户关系查询接口
+读取 relations.yaml（经 DataPaths 路由），提供用户关系查询接口
 支持运行时热重载（admin 修改后不需要重启）
 """
 
@@ -13,21 +13,20 @@ from core.error_handler import log_error
 
 logger = logging.getLogger(__name__)
 
-RELATIONS_FILE = Path("data/relations.yaml")
-
 # 缓存的关系配置（字典）
 _relations_cache: dict | None = None
 
 
 def _load_relations() -> dict:
     """从磁盘读取 relations.yaml，出错时返回只有 default 的最小配置"""
+    from core.sandbox import get_paths
     global _relations_cache
     try:
-        with open(RELATIONS_FILE, "r", encoding="utf-8") as f:
+        with open(get_paths().relations(), "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         _relations_cache = data.get("relations", {})
     except FileNotFoundError:
-        logger.warning(f"[user_relation] relations.yaml 不存在，使用默认配置")
+        logger.warning("[user_relation] relations.yaml 不存在，使用默认配置")
         _relations_cache = {}
     except Exception as e:
         log_error("user_relation._load_relations", e)

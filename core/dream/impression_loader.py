@@ -1,5 +1,5 @@
 """
-Impression loader — the only reader of data/dreams/impressions/{uid}.json.
+Impression loader — the only reader of data/dreams/{char_id}/impressions/{uid}.json.
 
 Provides formatted text for reality prompt layer 6g_dream_impression.
 

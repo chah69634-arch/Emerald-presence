@@ -1,9 +1,8 @@
 """
 世界书管理路由
-提供 lorebook.yaml 的增删改查接口
+提供 lorebook.yaml 的增删改查接口（路径由 DataPaths.lorebook() 决定）
 """
 
-from pathlib import Path
 from typing import List, Optional
 
 import yaml
@@ -11,20 +10,20 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from admin.auth import verify_token
+from core.sandbox import get_paths
 
 router = APIRouter()
-
-LOREBOOK_PATH = Path("data/lorebook.yaml")
 
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
 
 def _read_lorebook() -> dict:
     """读取 lorebook.yaml，文件不存在时返回空结构"""
-    if not LOREBOOK_PATH.exists():
+    p = get_paths().lorebook()
+    if not p.exists():
         return {"entries": []}
     try:
-        with open(LOREBOOK_PATH, "r", encoding="utf-8") as f:
+        with open(p, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         if "entries" not in data:
             data["entries"] = []
@@ -35,9 +34,10 @@ def _read_lorebook() -> dict:
 
 def _write_lorebook(data: dict):
     """写回 lorebook.yaml"""
-    LOREBOOK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    p = get_paths().lorebook()
+    p.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(LOREBOOK_PATH, "w", encoding="utf-8") as f:
+        with open(p, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"写入 lorebook.yaml 失败: {e}")

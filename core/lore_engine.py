@@ -21,15 +21,12 @@ YAML 条目格式：
 
 import logging
 import re
-from pathlib import Path
 
 import yaml
 
 from core.error_handler import log_error
 
 logger = logging.getLogger(__name__)
-
-LOREBOOK_PATH = Path("data/lorebook.yaml")
 
 
 def _normalize_entry(entry: dict) -> dict | None:
@@ -83,19 +80,22 @@ class LoreEngine:
 
     def load(self):
         """
-        从 data/lorebook.yaml 读取世界书条目，追加到 self.entries。
+        从 lorebook.yaml 读取世界书条目，追加到 self.entries。
         文件不存在时静默跳过，格式错误时记录日志后跳过。
         可多次调用（每次重置再重新加载，避免重复）
         """
+        from core.sandbox import get_paths
+        path = get_paths().lorebook()
+
         # 重置已有条目，再重新加载（防止热重载时重复）
         self.entries = []
 
-        if not LOREBOOK_PATH.exists():
+        if not path.exists():
             logger.debug("[lore_engine] lorebook.yaml 不存在，跳过加载")
             return
 
         try:
-            with open(LOREBOOK_PATH, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except Exception as e:
             log_error("lore_engine.load", e)

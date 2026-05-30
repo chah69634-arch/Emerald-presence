@@ -11,7 +11,8 @@ from pathlib import Path
 
 from core.error_handler import log_error
 from core.safe_write import safe_write_json
-from core.sandbox import get_paths
+from core.migration import for_read
+from core.sandbox import get_paths, safe_user_id
 
 
 # TODO(policy.yaml): move the lookback window into scheduler policy.
@@ -236,7 +237,7 @@ def _mark_state_map(
         now_ts=ts,
         window_seconds=prune_window_seconds,
     )
-    safe_write_json(get_paths().scheduler_state(), state)
+    safe_write_json(get_paths().scheduler_user_state(), state)
 
 
 def _load_state_map(state_key: str) -> dict[str, float]:
@@ -277,7 +278,11 @@ def _read_recent_event_log(user_id: str, *, days: int, now: datetime) -> str:
     parts: list[str] = []
     for i in range(days):
         target_day = now - timedelta(days=i)
-        path = get_paths().event_log() / user_id / f"{target_day.strftime('%Y-%m-%d')}.md"
+        uid = safe_user_id(user_id)
+        date_str = target_day.strftime('%Y-%m-%d')
+        new_path = get_paths().user_memory_root(uid) / "event_log" / f"{date_str}.md"
+        old_path = get_paths()._p("event_log") / uid / f"{date_str}.md"
+        path = for_read(new_path, old_path)
         try:
             if path.exists():
                 text = path.read_text(encoding="utf-8").strip()
@@ -429,7 +434,7 @@ def _timestamp_for(date_text: str, time_text: str, order: int) -> float:
 
 
 def _read_scheduler_state() -> dict:
-    path = get_paths().scheduler_state()
+    path = get_paths().scheduler_user_state()
     if not path.exists():
         return {}
     try:

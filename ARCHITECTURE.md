@@ -122,7 +122,7 @@ QQ/客户端/手机/HTTP上传
     ↓ media_processor（文件落盘 + 解析）→ 拼 user message
     ↓
 用户消息
-    ↓ notify_owner_turn(uid) → scheduler_state.trigger_state + logs/trigger_state.jsonl
+    ↓ notify_owner_turn(uid) → scheduler_user_state.trigger_state + logs/trigger_state.jsonl
     ↓ get_tags()
     ↓ 探针 + 工具执行
     ↓
@@ -141,53 +141,59 @@ post_process ──写──→ data/ 目录各文件
 ## 数据目录结构
 
 > 所有路径必须通过 `core/sandbox.get_paths()` 获取，不得硬编码。
+>
+> **V9 布局稳定**：`_LAYOUT_CHARACTER_INNER = "v1"`（S5）、`_LAYOUT_REALITY = "v1"`（S6）已全面生效。
+> 所有累积型路径的 `for_read` 降级读分支已删除；旧型目录已归档至 `data/_legacy_retired/`。
+> event_log union 读（30 天窗口内 legacy 天文件）保留至窗口过期后再清理。
 
 ```
 data/
-├── event_log/{uid}/              按天分割的对话流水账（search 最近 30 天）
-├── episodic_memory/{uid}.json    情景记忆（最多 200 条，含 strength 衰减）
-├── memory_index/{uid}.json       标签倒排索引（episodic 用）
-├── user_identity/{uid}.yaml      用户稳定行为模式（当前 prompt 层 6a 主入口）
-├── character_growth/
-│   ├── 角色_{uid}.md             角色对用户的整体认知（legacy/兼容）
-│   ├── 角色_{uid}.felt.md        感受层版本（legacy）
-│   └── 角色_{uid}.fingerprint.txt  压缩版指纹（legacy；当前主 prompt 不注入）
-├── profiles/{uid}.json           用户画像
-├── history/{uid}.json            短期对话历史（磁盘轮数可配；prompt 近场保留 + 远场加权择优）
-├── mid_term/{uid}.json           中期对话摘要（12小时过期，最多20条，三时间桶）
-├── diary_context/{uid}.json      用户日记上下文
+├── characters/{char_id}/         ← S5 新增：角色维度根目录（当前 char_id = yexuan）
+│   ├── inner/
+│   │   ├── mood_state.json       角色当前情绪状态
+│   │   ├── activity_state.json   当前活动状态（activity_manager 管理）
+│   │   ├── activity_snapshot.json  桌宠推来的活动快照（TTL 5 分钟，runtime）
+│   │   ├── observations.jsonl    角色行为观察日志（style_hint 来源，prompt 层11）
+│   │   ├── author_note_state.json  author_note_rotator 轮转状态
+│   │   ├── trait_state.json      性格特质命中统计（trait_tracker 写，author_note_rotator 读）
+│   │   ├── presence.json         每个用户上次说话时间（presence.py 管理）
+│   │   └── diary/                角色日记（每日 23:00 调度器触发）
+│   ├── garden/
+│   │   ├── plants.json           五个情绪花槽状态（stage/growth/last_watered）
+│   │   └── storage.json          收获/花瓶/历史记录（harvest/vase/history）
+│   ├── pet.json                  角色宠物状态（core/pet.py 管理）
+│   └── character_growth/
+│       ├── 角色_{uid}.md         角色对用户的整体认知
+│       ├── 角色_{uid}.felt.md    感受层版本
+│       └── 角色_{uid}.fingerprint.txt  压缩版指纹
+├── memory/{char_id}/{uid}/       ← S6 新增：per-user 记忆根目录（当前 char_id = yexuan）
+│   ├── history.json              短期对话历史（磁盘轮数可配；prompt 近场保留 + 远场加权择优）
+│   ├── mid_term.json             中期对话摘要（12小时过期，最多20条，三时间桶）
+│   ├── episodic.json             情景记忆（最多 200 条，含 strength 衰减）
+│   ├── memory_index.json         标签倒排索引（episodic 用）
+│   ├── profile.json              用户画像
+│   ├── identity.yaml             用户稳定行为模式（prompt 层 6a 主入口）
+│   ├── identity.yaml.bak         写前备份（save() 自动维护）
+│   ├── diary_context.txt         用户日记上下文
+│   ├── reminders.json            用户备忘录列表（调度器检查到期即发）
+│   ├── fixation_state.json       固化 pipeline 状态（重启不丢）
+│   └── event_log/{date}.md       按天分割的对话流水账（search 最近 30 天）
+├── _legacy_retired/{timestamp}/      ← V9 归档：S5/S6 旧型目录（含 event_log 旧路径）
+│                                        event_log/{uid}/ 在 30 天窗口内仍被 union 读取
 ├── dreams/
 │   ├── tmp/                      Dream Session 临时文件（dream_only；永不作为记忆源）
 │   ├── archive/                  Dream Session 归档（archive 永不进 memory loader）
 │   ├── summaries/                Dream Session 摘要（永不进 memory loader）
 │   └── state/{uid}/dream_state.json  per-uid Dream Session 状态
 ├── group_context/{gid}.json      群聊最近动态（prompt 层 4 注入）
-├── reminders/{uid}.json          用户备忘录列表（调度器检查到期即发）
 ├── pending_perception/           桌面动作失败感知（时间戳命名，两阶段提交）
-├── activity_snapshot.json        桌宠推来的活动快照（TTL 5 分钟）
 ├── inbox/                        三端统一的文件落盘目录（QQ/客户端/手机/HTTP 上传都进这里）
 ├── image_cache/                  图片 sha256 索引（描述文本 + 元数据）
-├── pet.json                      角色宠物状态（core/pet.py 管理）
-├── garden/
-│   ├── plants.json               五个情绪花槽状态（stage/growth/last_watered）
-│   └── storage.json              收获/花瓶/历史记录（harvest/vase/history）
-├── yexuan_inner/
-│   ├── diary/                    角色日记（每日 23:00 调度器触发）
-│   ├── notes/                    角色读文档后的笔记（已废弃，保留磁盘历史）
-│   ├── notes_index.json          笔记索引（inbox 生成；暂未注入 prompt）（已废弃，保留磁盘历史）
-│   ├── mood_state.json           角色当前情绪状态（全局唯一）
-│   ├── activity_pool.yaml        活动状态池（手写配置，固定路径，不走沙盒隔离）
-│   ├── activity_state.json       当前活动状态（activity_manager 管理）
-│   ├── observations.jsonl        角色行为观察日志（style_hint 来源，prompt 层11）
-│   ├── author_note_state.json    author_note_rotator 轮转状态
-│   ├── trait_state.json          性格特质命中统计（trait_tracker 写，author_note_rotator 读）
-│   └── presence.json             每个用户上次说话时间（presence.py 管理）
 ├── agent_actions.json            桌面动作队列（桌宠端轮询）
 ├── channel_queue.json            调度器广播队列（asyncio.Lock 保护）
 ├── mobile_queue.json             手机主动消息轮询队列（MobileChannel 写，/mobile/poll 读）
-├── scheduler_state.json          调度器冷却状态
-│                                  其中 trigger_state 段记录触发状态机状态
-├── fixation_state/{uid}.json     固化 pipeline 状态（episodic_since_last/strength_accumulated 等，重启不丢）
+├── scheduler_cooldowns.json       调度器冷却时间戳（triggers map；durability=canonical）
+├── scheduler_user_state.json     调度器用户级运行态（trigger_state / last_diary_share / followed_topics；durability=runtime）
 ├── logs/
 │   ├── fixation.jsonl            固化 pipeline 每 job 追加一行（ts/job/uid/status/duration_ms）
 │   ├── trigger_state.jsonl       触发状态机每次状态切换追加一行
@@ -198,6 +204,11 @@ data/
 │   └── llm_output/              LLM异常输出存档（带时间戳，7天自动清理）
 └── (锁池)                        core/memory/locks.py 管理，运行时内存对象，不落盘
 ```
+
+> **authored 静态配置**（不走沙盒）：
+> - `content/characters/yexuan/activity_pool.yaml`
+> - `content/characters/yexuan/traits.yaml`
+> - `characters/yexuan_author_notes.json`
 
 ---
 

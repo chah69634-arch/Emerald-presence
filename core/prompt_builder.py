@@ -23,9 +23,6 @@ class LayerSpec:
 logger = logging.getLogger(__name__)
 _prompt_logger = logging.getLogger("prompt_builder.token")
 
-_JAILBREAK_ENTRIES_PATH = __import__("pathlib").Path("data/jailbreak_entries.json")
-
-
 def _load_activity_snapshot() -> str:
     from core.sandbox import get_paths
     import json
@@ -81,14 +78,16 @@ def _load_style_hint() -> str:
 
 def _load_jailbreak(layer: int | None = None) -> str:
     """
-    读取 data/jailbreak_entries.json，返回启用条目的内容。
+    读取 jailbreak_entries.json，返回启用条目的内容。
     layer指定时只返回该层的条目，None时返回所有启用条目。
     """
     try:
-        if not _JAILBREAK_ENTRIES_PATH.exists():
+        from core.sandbox import get_paths
+        path = get_paths().jailbreak_entries()
+        if not path.exists():
             return ""
         import json
-        data = json.loads(_JAILBREAK_ENTRIES_PATH.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
         entries = data.get("entries", [])
         parts = []
         for e in entries:
@@ -254,7 +253,7 @@ def build(
         try:
             import json, time
             from core.sandbox import get_paths
-            p = get_paths()._p("yexuan_inner", "presence.json")
+            p = get_paths().presence()
             if not p.exists():
                 return False
             data = json.loads(p.read_text(encoding="utf-8"))
@@ -555,7 +554,9 @@ def build(
         from datetime import date, timedelta
         yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
         from core.sandbox import get_paths
-        inner_diary = get_paths().yexuan_inner_diary() / f"{yesterday}.md"
+        _new_diary = get_paths().yexuan_inner_diary()
+        _diary_dir = _new_diary if _new_diary.is_dir() else get_paths()._p("yexuan_inner", "diary")
+        inner_diary = _diary_dir / f"{yesterday}.md"
         if inner_diary.exists():
             diary_text = inner_diary.read_text(encoding="utf-8").strip()
             if diary_text:

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from core.config_loader import get_config, _char_name
 from core.error_handler import log_error
-from core.sandbox import get_paths
+from core.sandbox import get_paths, _TRANSITION_CHARACTER_INNER
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +36,11 @@ _CLAMPED_FIELDS = {"mood", "hunger", "affection"}
 
 def get_pet() -> dict | None:
     """读取宠物数据，文件不存在或数据为空时返回 None"""
-    if not get_paths().pet_file().exists():
+    p = get_paths().pet_file()
+    if not p.exists():
         return None
     try:
-        with open(get_paths().pet_file(), "r", encoding="utf-8") as f:
+        with open(p, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not data or not data.get("name"):
             return None
@@ -51,10 +52,15 @@ def get_pet() -> dict | None:
 
 def save_pet(data: dict):
     """保存宠物数据到磁盘"""
-    get_paths().pet_file().parent.mkdir(parents=True, exist_ok=True)
+    p = get_paths().pet_file()
+    p.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(get_paths().pet_file(), "w", encoding="utf-8") as f:
+        with open(p, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        if _TRANSITION_CHARACTER_INNER:
+            old = get_paths()._p("pet.json")
+            with open(old, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log_error("pet.save_pet", e)
 
