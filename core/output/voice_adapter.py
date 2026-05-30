@@ -22,11 +22,35 @@
 import asyncio
 import base64
 import logging
+from pathlib import Path
 
 from core.config_loader import get_config
 from core.error_handler import log_error
 
 logger = logging.getLogger(__name__)
+
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+
+def _resolve_audio_path(path: str) -> str:
+    """Resolve ref_audio path: anchor relative paths, then fall back to same-stem variants."""
+    if not path:
+        return path
+    p = Path(path) if Path(path).is_absolute() else _PROJECT_ROOT / path
+    if p.exists():
+        return str(p)
+    # Try alternate extensions in priority order
+    for ext in (".wav", ".mp3", ".MP3", ".flac", ".ogg"):
+        alt = p.with_suffix(ext)
+        if alt.exists():
+            logger.debug(f"[voice_adapter] ref_audio fallback {p.name} → {alt.name}")
+            return str(alt)
+    # Glob same-stem prefix (handles names like 生气.mp4_xxx.wav)
+    matches = sorted(p.parent.glob(f"{p.stem}*.wav")) + sorted(p.parent.glob(f"{p.stem}*.mp3"))
+    if matches:
+        logger.debug(f"[voice_adapter] ref_audio glob fallback {p.name} → {matches[0].name}")
+        return str(matches[0])
+    return str(p)
 
 
 async def synthesize(text: str, emotion: str = "neutral") -> bytes | None:
@@ -58,6 +82,8 @@ async def synthesize(text: str, emotion: str = "neutral") -> bytes | None:
         ref_audio  = cfg.get("ref_audio",  "").strip()
         prompt_txt = cfg.get("prompt_text", "").strip()
         speed      = float(cfg.get("speed", 1.0))
+
+    ref_audio = _resolve_audio_path(ref_audio)
 
     if not ref_audio:
         logger.warning("[voice_adapter] tts.ref_audio 未配置，跳过语音合成")

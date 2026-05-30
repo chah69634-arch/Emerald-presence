@@ -93,7 +93,7 @@ class DataPaths:
 
     # ── 日志 / 状态 ────────────────────────────────────────────────────────────
     def error_log(self) -> Path:
-        return self._p("error.log")
+        return self._p("logs", "error.log")
 
     def scheduler_cooldowns(self) -> Path:
         return self._p("scheduler_cooldowns.json")
