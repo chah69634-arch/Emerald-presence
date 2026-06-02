@@ -178,6 +178,21 @@ def _split_message(text: str, max_len: int = MAX_LENGTH) -> list[str]:
     return parts if parts else [text]
 
 
+# Matches any XML-like open or close tag: <word> or </word>
+_RENDER_TAG_RE = re.compile(r"</?[a-zA-Z]\w*>")
+
+
+def strip_render_tags(text: str) -> str:
+    """Strip render-only XML tags (<say>, <thought>, <narration>, etc.) from text.
+
+    Used to clean output for QQ / mobile / memory targets that don't render NMP markup.
+    Desktop channel output is intentionally left intact.
+    """
+    stripped = _RENDER_TAG_RE.sub("", text)
+    stripped = re.sub(r" {2,}", " ", stripped)
+    return stripped.strip()
+
+
 class ResponseProcessor:
     """回复后处理类，封装模块级函数，供外部按类方式导入使用"""
 

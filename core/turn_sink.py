@@ -107,19 +107,24 @@ async def _fanout(
             if channel is not None and channel.is_active:
                 targets.append(channel)
 
+    from core.response_processor import strip_render_tags as _strip_tags
+
     sent_targets: list[str] = []
     failures: dict[str, str] = {}
     for channel in targets:
         name = getattr(channel, "name", channel.__class__.__name__)
         sent_targets.append(name)
         try:
+            # Desktop receives the full text (NMP tags intact for rendering).
+            # All other channels (QQ, mobile, …) receive plain stripped text.
+            text_to_send = assistant_text if name == "desktop" else _strip_tags(assistant_text)
             # Pass ws_msg_id only to the desktop channel so channel_message and
             # message_segments can share the same correlation id.  Other channels
             # (mobile, QQ) don't have this concept and are not changed.
             if ws_msg_id is not None and name == "desktop":
-                await channel.send(assistant_text, uid, behavior=behavior, msg_id=ws_msg_id)
+                await channel.send(text_to_send, uid, behavior=behavior, msg_id=ws_msg_id)
             else:
-                await channel.send(assistant_text, uid, behavior=behavior)
+                await channel.send(text_to_send, uid, behavior=behavior)
         except Exception as exc:
             failures[name] = str(exc)
             logger.warning("[turn_sink] fanout failed channel=%s: %s", name, exc)
@@ -165,13 +170,17 @@ async def record_assistant_turn(
     capture_trigger = "" if source == TurnSource.USER_CHAT else (trigger_name or "")
     behavior = payload.get("behavior") if payload else None
 
+    # Memory / history / event_log must store plain text, not render markup.
+    from core.response_processor import strip_render_tags as _strip_tags
+    memory_text = _strip_tags(assistant_text)
+
     post_info: dict | None = None
     async with _maybe_conversation_gate(uid, bypass_gate):
         if await_critical_post_process:
             post_info = await pipeline.post_process(
                 uid,
                 memory_input,
-                assistant_text,
+                memory_text,
                 trigger_name=capture_trigger,
                 envelope=envelope,
             )
@@ -180,7 +189,7 @@ async def record_assistant_turn(
                 pipeline.post_process(
                     uid,
                     memory_input,
-                    assistant_text,
+                    memory_text,
                     trigger_name=capture_trigger,
                     envelope=envelope,
                 )

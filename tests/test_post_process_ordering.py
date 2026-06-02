@@ -142,11 +142,12 @@ async def test_detect_emotion_timeout_falls_back_to_neutral(sandbox, monkeypatch
 
     pipeline = Pipeline(_MockCharacter(), lore_engine=None)
 
+    from core.write_envelope import stamp_user_chat
     # 不应向调用方抛出异常
-    await pipeline.post_process(uid, "你好", "hi", target_id="", is_group=False)
+    await pipeline.post_process(uid, "你好", "hi", target_id="", is_group=False, envelope=stamp_user_chat())
 
     # event_log assistant 行应含 emotion:neutral
-    day_dir = get_paths().event_log() / uid
+    day_dir = get_paths().user_memory_root(uid) / "event_log"
     day_files = [f for f in day_dir.glob("*.md") if f.name != "full_log.md"]
     assert day_files, "event_log 今日文件未创建"
     log_text = day_files[0].read_text(encoding="utf-8")

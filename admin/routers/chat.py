@@ -314,56 +314,6 @@ async def upload_ingest(
     raise HTTPException(status_code=415, detail="不支持的文件格式")
 
 
-@router.post("/desktop/trigger", summary="桌宠触发QQ回复（无鉴权）")
-async def desktop_trigger(body: dict):
-    """
-    QQ在前台时，桌宠消息走这个接口。
-    走完整pipeline后通过NapCat发送到QQ，不返回气泡内容。
-    """
-    message = (body.get("message") or "").strip()
-    if not message:
-        raise HTTPException(status_code=422, detail="message 不能为空")
-
-    from core.pipeline_registry import get as _get_pipeline
-    pipeline = _get_pipeline()
-    if pipeline is None:
-        raise HTTPException(status_code=503, detail="Bot pipeline 未初始化")
-
-    from core.config_loader import get_config
-    user_id = str(get_config().get("scheduler", {}).get("owner_id", ""))
-    if not user_id:
-        raise HTTPException(status_code=503, detail="owner_id 未配置")
-    try:
-        from core.scheduler.loop import mark_user_active
-        from core.scheduler.state_machine import notify_owner_turn
-
-        mark_user_active()
-        notify_owner_turn(user_id)
-    except Exception:
-        logger.exception("[desktop_trigger] trigger state notify_owner_turn 失败")
-
-    context = await pipeline.fetch_context(user_id, message)
-    messages, _ = pipeline.build_prompt(user_id, message, context, channel="desktop")
-    reply = await pipeline.run_llm(messages)
-
-    # 激活desktop通道
-    from channels.registry import get as _get_channel
-    desktop = _get_channel("desktop")
-    if desktop and hasattr(desktop, "set_active"):
-        desktop.set_active(True)
-
-    if reply:
-        from core.output import text_output
-        from core import response_processor
-        segments = response_processor.process(reply, pipeline.character.name)
-        await text_output.send(user_id, segments, is_group=False)
-        asyncio.create_task(
-            pipeline.post_process(user_id, message, reply)
-        )
-
-    return {"status": "sent"}
-
-
 @router.post("/desktop/activate", summary="桌宠上线激活desktop通道（无鉴权）")
 async def desktop_activate():
     from channels.registry import get as _get_channel

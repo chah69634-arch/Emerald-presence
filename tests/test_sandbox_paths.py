@@ -18,8 +18,8 @@ def test_datapaths_rejects_absolute_part(sandbox, tmp_path):
 
 
 def test_datapaths_fixed_paths_still_generate(sandbox, tmp_path):
-    assert sandbox.history() == tmp_path / "history"
-    assert sandbox.channel_queue() == tmp_path / "channel_queue.json"
+    assert sandbox.history() == tmp_path / "chars" / "yexuan" / "history"
+    assert sandbox.channel_queue() == tmp_path / "runtime" / "channel_queue.json"
 
 
 def test_debug_llm_output_dir_uses_test_sandbox_session_path():
@@ -54,13 +54,13 @@ def test_memory_paths_reject_malicious_uid(sandbox):
 
     checks = [
         lambda: short_term._history_path("../evil"),
-        lambda: user_profile._profile_path("../evil"),
-        lambda: user_identity._identity_file("../evil"),
-        lambda: event_log._day_file("../evil", datetime(2026, 1, 1)),
-        lambda: event_log._full_log_file("../evil"),
-        lambda: episodic_memory._mem_file("../evil"),
-        lambda: episodic_memory._index_file("../evil"),
-        lambda: mid_term._file("../evil"),
+        lambda: user_profile._profile_write_path("../evil"),
+        lambda: user_identity._identity_write_file("../evil"),
+        lambda: event_log._day_file_write("../evil", datetime(2026, 1, 1)),
+        lambda: event_log._full_log_file_write("../evil"),
+        lambda: episodic_memory._mem_write_file("../evil"),
+        lambda: episodic_memory._index_write_file("../evil"),
+        lambda: mid_term._write_file("../evil"),
     ]
 
     for check in checks:

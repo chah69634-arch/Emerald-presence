@@ -154,14 +154,14 @@ OpenAI-compatible API；宽松 provider 可能忽略，严格 provider 可能拒
 **位置**：`core/data_paths.py`、`admin/routers/users.py`、`admin/routers/system.py`、
 `core/scheduler/triggers/episodic_sweep.py`、`tools/extract_observations.py`
 
-现实记忆主路径已统一到 `user_memory_root()` / `memory_char_root()`。但
-`history()`、`profiles()`、`mid_term()` 等兼容 accessor 在 `_LAYOUT_REALITY="v1"` 时返回
-`data/chars/{char_id}/...` 过渡目录；部分调用方却把它们当作 legacy `data/history/`、
-`data/profiles/`、`data/mid_term/` fallback 使用。
+现实记忆主路径已统一到 `user_memory_root()` / `memory_char_root()`（S6）。
+`history()`、`profiles()`、`mid_term()` 等 DataPaths accessor 在 `_LAYOUT_REALITY="v1"` 时
+返回 `data/chars/{char_id}/...`（**已退休路径**，v1 模式下从不写入，扫描结果恒为空）。
+部分调用方仍将这些 accessor 当作 legacy `data/history/`、`data/profiles/`、`data/mid_term/`
+fallback 使用，实际扫描到空目录，属于无效 I/O。
 
-当前 v1 主路径通常能工作，但未迁移旧数据的兜底扫描可能漏读。
-
-**建议**：明确删除或重命名过渡 accessor；legacy fallback 直接使用显式旧路径，并补迁移测试。
+**建议**：删除 DataPaths 中 `_LAYOUT_REALITY` 的 v1 分支，令其直接对齐 `user_memory_root()`；
+同步移除调用方的 legacy fallback 扫描（参见 DataPaths 重构任务）。
 
 ---
 

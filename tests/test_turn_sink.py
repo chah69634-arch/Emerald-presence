@@ -413,7 +413,7 @@ async def test_message_segments_plain_text(monkeypatch):
     # content equals original text (no tags to strip)
     assert seg["content"] == raw
 
-    # single narration segment
+    # single segment — markdown path classifies plain text as "say"
     assert len(seg["segments"]) == 1
-    assert seg["segments"][0]["type"] == "narration"
+    assert seg["segments"][0]["type"] == "say"
     assert seg["segments"][0]["text"] == raw

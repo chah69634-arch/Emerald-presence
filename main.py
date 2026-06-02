@@ -92,6 +92,28 @@ async def handle_message(message: dict):
     mark_user_active()
 
     user_id: str      = message["user_id"]
+
+    # ── Dream guard: reject owner QQ messages when dream is active ──────────
+    try:
+        from core.config_loader import get_config as _get_config_dg
+        _owner_id_dg = str(_get_config_dg().get("scheduler", {}).get("owner_id", "")).strip()
+        if _owner_id_dg and str(user_id) == _owner_id_dg:
+            from core.dream.dream_state import read_state as _read_ds, DreamStatus as _DreamStatus
+            _ds_status = _read_ds(user_id).get("status")
+            if _ds_status in (_DreamStatus.DREAM_ACTIVE.value, _DreamStatus.DREAM_CLOSING.value):
+                logger.info(
+                    f"[handle_message] dream guard: 拒绝 owner QQ 消息 uid={user_id} status={_ds_status}"
+                )
+                try:
+                    from core.output import text_output as _to_dg
+                    _tgt_dg = message.get("group_id") or user_id
+                    await _to_dg.send(_tgt_dg, ["正在梦境中，请先退出梦境再回到现实聊天。"], bool(message.get("group_id")))
+                except Exception:
+                    pass
+                return
+    except Exception:
+        pass
+
     try:
         from core.config_loader import get_config as _get_config
         from core.scheduler.state_machine import notify_owner_turn
@@ -301,6 +323,12 @@ async def handle_message(message: dict):
     logger.info(f"[handle_message] 后处理完成，共 {len(segments)} 段")
     if not segments:
         logger.warning("[handle_message] LLM 回复经处理后为空，本轮不发送")
+        return
+    # QQ is a non-desktop channel: strip render tags before sending and storing
+    from core.response_processor import strip_render_tags as _strip_rt
+    segments = [s for s in (_strip_rt(seg) for seg in segments) if s]
+    if not segments:
+        logger.warning("[handle_message] 回复经标签清理后为空，本轮不发送")
         return
 
     # ── 步骤8：发送回复 ──────────────────────────────────────────────────────
