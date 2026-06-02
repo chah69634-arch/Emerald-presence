@@ -1,0 +1,111 @@
+"""
+[DEV-ONLY] GET /debug/user-hidden-state
+Read-only endpoint for observing UserHiddenState + Dream snapshot.
+
+Security contract:
+  - No write paths exposed.
+  - DREAM_DIRECT_WRITABLE = frozenset() — no field mutated here.
+  - Fail-closed: any error returns default values, never raises 500.
+"""
+import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends
+
+from admin.auth import verify_token
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+_DEFAULT_RESPONSE = {
+    "schema_version": 1,
+    "last_decay_tick": None,
+    "sensitivity": {"baseline": 50.0, "current": 50.0, "last_update_source": "init"},
+    "touch_need": {"baseline": 50.0, "deficit": 0.0, "last_update_source": "init"},
+    "embodied_ease": {"value": 50.0, "last_update_source": "init"},
+    "body_memory": [],
+    "dream_snapshot": {
+        "sensitivity": "mid",
+        "touch_appetite": "mid",
+        "embodied_ease": "neutral",
+        "memory_cues": [],
+    },
+}
+
+
+def _owner_uid() -> str:
+    from core.config_loader import get_config
+    return str(get_config().get("scheduler", {}).get("owner_id", "owner"))
+
+
+@router.get(
+    "/debug/user-hidden-state",
+    summary="[DEV] 读取 UserHiddenState + Dream Snapshot（只读）",
+    description=(
+        "返回当前用户的 UserHiddenState 各字段 + Dream Snapshot 投影，供开发者调试。\n\n"
+        "**只读。无任何写路径。**\n\n"
+        "- `sensitivity`: 当前 / 基线敏感度\n"
+        "- `touch_need`: 接触需求基线 + 当前亏欠量\n"
+        "- `embodied_ease`: 体感放松度\n"
+        "- `body_memory`: 身体记忆条目（按 weight 降序）\n"
+        "- `dream_snapshot`: Dream 实际注入的 bucket 投影\n\n"
+        "异常时 fail-closed，返回默认值，不抛 500。"
+    ),
+    tags=["Debug"],
+)
+async def get_user_hidden_state_debug(auth=Depends(verify_token)):
+    try:
+        from core.memory.user_hidden_state import to_dict, to_dream_snapshot
+        from core.memory.user_hidden_state_store import load_hidden_state
+
+        uid = _owner_uid()
+        now = datetime.now(timezone.utc).isoformat()
+
+        state = load_hidden_state(uid)
+        raw = to_dict(state)
+        snapshot = to_dream_snapshot(state, now)
+
+        sens = raw["sensitivity"]
+        touch = raw["touch_need"]
+        ee = raw["embodied_ease"]
+
+        body_memory = sorted(
+            raw["body_memory"]["entries"],
+            key=lambda e: e["weight"],
+            reverse=True,
+        )
+
+        return {
+            "schema_version": raw["schema_version"],
+            "last_decay_tick": raw.get("last_decay_tick"),
+            "sensitivity": {
+                "baseline": sens["baseline"]["value"],
+                "current": sens["current"]["value"],
+                "last_update_source": sens["current"]["last_update_source"],
+            },
+            "touch_need": {
+                "baseline": touch["baseline"]["value"],
+                "deficit": touch["deficit"]["value"],
+                "last_update_source": touch["deficit"]["last_update_source"],
+            },
+            "embodied_ease": {
+                "value": ee["value"],
+                "last_update_source": ee["last_update_source"],
+            },
+            "body_memory": [
+                {
+                    "cue": e["cue"],
+                    "response_tag": e["response_tag"],
+                    "weight": round(e["weight"], 4),
+                }
+                for e in body_memory
+            ],
+            "dream_snapshot": snapshot,
+        }
+
+    except Exception as exc:
+        logger.warning(
+            "[hidden_state_debug] error building response: %s — returning defaults", exc
+        )
+        return dict(_DEFAULT_RESPONSE)

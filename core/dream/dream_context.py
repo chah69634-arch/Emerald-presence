@@ -100,6 +100,19 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
         snapshot["episodic_summary"] = ""
         snapshot["mid_term_context"] = ""
 
+    # ── user_hidden_state_snapshot (Phase 4 — read-only bucket projection) ─────
+    # Loaded once at dream entry and frozen into context_snapshot.
+    # Dream turns MUST NOT write back to hidden state via this snapshot.
+    # DREAM_DIRECT_WRITABLE = frozenset() — no field may be written from Dream.
+    # Fail-closed: any error → empty dict; Dream is never blocked.
+    try:
+        from core.memory.user_hidden_state_store import load_dream_snapshot as _load_hs
+        _hs_now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        snapshot["user_hidden_state_snapshot"] = _load_hs(user_id, _hs_now)
+    except Exception as _hs_exc:
+        logger.warning(f"[dream_context] user_hidden_state_snapshot failed: {_hs_exc}")
+        snapshot["user_hidden_state_snapshot"] = {}
+
     return snapshot
 
 

@@ -71,6 +71,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -343,19 +344,81 @@ def _logistic_step(x: float, center: float = SCALAR_CENTER, steepness: float = 0
 def apply_time_decay(state: UserHiddenState, now: str) -> UserHiddenState:
     """Apply passive time-based decay to all scalar fields.
 
-    Phase 1 requirement:
-      Caller MUST hold a WriteEnvelope with can_write_memory=True before
-      invoking this function and persisting the returned state.
-      This function itself does not emit a WriteEnvelope stamp.
-      It does not write memory, mood, profile, or event_log.
+    Caller MUST hold a WriteEnvelope with can_write_memory=True before
+    invoking this function and persisting the returned state.
+    This function itself does not emit a WriteEnvelope stamp.
+    It does not write memory, mood, profile, or event_log.
 
     Dream-derived sources must not call this directly;
     decay is applied by the Reality-side scheduler tick only.
 
-    Raises:
-        NotImplementedError: Phase 0 — implementation deferred to Phase 1.
+    First-run (last_decay_tick is None): sets last_decay_tick = now, no value changes.
+    Clock-rollback (elapsed_days < 0): clamped to 0, no decay applied.
     """
-    raise NotImplementedError("apply_time_decay: Phase 0 stub — implement in Phase 1")
+    if state.last_decay_tick is None:
+        state.last_decay_tick = now
+        return state
+
+    try:
+        elapsed_days = (
+            datetime.fromisoformat(now) - datetime.fromisoformat(state.last_decay_tick)
+        ).total_seconds() / 86400.0
+    except (ValueError, TypeError):
+        elapsed_days = 0.0
+
+    if elapsed_days < 0.0:
+        elapsed_days = 0.0
+
+    # sensitivity.current → baseline
+    state.sensitivity.current.value = _clamp(_regress(
+        state.sensitivity.current.value,
+        state.sensitivity.baseline.value,
+        elapsed_days, CURRENT_SENS_REGRESS_HL_DAYS,
+    ))
+    state.sensitivity.current.last_updated = now
+    state.sensitivity.current.last_update_source = UpdateSource.TIME_DECAY
+
+    # sensitivity.baseline → SCALAR_CENTER
+    state.sensitivity.baseline.value = _clamp(_regress(
+        state.sensitivity.baseline.value,
+        SCALAR_CENTER, elapsed_days, SENS_BASELINE_CENTER_HL_DAYS,
+    ))
+    state.sensitivity.baseline.last_updated = now
+    state.sensitivity.baseline.last_update_source = UpdateSource.TIME_DECAY
+
+    # touch_need.deficit → 0
+    state.touch_need.deficit.value = _clamp(_regress(
+        state.touch_need.deficit.value,
+        0.0, elapsed_days, TOUCH_DEFICIT_DECAY_HL_DAYS,
+    ))
+    state.touch_need.deficit.last_updated = now
+    state.touch_need.deficit.last_update_source = UpdateSource.TIME_DECAY
+
+    # touch_need.baseline → SCALAR_CENTER
+    state.touch_need.baseline.value = _clamp(_regress(
+        state.touch_need.baseline.value,
+        SCALAR_CENTER, elapsed_days, TOUCH_BASELINE_CENTER_HL_DAYS,
+    ))
+    state.touch_need.baseline.last_updated = now
+    state.touch_need.baseline.last_update_source = UpdateSource.TIME_DECAY
+
+    # embodied_ease → SCALAR_CENTER
+    state.embodied_ease.value = _clamp(_regress(
+        state.embodied_ease.value,
+        SCALAR_CENTER, elapsed_days, EMBODIED_EASE_CENTER_HL_DAYS,
+    ))
+    state.embodied_ease.last_updated = now
+    state.embodied_ease.last_update_source = UpdateSource.TIME_DECAY
+
+    # body_memory weights → 0 (weights decay but entries are NOT evicted here)
+    for entry in state.body_memory.entries:
+        entry.weight = _clamp(
+            _regress(entry.weight, 0.0, elapsed_days, MEMORY_EXTINCTION_HL_DAYS),
+            lo=WEIGHT_MIN, hi=WEIGHT_MAX,
+        )
+
+    state.last_decay_tick = now
+    return state
 
 
 def nudge_current_sensitivity(
@@ -378,6 +441,8 @@ def nudge_current_sensitivity(
     be passed unless the caller's WriteEnvelope explicitly grants
     can_write_memory=True for sensor paths.
     """
+    if not isinstance(source, UpdateSource):
+        raise TypeError(f"source must be UpdateSource, got {type(source).__name__}")
     state.sensitivity.current.value = _clamp(state.sensitivity.current.value + delta)
     state.sensitivity.current.last_updated = now
     state.sensitivity.current.last_update_source = source
@@ -391,15 +456,20 @@ def accrue_touch_deficit(
 ) -> UserHiddenState:
     """Increase touch deficit based on elapsed time without touch contact.
 
-    Phase 1 requirement:
-      Caller MUST hold a WriteEnvelope with can_write_memory=True.
-      This function does not emit a WriteEnvelope stamp.
-      It does not write memory, mood, profile, or event_log.
+    Caller MUST hold a WriteEnvelope with can_write_memory=True.
+    This function does not emit a WriteEnvelope stamp.
+    It does not write memory, mood, profile, or event_log.
 
-    Raises:
-        NotImplementedError: Phase 0 — implementation deferred to Phase 1.
+    elapsed_days <= 0 → no-op (no stamp, no mutation).
     """
-    raise NotImplementedError("accrue_touch_deficit: Phase 0 stub")
+    if elapsed_days <= 0.0:
+        return state
+    accrual_per_day = SCALAR_MAX / TOUCH_DEFICIT_DECAY_HL_DAYS  # ~10 points/day
+    delta = _clamp(accrual_per_day * elapsed_days, lo=0.0, hi=SCALAR_MAX)
+    state.touch_need.deficit.value = _clamp(state.touch_need.deficit.value + delta)
+    state.touch_need.deficit.last_updated = now
+    state.touch_need.deficit.last_update_source = UpdateSource.REALITY_BEHAVIOR
+    return state
 
 
 def discharge_touch_deficit(
@@ -414,6 +484,8 @@ def discharge_touch_deficit(
     This function does not emit a WriteEnvelope stamp.
     It does not write memory, mood, profile, or event_log.
     """
+    if not isinstance(source, UpdateSource):
+        raise TypeError(f"source must be UpdateSource, got {type(source).__name__}")
     state.touch_need.deficit.value = _clamp(state.touch_need.deficit.value - amount)
     state.touch_need.deficit.last_updated = now
     state.touch_need.deficit.last_update_source = source
@@ -452,11 +524,14 @@ def nudge_embodied_ease(
 
     Dream-derived sources (DREAM_AFTERGLOW, DREAM_IMPRESSION, DREAM_BODY_EVENT)
     must only enter via the Reality-side integrator at Dream exit.
-
-    Raises:
-        NotImplementedError: Phase 0 — implementation deferred to Phase 1.
     """
-    raise NotImplementedError("nudge_embodied_ease: Phase 0 stub")
+    if not isinstance(source, UpdateSource):
+        raise TypeError(f"source must be UpdateSource, got {type(source).__name__}")
+    delta = _clamp(delta, lo=-MAX_NUDGE_PER_EVENT, hi=MAX_NUDGE_PER_EVENT)
+    state.embodied_ease.value = _clamp(state.embodied_ease.value + delta)
+    state.embodied_ease.last_updated = now
+    state.embodied_ease.last_update_source = source
+    return state
 
 
 def reinforce_body_memory(
@@ -481,10 +556,55 @@ def reinforce_body_memory(
     Dream-derived sources must only enter via Reality-side integrator at exit.
     SENSOR_SIGNAL must not be passed without explicit WriteEnvelope grant.
 
-    Raises:
-        NotImplementedError: Phase 0 — implementation deferred to Phase 1.
+    Long-term layer: valid write path is integrate_body_cue* (Reality-side, Phase 3+).
     """
-    raise NotImplementedError("reinforce_body_memory: Phase 0 stub")
+    if not isinstance(source, UpdateSource):
+        raise TypeError(f"source must be UpdateSource, got {type(source).__name__}")
+
+    cue_norm = cue.strip().lower()
+    if not cue_norm:
+        return state  # empty cue → no-op, no error
+
+    strength = _clamp(strength, lo=WEIGHT_MIN, hi=WEIGHT_MAX)
+
+    existing = next(
+        (e for e in state.body_memory.entries if e.cue.strip().lower() == cue_norm),
+        None,
+    )
+
+    if existing is not None:
+        old_w = existing.weight
+        existing.weight = _clamp(
+            old_w + strength * (WEIGHT_MAX - old_w), lo=WEIGHT_MIN, hi=WEIGHT_MAX
+        )
+        existing.last_reinforced = now
+        existing.response_tag = response_tag
+        return state
+
+    new_entry = BodyMemoryEntry(
+        cue=cue_norm,
+        response_tag=response_tag,
+        weight=strength,
+        created_at=now,
+        last_reinforced=now,
+    )
+
+    if len(state.body_memory.entries) < state.body_memory.max_entries:
+        state.body_memory.entries.append(new_entry)
+        return state
+
+    # Capacity full: evict weakest entry below MEMORY_EVICT_EPS
+    evict_candidates = [e for e in state.body_memory.entries if e.weight < MEMORY_EVICT_EPS]
+    if not evict_candidates:
+        _log.debug(
+            "[body_memory] capacity full, no evictable entry — new cue '%s' dropped", cue_norm
+        )
+        return state
+
+    weakest = min(evict_candidates, key=lambda e: e.weight)
+    state.body_memory.entries.remove(weakest)
+    state.body_memory.entries.append(new_entry)
+    return state
 
 
 def consolidate_baselines(
@@ -495,16 +615,25 @@ def consolidate_baselines(
 
     Intended for infrequent consolidation runs (weekly/monthly).
 
-    Phase 1 requirement:
-      Caller MUST hold a WriteEnvelope with can_write_memory=True.
-      This function does not emit a WriteEnvelope stamp.
-      It does not write memory, mood, profile, or event_log.
-      Must not be triggered from within a Dream turn.
+    Caller MUST hold a WriteEnvelope with can_write_memory=True.
+    This function does not emit a WriteEnvelope stamp.
+    It does not write memory, mood, profile, or event_log.
+    Must not be triggered from within a Dream turn.
 
-    Raises:
-        NotImplementedError: Phase 0 — implementation deferred to Phase 1.
+    Nudges baselines toward SCALAR_CENTER by BASELINE_LEARN_RATE per call.
+    Does not touch sensitivity.current, deficit, embodied_ease, or body_memory.
     """
-    raise NotImplementedError("consolidate_baselines: Phase 0 stub")
+    sens_b = state.sensitivity.baseline
+    sens_b.value = _clamp(sens_b.value + BASELINE_LEARN_RATE * (SCALAR_CENTER - sens_b.value))
+    sens_b.last_updated = now
+    sens_b.last_update_source = UpdateSource.CONSOLIDATION
+
+    tn_b = state.touch_need.baseline
+    tn_b.value = _clamp(tn_b.value + BASELINE_LEARN_RATE * (SCALAR_CENTER - tn_b.value))
+    tn_b.last_updated = now
+    tn_b.last_update_source = UpdateSource.CONSOLIDATION
+
+    return state
 
 
 def to_dict(state: UserHiddenState) -> dict[str, Any]:

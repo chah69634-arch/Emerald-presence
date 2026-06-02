@@ -28,6 +28,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 _dream_token_logger = logging.getLogger("dream_prompt.token")
 
+# ── Hidden-state injection gate (Phase 4) ─────────────────────────────────────
+# Trigger tags that enable user_hidden_state_snapshot injection.
+# Sources checked: local_state.scene_state, local_state.symbolic_anchors,
+#                  context_snapshot.scene_tags (future field).
+# Fail-closed: tag not found → no injection; exception → no injection.
+_HIDDEN_STATE_TRIGGER_TAGS: frozenset[str] = frozenset({"body_intimate", "physical_closeness"})
+
 # ── Token estimation ──────────────────────────────────────────────────────────
 
 _TOK_RATIO = 4  # chars per token heuristic for Chinese/mixed text
@@ -146,6 +153,69 @@ _D8_DREAM_DIRECTOR_NON_LUCID = """梦境导演注记（non_lucid 模式）：
   若她发出真实不适信号，立即以叶瑄自然方式柔化场景或过渡出去。"""
 
 
+def _collect_scene_tags(
+    local_state: dict[str, Any],
+    context_snapshot: dict[str, Any],
+) -> frozenset[str]:
+    """Collect scene/lore tags from available sources. Fail-closed → empty set."""
+    tags: set[str] = set()
+    try:
+        scene = local_state.get("scene_state")
+        if isinstance(scene, str) and scene.strip():
+            tags.add(scene.strip().lower())
+        for anchor in (local_state.get("symbolic_anchors") or []):
+            if isinstance(anchor, str) and anchor.strip():
+                tags.add(anchor.strip().lower())
+        for t in (context_snapshot.get("scene_tags") or []):
+            if isinstance(t, str) and t.strip():
+                tags.add(t.strip().lower())
+    except Exception:
+        pass
+    return frozenset(tags)
+
+
+def _should_inject_hidden_state_snapshot(
+    local_state: dict[str, Any],
+    context_snapshot: dict[str, Any],
+) -> bool:
+    """Return True iff a trigger tag is present in current scene sources.
+
+    Fail-closed: any exception → False (no injection).
+    """
+    try:
+        return bool(_collect_scene_tags(local_state, context_snapshot) & _HIDDEN_STATE_TRIGGER_TAGS)
+    except Exception:
+        return False
+
+
+def _format_hidden_state_snapshot(snapshot_data: dict[str, Any]) -> str:
+    """Render a hidden-state bucket snapshot as a compact labeled block.
+
+    Contract:
+      - No float values are ever emitted.
+      - No uid, timestamps, baselines, weights, or update_source fields.
+      - Returns '' on any error or malformed input (fail-closed).
+      - memory_cues line is omitted when the list is empty.
+    """
+    try:
+        if not isinstance(snapshot_data, dict) or not snapshot_data:
+            return ""
+        lines: list[str] = ["[user_hidden_state_snapshot]"]
+        for key in ("sensitivity", "touch_appetite", "embodied_ease"):
+            val = snapshot_data.get(key)
+            if not isinstance(val, str) or not val:
+                return ""  # malformed — never inject partial data
+            lines.append(f"{key}: {val}")
+        cues = snapshot_data.get("memory_cues")
+        if isinstance(cues, list) and cues:
+            cue_strs = [str(c) for c in cues if c and str(c).strip()]
+            if cue_strs:
+                lines.append(f"memory_cues: {', '.join(cue_strs)}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def build_dream_prompt(
     character: Any,
     user_id: str,
@@ -236,6 +306,25 @@ def build_dream_prompt(
         _records.append(_LayerRec("D4_frozen_reality", len(_d4), _est_tokens(_d4)))
     else:
         _records.append(_LayerRec("D4_frozen_reality", flags=["DISABLED"]))
+
+    # ── D4.5: user_hidden_state_snapshot (tag-gated, read-only, Phase 4) ────────
+    # Injected only when body_intimate / physical_closeness tag is detected in scene.
+    # Priority: lower than D4_frozen_reality; prune D4.5 before D4 if budget exceeded.
+    # Dream NEVER writes back — DREAM_DIRECT_WRITABLE = frozenset().
+    _d45_injected = False
+    try:
+        _hs_data = context_snapshot.get("user_hidden_state_snapshot", {})
+        if _should_inject_hidden_state_snapshot(local_state, context_snapshot):
+            _d45_text = _format_hidden_state_snapshot(_hs_data)
+            if _d45_text:
+                _d45 = f"# D4.5·用户隐性状态（只读快照）\n{_d45_text}"
+                system_layers.append(_d45)
+                _records.append(_LayerRec("D4.5_hidden_state", len(_d45), _est_tokens(_d45)))
+                _d45_injected = True
+    except Exception as _d45_exc:
+        logger.warning("[dream_prompt] D4.5 hidden_state_snapshot failed: %s", _d45_exc)
+    if not _d45_injected:
+        _records.append(_LayerRec("D4.5_hidden_state", flags=["DISABLED"]))
 
     # ── D5: body_projection (injected by pipeline, 叶瑄读投影文字) ───────────
     if body_projection_text:

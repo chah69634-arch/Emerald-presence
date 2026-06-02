@@ -476,17 +476,14 @@ class TestGateBoundaryAndSilentDrop:
 
     def test_ec38_wrong_type_event_raises_before_mutation(self):
         """EC-38 wrong-type guard: passing a DreamBodyStateEvent (wrong type) as
-        event_type to integrate_event raises AttributeError on `event_type.value`
-        BEFORE any envelope check or state mutation.
+        event_type to integrate_event raises TypeError BEFORE any envelope check
+        or state mutation.
 
-        Actual behavior (verified):
-          integrate_event() accesses event_type.value at the very first line of
-          the function body (before the envelope guard).  DreamBodyStateEvent is a
-          dataclass and has no `.value` attribute, so AttributeError is raised
-          immediately — the mutation branches are never reached.
+        Phase 3 upgrade: integrate_event now has an explicit isinstance guard that
+        raises TypeError (not AttributeError) before anything else runs.
 
         Security contract:
-          - AttributeError is raised (not a silent drop — fail is visible)
+          - TypeError is raised (clear, explicit, not an AttributeError)
           - State is unchanged at the point of the raise (no partial mutation)
 
         This is a fail-closed outcome from a data-integrity perspective:
@@ -501,8 +498,8 @@ class TestGateBoundaryAndSilentDrop:
             heat=0.8, sensitivity=0.9, tension=0.5, arousal=0.6, duration_min=30.0
         )
 
-        # The call raises before mutating state
-        with pytest.raises(AttributeError):
+        # Phase 3: explicit TypeError guard fires before any mutation
+        with pytest.raises(TypeError):
             integrate_event(wrong_event, state, _open(), NOW)  # type: ignore
 
         # State must be fully unchanged (raise occurred before any mutation)

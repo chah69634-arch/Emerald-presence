@@ -20,7 +20,7 @@
 | 用户稳定行为模式 | `data/runtime/memory/{char_id}/{uid}/identity.yaml` | fixation pipeline 达阈值后固化更新 | 层6a |
 | 角色认知（legacy/兼容） | `data/runtime/characters/{char_id}/character_growth/角色_{uid}.md` | 旧 handler / 工具查询仍保留，当前主链路不自动入队 | 当前主 prompt 不注入 |
 | 情绪状态 | `data/runtime/characters/{char_id}/inner/mood_state.json` | 每轮 post_process / 工具触发 / 深夜调度 | 层1内嵌软提示 |
-| 用户隐性状态（Phase 0） | 未落盘（Phase 0 stub，无磁盘 I/O） | Reality-side integrator + WriteEnvelope 写入；Dream 不得直接写 | 未接入 prompt（Phase 0） |
+| 用户隐性状态（Phase 4） | `data/runtime/memory/{char_id}/{uid}/hidden_state.json` | Reality-side integrator + WriteEnvelope；调度器 decay/consolidate tick | Dream D4.5 tag-gated bucket 只读快照（body_intimate / physical_closeness；不含 float） |
 
 > **当前 v1 写布局**：per-user 主链统一写入 `get_paths().user_memory_root()`，即
 > `data/runtime/memory/{char_id}/{uid}/`。迁移期 `for_read(new, old)` 仍保留在 event_log
@@ -731,14 +731,17 @@ sensor privacy 全系统已经完成。
 
 ---
 
-## 八、用户隐性状态（user_hidden_state）— Phase 2
+## 八、用户隐性状态（user_hidden_state）— Phase 4
 
 **文件**：
-- `core/memory/user_hidden_state.py` — 数据结构、常量、primitive 函数、`to_dict` / `from_dict` / `to_dream_snapshot`
-- `core/memory/user_hidden_state_integrator.py` — Reality Event + Impression → 中期层 integrator；Phase 2 disk-wired 入口 `integrate_*_and_save`
+- `core/memory/user_hidden_state.py` — 数据结构、常量、primitive 函数（全部已实现）、`to_dict` / `from_dict` / `to_dream_snapshot`
+- `core/memory/user_hidden_state_integrator.py` — 中期层 integrator（integrate_event/impression）+ Phase 3 长期层入口（integrate_body_cue*）+ TypeError 类型守卫 + `_assert_not_long_term`
 - `core/memory/user_hidden_state_store.py` — 磁盘 I/O（`load_hidden_state` / `save_hidden_state` / `load_dream_snapshot`）
+- `core/scheduler/triggers/hidden_state_decay.py`（Phase 3 新增）— 12h decay tick + 7d consolidate tick
+- `core/dream/dream_context.py`（Phase 4）— `build_snapshot()` 在入梦时调用 `load_dream_snapshot()` 并冻结进 `context_snapshot`
+- `core/dream/dream_prompt.py`（Phase 4）— D4.5 层 tag-gated 注入；`_should_inject_hidden_state_snapshot()` / `_format_hidden_state_snapshot()` helpers
 
-**当前状态**：Reality Event / Dream Impression 可经 integrator 更新中期层字段并持久化到磁盘。`to_dream_snapshot` 提供只读 bucket 快照供 Dream LLM 上下文注入。长期层仍受保护，consolidate / baseline 促进为 Phase 3+。
+**当前状态（Phase 4 完成）**：所有长期层写路径已激活并经 WriteEnvelope 门控。Dream 只读接入已完成（D4.5，tag-gated，bucket-only，fail-closed）。Dream 无写路径：`DREAM_DIRECT_WRITABLE = frozenset()`。
 
 ### 持久化（Phase 1.5）
 
@@ -753,22 +756,48 @@ sensor privacy 全系统已经完成。
 
 **WriteEnvelope 说明**：store 本身不执行 envelope 门控。调用方在调用 `save_hidden_state` 前必须已持有 `WriteEnvelope(can_write_memory=True)`。
 
-### Disk-wired integrator（Phase 2）
+### Disk-wired integrator（Phase 2 + Phase 3）
 
-| 函数 | 说明 |
-|---|---|
-| `integrate_event_and_save(uid, event_type, envelope, now)` | load → integrate_event → 仅 accepted + can_write_memory 时原子保存 |
-| `integrate_impression_and_save(uid, impression, envelope, now)` | load → integrate_impression → 仅 accepted + can_write_memory 时原子保存 |
+| 函数 | 说明 | 可写层 |
+|---|---|---|
+| `integrate_event_and_save(uid, event_type, envelope, now)` | load → integrate_event → 仅 accepted + can_write_memory 时原子保存 | 中期层（deficit） |
+| `integrate_impression_and_save(uid, impression, envelope, now)` | load → integrate_impression → 仅 accepted + can_write_memory 时原子保存 | 中期层（sensitivity.current） |
+| `integrate_body_cue_and_save(uid, cue, response_tag, strength, envelope, now)` | load → integrate_body_cue → 仅 accepted + can_write_memory 时原子保存 | 长期层（body_memory） |
 
-两个函数均在 `user_hidden_state_integrator.py`，是 Reality-side 的 disk-wired 入口。Dream 不得调用。
+所有函数均在 `user_hidden_state_integrator.py`，是 Reality-side 的 disk-wired 入口。Dream 不得调用。uid 参数必须为 str 或 int，否则 TypeError。
 
-### Dream 读取接口（Phase 2）
+### 类型守卫（Phase 3）
+
+| 入口 | 守卫 | 异常 |
+|---|---|---|
+| `integrate_event` | event_type 必须是 `RealityEventType` | `TypeError` |
+| `integrate_impression` | impression 必须是 `ImpressionInput` | `TypeError` |
+| `integrate_event_and_save` / `integrate_impression_and_save` / `integrate_body_cue_and_save` | uid 必须是 str 或 int | `TypeError` |
+| `nudge_current_sensitivity` / `discharge_touch_deficit` / `nudge_embodied_ease` / `reinforce_body_memory` | source 必须是 `UpdateSource` | `TypeError` |
+
+### 长期层写权限（Phase 3）
+
+| 字段 | 合法写入路径 | 需要 |
+|---|---|---|
+| `body_memory` | `integrate_body_cue*` | stamp_trigger / stamp_user_chat |
+| `embodied_ease` | `nudge_embodied_ease`（调度器专用 pass） | stamp_trigger |
+| `sensitivity.baseline` / `touch_need.baseline` | `apply_time_decay` + `consolidate_baselines`（调度器） | stamp_trigger |
+
+所有路径均需 `WriteEnvelope.can_write_memory=True`。Dream 不得写任何字段。
+
+### Dream 读取接口（Phase 2 定义，Phase 4 接入）
 
 | 函数 | 文件 | 说明 |
 |---|---|---|
-| `load_dream_snapshot(uid, now)` | `user_hidden_state_store.py` | 唯一的 Dream 读取路径：load → to_dream_snapshot；只读，不写磁盘，不接 pipeline |
+| `load_dream_snapshot(uid, now)` | `user_hidden_state_store.py` | 唯一的 Dream 读取路径：load → to_dream_snapshot；只读，不写磁盘 |
 
-**不接线**：Dream pipeline 写路径、build_snapshot、scheduler、自动保存。
+**Phase 4 接入**：`dream_context.build_snapshot()` 在入梦时调用 `load_dream_snapshot()`，结果以 `user_hidden_state_snapshot` 键冻结进 `context_snapshot`。`dream_prompt.build_dream_prompt()` 在 D4–D5 之间检查 tag gate 后注入 D4.5 层。
+
+**接入约束**：
+- 只读：Dream 不得调用 save_hidden_state / integrate_* / apply_time_decay / consolidate_baselines。
+- Tag-gated：当前触发 tag 为 `body_intimate` / `physical_closeness`；未命中 → 不注入。
+- Bucket-only：注入内容只含字符串 label，不暴露 float / uid / timestamp / weight。
+- Fail-closed：load 失败 / snapshot 格式异常 / tag 判断异常 → 不注入，记 warning，不阻断 Dream。
 
 ### 字段一览（UserHiddenState）
 
@@ -785,14 +814,15 @@ sensor privacy 全系统已经完成。
 - **是** → 关系状态，不得存放在此模块（例：`body_familiarity` / `somatic_familiarity` 属关系状态，未来放 `relationship_state`）
 - **否** → 可能属于用户自身体质，允许存放
 
-### Integrator（Phase 1 MVP）
+### Integrator（Phase 1/3）
 
-`core/memory/user_hidden_state_integrator.py` 提供两个入口：
+`core/memory/user_hidden_state_integrator.py` 提供的纯内存入口：
 
 | 函数 | 输入 | 允许写字段 |
 |---|---|---|
-| `integrate_event(event_type, state, envelope, now)` | `RealityEventType` | `touch_need.deficit` |
-| `integrate_impression(impression, state, envelope, now)` | `ImpressionInput` | `sensitivity.current`（仅增） |
+| `integrate_event(event_type, state, envelope, now)` | `RealityEventType`（Phase 3 TypeError 守卫） | `touch_need.deficit` |
+| `integrate_impression(impression, state, envelope, now)` | `ImpressionInput`（Phase 3 TypeError 守卫） | `sensitivity.current`（仅增） |
+| `integrate_body_cue(cue, response_tag, strength, state, envelope, now)` | str / float | `body_memory`（长期层） |
 
 **RealityEventType**：
 - `SEEK_COMPANIONSHIP` → deficit 放电（减少）
@@ -827,7 +857,13 @@ sensor privacy 全系统已经完成。
 
 | 常量 | 值 | 含义 |
 |---|---|---|
-| `EMBODIED_EASE_CENTER_HL_DAYS` | 90.0 | embodied_ease 向 SCALAR_CENTER 回归的半衰期（天） |
-| `CURRENT_SENS_REGRESS_HL_DAYS` | 5.0 | current sensitivity 向 baseline 回归 |
+| `CURRENT_SENS_REGRESS_HL_DAYS` | 5.0 | sensitivity.current 向 baseline 回归的半衰期（天） |
+| `SENS_BASELINE_CENTER_HL_DAYS` | 180.0 | sensitivity.baseline 向 SCALAR_CENTER 回归 |
 | `TOUCH_DEFICIT_DECAY_HL_DAYS` | 10.0 | touch deficit 向 0 衰减 |
+| `TOUCH_BASELINE_CENTER_HL_DAYS` | 180.0 | touch_need.baseline 向 SCALAR_CENTER 回归 |
+| `EMBODIED_EASE_CENTER_HL_DAYS` | 90.0 | embodied_ease 向 SCALAR_CENTER 回归 |
+| `MEMORY_EXTINCTION_HL_DAYS` | 45.0 | body_memory entry weight 向 0 衰减 |
+| `BASELINE_LEARN_RATE` | 0.02 | consolidate_baselines 每次向 center 推进的比率 |
+| `MAX_NUDGE_PER_EVENT` | 6.0 | 单次 nudge 最大 delta |
+| `MEMORY_EVICT_EPS` | 0.05 | body_memory entry weight 低于此值时可被蒸发 |
 

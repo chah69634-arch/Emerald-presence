@@ -60,6 +60,8 @@ _COOLDOWNS: dict[str, int] = {
     "garden_handle_gift":   4 * 3600,
     "garden_handle_self":   4 * 3600,
     "garden_vase_wilted":   4 * 3600,
+    "hidden_state_decay":         12 * 3600,       # 用户隐性状态衰减：12小时
+    "hidden_state_consolidate":   7 * 24 * 3600,   # 基线收敛：7天
 }
 
 # 冷却跟踪 {trigger_name: last_unix_timestamp}
@@ -579,6 +581,9 @@ async def _loop():
                 from core.scheduler.triggers.episodic_sweep import _check_episodic_sweep
                 from core.scheduler.triggers.garden_water import _check_garden_water
                 from core.scheduler.triggers.garden_daily import _check_garden_daily
+                from core.scheduler.triggers.hidden_state_decay import (
+                    _check_hidden_state_decay, _check_hidden_state_consolidate,
+                )
 
                 oid = _owner_id()
                 if oid:
@@ -613,6 +618,8 @@ async def _loop():
                     _check_episodic_sweep(),
                     _check_garden_water(),
                     _check_garden_daily(),
+                    _check_hidden_state_decay(),
+                    _check_hidden_state_consolidate(),
                     _check_sensor_aware(),
                     return_exceptions=True,
                 )

@@ -53,6 +53,7 @@ from core.memory.user_hidden_state import (
     _clamp,
     discharge_touch_deficit,
     nudge_current_sensitivity,
+    reinforce_body_memory,
 )
 from core.memory.user_hidden_state_store import load_hidden_state, save_hidden_state
 from core.write_envelope import WriteEnvelope
@@ -70,13 +71,30 @@ DEFICIT_ACCRUE_AMOUNT: float = 4.0
 IMPRESSION_MAX_NUDGE: float = 3.0
 """Max sensitivity.current increase per impression (before MAX_NUDGE_PER_EVENT cap)."""
 
-# Long-term field names guarded against any write from this module.
+# Long-term field names guarded against accidental writes from integrate_event /
+# integrate_impression.  The only permitted write path for body_memory in Phase 3
+# is integrate_body_cue* (Reality-side, explicitly opened below).
 _LONG_TERM_FIELDS: frozenset[str] = frozenset({
     "sensitivity.baseline",
     "touch_need.baseline",
     "embodied_ease",
     "body_memory",
 })
+
+
+def _assert_not_long_term(field_name: str) -> None:
+    """Raise RuntimeError if field_name is a long-term layer field.
+
+    Call this before constructing FieldDelta in integrate_event /
+    integrate_impression to prevent accidental long-term layer writes.
+    integrate_body_cue* does NOT call this guard — that path explicitly
+    writes body_memory as its declared purpose.
+    """
+    if field_name in _LONG_TERM_FIELDS:
+        raise RuntimeError(
+            f"integrator attempted to write long-term field '{field_name}' — "
+            "must go through consolidation/decay scheduler path only"
+        )
 
 
 # ── A. RealityEventType ───────────────────────────────────────────────────────
@@ -154,6 +172,10 @@ def integrate_event(
         (updated_state, IntegratorResult)
         On rejection, state is returned unchanged.
     """
+    if not isinstance(event_type, RealityEventType):
+        raise TypeError(
+            f"integrate_event: event_type must be RealityEventType, got {type(event_type).__name__}"
+        )
     result = IntegratorResult(source=event_type.value, timestamp=now)
 
     if not write_envelope.can_write_memory:
@@ -223,6 +245,10 @@ def integrate_impression(
         (updated_state, IntegratorResult)
         On rejection, state is returned unchanged.
     """
+    if not isinstance(impression, ImpressionInput):
+        raise TypeError(
+            f"integrate_impression: impression must be ImpressionInput, got {type(impression).__name__}"
+        )
     result = IntegratorResult(source=UpdateSource.DREAM_IMPRESSION.value, timestamp=now)
 
     if not write_envelope.can_write_memory:
@@ -288,6 +314,8 @@ def integrate_event_and_save(
     Returns:
         (state_after_mutation, IntegratorResult)
     """
+    if not isinstance(uid, (str, int)):
+        raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
     state = load_hidden_state(uid)
     state, result = integrate_event(event_type, state, write_envelope, now)
     if write_envelope.can_write_memory and result.accepted:
@@ -324,6 +352,8 @@ def integrate_impression_and_save(
     Returns:
         (state_after_mutation, IntegratorResult)
     """
+    if not isinstance(uid, (str, int)):
+        raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
     state = load_hidden_state(uid)
     state, result = integrate_impression(impression, state, write_envelope, now)
     if write_envelope.can_write_memory and result.accepted:
@@ -331,5 +361,109 @@ def integrate_impression_and_save(
         if not ok:
             logger.error(
                 "integrate_impression_and_save: save failed [uid=%s]", uid,
+            )
+    return state, result
+
+
+# ── F. Phase 3 — body_memory long-term layer (Reality-side only) ──────────────
+
+
+def integrate_body_cue(
+    cue: str,
+    response_tag: str,
+    strength: float,
+    hidden_state: UserHiddenState,
+    write_envelope: WriteEnvelope,
+    now: str,
+) -> tuple[UserHiddenState, IntegratorResult]:
+    """Reinforce a body-memory entry (long-term layer) from a Reality-turn cue.
+
+    Rules:
+      - write_envelope.can_write_memory must be True.
+      - source is fixed to REALITY_BEHAVIOR (Phase 3).
+      - Empty / whitespace-only cue → silent no-op (accepted=False, no rejection reason).
+      - Delegates weight management to reinforce_body_memory.
+
+    Dream turns must NOT call this function directly.
+    No WriteEnvelope is automatically emitted by this function.
+
+    Returns:
+        (updated_state, IntegratorResult)
+    """
+    result = IntegratorResult(source=UpdateSource.REALITY_BEHAVIOR.value, timestamp=now)
+
+    if not write_envelope.can_write_memory:
+        reason = "write_envelope.can_write_memory=False [body_cue]"
+        result.rejected_reasons.append(reason)
+        logger.warning("integrator rejected body_cue: %s", reason)
+        return hidden_state, result
+
+    cue_norm = cue.strip().lower()
+    if not cue_norm:
+        return hidden_state, result  # silent no-op, accepted stays False
+
+    old_weight = next(
+        (e.weight for e in hidden_state.body_memory.entries
+         if e.cue.strip().lower() == cue_norm),
+        None,
+    )
+
+    reinforce_body_memory(
+        hidden_state, cue, response_tag, strength, UpdateSource.REALITY_BEHAVIOR, now
+    )
+
+    new_weight = next(
+        (e.weight for e in hidden_state.body_memory.entries
+         if e.cue.strip().lower() == cue_norm),
+        None,
+    )
+
+    if new_weight is not None:
+        result.touched_fields.append(FieldDelta(
+            field="body_memory",
+            old_value=old_weight if old_weight is not None else 0.0,
+            new_value=new_weight,
+            source=UpdateSource.REALITY_BEHAVIOR.value,
+        ))
+        logger.info(
+            "integrator: body_memory cue='%s' %.3f → %.3f",
+            cue_norm,
+            old_weight if old_weight is not None else 0.0,
+            new_weight,
+        )
+
+    return hidden_state, result
+
+
+def integrate_body_cue_and_save(
+    uid: str | int,
+    cue: str,
+    response_tag: str,
+    strength: float,
+    write_envelope: WriteEnvelope,
+    now: str,
+) -> tuple[UserHiddenState, IntegratorResult]:
+    """Load hidden state, reinforce a body-memory cue, and persist if permitted.
+
+    Steps:
+      1. Load UserHiddenState from store (or default if absent/corrupt).
+      2. Call integrate_body_cue() — body_memory long-term layer only.
+      3. If write_envelope.can_write_memory AND result.accepted: atomic save.
+         Otherwise: nothing is written to disk.
+
+    Fail-closed: closed envelope, empty cue, or I/O error → no disk write.
+
+    Returns:
+        (state_after_mutation, IntegratorResult)
+    """
+    if not isinstance(uid, (str, int)):
+        raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
+    state = load_hidden_state(uid)
+    state, result = integrate_body_cue(cue, response_tag, strength, state, write_envelope, now)
+    if write_envelope.can_write_memory and result.accepted:
+        ok = save_hidden_state(uid, state)
+        if not ok:
+            logger.error(
+                "integrate_body_cue_and_save: save failed [uid=%s cue=%s]", uid, cue
             )
     return state, result

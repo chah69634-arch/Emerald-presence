@@ -81,6 +81,7 @@
 | `D2_world_ruleset` | 今晚世界规则，显式框"从属于叶瑄" | 轴2，world_layer |
 | `D3_dream_mes_example` | 世界对应 few-shot（与现实卡物理分离） | 轴2 |
 | `D4_frozen_reality` | 冻结现实上下文（只读） | memory_access |
+| `D4.5_hidden_state` | 用户隐性状态 bucket 只读快照（tag-gated，Phase 4） | tag: body_intimate / physical_closeness |
 | `D5_body_projection` | 她的身体感知投影 | 轴3，boundary_level + yexuan_tension |
 | `D6_scene_anchors` | 场景状态 + 临时符号锚点 | dream-local |
 | `D7_dream_tension` | 梦内情绪张力（live，dream-local） | — |
@@ -89,6 +90,15 @@
 | `D10_user_message` | 她当前梦内输入 | — |
 
 > 与现实栈**相反**之处：D8 要求输出动作/环境（现实禁止），D9 绝不过反话剧化清洗（现实必过），全程无 retrieve / mood_state / author_note_extra。这些反转就是"必须独立 pipeline"的根据。
+
+**D4.5 用户隐性状态快照（Phase 4，只读接入）**：
+
+- `build_snapshot()` 在入梦时调用 `load_dream_snapshot(uid, now)` 并将结果冻结进 `context_snapshot["user_hidden_state_snapshot"]`。
+- `build_dream_prompt()` 在每轮组装 D4.5 时检查 tag gate（`body_intimate` / `physical_closeness`），只有命中才注入。
+- 注入内容只含 bucket label（sensitivity / touch_appetite / embodied_ease / memory_cues），**不含 float、uid、timestamp、weight、baseline、update_source**。
+- Dream 无任何写路径：`DREAM_DIRECT_WRITABLE = frozenset()`；save_hidden_state / integrate_* / apply_time_decay / consolidate_baselines 均不在 Dream 路径中出现。
+- Fail-closed：load 失败 / snapshot 格式异常 / tag 判断异常 → 不注入，记 warning，不阻断 Dream。
+- 优先级：D4.5 排在 D4（frozen_reality）之后，如需裁剪优先裁 D4.5。
 
 ### 现实侧（梦的回流注入层，由现实 prompt_builder 注入）
 

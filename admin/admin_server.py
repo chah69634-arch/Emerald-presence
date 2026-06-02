@@ -37,7 +37,7 @@ from admin.routers import (
     scheduler, watch, agent, sensor,
     garden, mobile, diary, chat_log,
     mood, activity, dream,
-    debug,
+    debug, hidden_state_debug,
 )
 
 app.include_router(users.router,          prefix="/users",     tags=["用户"])
@@ -63,7 +63,8 @@ app.include_router(diary.router,     prefix="/diary",     tags=["日记"])
 app.include_router(chat_log.router,  prefix="/chat-log",  tags=["聊天日志"])
 app.include_router(mobile.router,    prefix="",           tags=["手机端"])
 app.include_router(dream.router,     prefix="",           tags=["梦境"])
-app.include_router(debug.router,     prefix="",           tags=["Debug"])  # DEV-ONLY
+app.include_router(debug.router,              prefix="", tags=["Debug"])  # DEV-ONLY
+app.include_router(hidden_state_debug.router, prefix="", tags=["Debug"])  # DEV-ONLY
 
 # ── 桌宠端 WebSocket 端点 ─────────────────────────────────────────────────────
 from fastapi import WebSocket as _WebSocket, Query as _Query

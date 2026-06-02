@@ -23,7 +23,7 @@ D:\ai\qq-st-bot\
 | 任务类型 | 必读文档 |
 |---|---|
 | 理解系统全貌、pipeline 流程 | `ARCHITECTURE.md` |
-| 改记忆相关逻辑（episodic / user_identity / growth legacy / mood / event_log / fixation_pipeline） | `docs/memory.md` |
+| 改记忆相关逻辑（episodic / user_identity / growth legacy / mood / event_log / fixation_pipeline / user_hidden_state） | `docs/memory.md` |
 | 改 prompt 层结构、tag 规则、token 裁剪 | `docs/prompt-layers.md` |
 | 改工具系统（新增工具、探针规则、桌面动作） | `docs/tools.md` |
 | 改调度器（定时触发、主动消息） | `docs/scheduler.md` |
@@ -53,9 +53,11 @@ D:\ai\qq-st-bot\
 | 情景记忆 | `core/memory/episodic_memory.py` |
 | 情绪状态 | `core/memory/mood_state.py` |
 | 用户稳定行为模式 | `core/memory/user_identity.py` |
-| 用户隐性状态（Phase 2 schema + primitive + to_dict/from_dict + to_dream_snapshot） | `core/memory/user_hidden_state.py` |
-| 用户隐性状态 integrator（Reality Event / Impression → 中期层；Phase 2 disk-wired: integrate_*_and_save） | `core/memory/user_hidden_state_integrator.py` |
-| 用户隐性状态持久化（load / save 原子写入；Phase 2 Dream 读取: load_dream_snapshot） | `core/memory/user_hidden_state_store.py` |
+| 用户隐性状态 schema + primitives（Phase 3：apply_time_decay / reinforce_body_memory / consolidate_baselines 等已实现；source 类型守卫） | `core/memory/user_hidden_state.py` |
+| 用户隐性状态 integrator（中期层 integrate_event/impression + Phase 3 长期层 integrate_body_cue*；TypeError 类型守卫；_assert_not_long_term） | `core/memory/user_hidden_state_integrator.py` |
+| 用户隐性状态持久化（load / save 原子写入；load_dream_snapshot 只读 bucket 快照） | `core/memory/user_hidden_state_store.py` |
+| 用户隐性状态衰减调度（12h decay tick + 7d consolidate tick，stamp_trigger，不发言） | `core/scheduler/triggers/hidden_state_decay.py` |
+| Dream snapshot 接入（Phase 4：tag-gated D4.5 只读注入；tag_gate helper；fail-closed） | `core/dream/dream_context.py` + `core/dream/dream_prompt.py` |
 | 角色认知（legacy/兼容） | `core/memory/character_growth.py` |
 | 调度器主循环 | `core/scheduler/loop.py` |
 | 调度器状态机 / gating / proposer | `core/scheduler/state_machine.py` / `core/scheduler/gating.py` / `core/scheduler/proposer_registry.py` |
