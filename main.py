@@ -316,8 +316,9 @@ async def handle_message(message: dict):
 
     # ── 步骤9：异步后处理（写记忆、TTS 等，不阻塞本轮）──────────────────────
     final_reply = "\n".join(segments)
+    from core.write_envelope import stamp_qq
     asyncio.create_task(
-        _pipeline.post_process(user_id, content, final_reply, target_id, is_group, pending_paths=_meta.get("pending_paths", []))
+        _pipeline.post_process(user_id, content, final_reply, target_id, is_group, pending_paths=_meta.get("pending_paths", []), envelope=stamp_qq())
     )
 
 

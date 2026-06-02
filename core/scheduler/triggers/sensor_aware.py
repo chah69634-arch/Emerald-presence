@@ -491,6 +491,7 @@ async def handle_tick() -> None:
             action = build_action_packet(behavior, reply)
             snapshot["action_packet"] = action
             payload = {"behavior": action} if action is not None else None
+            from core.write_envelope import stamp_sensor
             result = await record_assistant_turn(
                 assistant_text=reply,
                 uid=_owner_id(),
@@ -498,6 +499,7 @@ async def handle_tick() -> None:
                 trigger_name="sensor_aware",
                 fanout=["desktop", "mobile"],
                 payload=payload,
+                envelope=stamp_sensor(),
             )
             if result.fanout_failures:
                 logger.warning("[sensor_aware] fanout 部分失败: %s", result.fanout_failures)

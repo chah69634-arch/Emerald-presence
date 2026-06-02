@@ -22,6 +22,10 @@ from core.memory.user_profile import load as _load_profile, save as _save_profil
 
 
 def _append_heart_rate_event(user_id: str, value: int, triggered: bool):
+    from core.write_envelope import stamp_sensor_watch
+    _env = stamp_sensor_watch()
+    if not _env.can_write_memory:
+        return
     profile = _load_profile(user_id)
     events = profile.get("heart_rate_events", [])
     events.append({
@@ -75,18 +79,21 @@ async def _flush_sleep_buffer():
     # 存入 sleep_segments
     oid = str(get_config().get("scheduler", {}).get("owner_id", ""))
     if oid:
-        from core.memory.user_profile import load as _load, save as _save
-        profile = _load(oid)
-        profile.setdefault("sleep_segments", [])
-        profile["sleep_segments"].append({
-            "time":             datetime.now().isoformat(),
-            "duration_minutes": merged["duration_minutes"],
-            "sleep_start":      merged["sleep_start"],
-            "sleep_end_time":   merged["sleep_end_time"],
-        })
-        if len(profile["sleep_segments"]) > 20:
-            profile["sleep_segments"] = profile["sleep_segments"][-20:]
-        _save(oid, profile)
+        from core.write_envelope import stamp_sensor_watch
+        _env = stamp_sensor_watch()
+        if _env.can_write_memory:
+            from core.memory.user_profile import load as _load, save as _save
+            profile = _load(oid)
+            profile.setdefault("sleep_segments", [])
+            profile["sleep_segments"].append({
+                "time":             datetime.now().isoformat(),
+                "duration_minutes": merged["duration_minutes"],
+                "sleep_start":      merged["sleep_start"],
+                "sleep_end_time":   merged["sleep_end_time"],
+            })
+            if len(profile["sleep_segments"]) > 20:
+                profile["sleep_segments"] = profile["sleep_segments"][-20:]
+            _save(oid, profile)
 
     # 更新快照
     _last_watch_data.clear()

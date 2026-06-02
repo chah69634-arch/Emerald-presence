@@ -34,6 +34,10 @@ _last_sensor_data: dict = {}
 
 def _save_sensor_to_profile(data: dict):
     """把传感器数据聚合后存入用户画像"""
+    from core.write_envelope import stamp_sensor_watch
+    _env = stamp_sensor_watch()
+    if not _env.can_write_memory:
+        return
     oid = str(get_config().get("scheduler", {}).get("owner_id", ""))
     if not oid:
         return

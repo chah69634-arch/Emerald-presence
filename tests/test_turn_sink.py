@@ -126,6 +126,7 @@ async def test_capture_turn_failure_enqueues_retry(sandbox, monkeypatch):
     monkeypatch.setattr("core.llm_client.detect_emotion", detect_emotion)
     monkeypatch.setattr("core.memory.mood_state.update", lambda *args, **kwargs: None)
 
+    from core.write_envelope import stamp_trigger
     pipeline = Pipeline(_MockCharacter(), lore_engine=None)
     result = await record_assistant_turn(
         assistant_text="嗯。",
@@ -134,6 +135,7 @@ async def test_capture_turn_failure_enqueues_retry(sandbox, monkeypatch):
         trigger_name="night_reminder",
         fanout=[],
         pipeline=pipeline,
+        envelope=stamp_trigger(),
     )
 
     assert result.written_to_memory is False

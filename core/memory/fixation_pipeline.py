@@ -222,6 +222,7 @@ def capture_turn(
     emotion: str = "neutral",
     turn_id: str | None = None,
     trigger_name: str = "",
+    envelope=None,
 ) -> str:
     """
     生成 turn_id，写 short_term + event_log。
@@ -229,11 +230,19 @@ def capture_turn(
     幂等：若 short_term 近 4 条已含相同 turn_id，直接返回。
 
     调用约束：必须在 uid_lock 内、detect_emotion 完成后调用。
+    envelope 未传时默认零值（fail-closed）。
     """
+    from core.write_envelope import WriteEnvelope
+    if envelope is None:
+        envelope = WriteEnvelope()
+
     from core.memory import short_term, event_log
 
     ts = time.time()
     turn_id = turn_id or f"{uid}_{int(ts * 1000)}"
+
+    if not envelope.can_write_memory:
+        return turn_id
 
     if trigger_name:
         # scheduler 触发：只写 assistant，跳过 user 行（prompt 是系统注入的情景描述）
@@ -672,8 +681,15 @@ async def handler_summarize_to_midterm(payload: dict) -> None:
 
 async def handler_capture_turn_retry(payload: dict) -> None:
     from core.memory import locks
+    from core.write_envelope import WriteEnvelope, SourceType
 
     uid = payload["uid"]
+    # retry 只有在原调用拥有写入权限时才会入队，固定用 INGEST 源恢复写入
+    _env = WriteEnvelope(
+        source=SourceType.INGEST,
+        can_write_memory=True,
+        can_affect_mood=False,
+    )
     async with locks.uid_lock(uid):
         capture_turn(
             uid,
@@ -682,6 +698,7 @@ async def handler_capture_turn_retry(payload: dict) -> None:
             payload.get("emotion", "neutral"),
             turn_id=payload["turn_id"],
             trigger_name=payload.get("trigger_name", ""),
+            envelope=_env,
         )
     logger.info(f"[fixation] capture_turn retry 完成: {payload['turn_id']}")
 

@@ -283,6 +283,7 @@ class Pipeline:
         is_group: bool = False,
         pending_paths: list[str] | None = None,
         trigger_name: str = "",
+        envelope=None,
     ):
         """
         关键写入在 uid_lock 内同步完成，慢任务（LLM调用）入 slow_queue 异步执行。
@@ -299,6 +300,10 @@ class Pipeline:
 
         side effects（保持 asyncio.create_task）：TTS/表情包 / _parse_and_execute_intent
         """
+        from core.write_envelope import WriteEnvelope
+        if envelope is None:
+            envelope = WriteEnvelope()
+
         from core.memory import locks as _locks
         from core import llm_client
         from core.error_handler import log_error
@@ -335,38 +340,40 @@ class Pipeline:
                 _emotion = "neutral"
 
             # ── mood_state 更新（全局锁，嵌套在 uid_lock 内）────────────────
-            async with _locks.global_lock("mood_state"):
-                try:
-                    from core.memory.mood_state import update as _update_mood
-                    _update_mood(_emotion, source="detect")
-
+            if envelope.can_affect_mood:
+                async with _locks.global_lock("mood_state"):
                     try:
-                        from core import user_relation as _user_relation
-                        _relation = _user_relation.get_relation(user_id)
-                        if _check_yandere_trigger(content, reply, _relation.get("priority", 1)):
-                            from core.memory.mood_state import update as _update_mood_y
-                            _update_mood_y("yandere", source="trigger")
+                        from core.memory.mood_state import update as _update_mood
+                        _update_mood(_emotion, source="detect")
+
+                        try:
+                            from core import user_relation as _user_relation
+                            _relation = _user_relation.get_relation(user_id)
+                            if _check_yandere_trigger(content, reply, _relation.get("priority", 1)):
+                                from core.memory.mood_state import update as _update_mood_y
+                                _update_mood_y("yandere", source="trigger")
+                        except Exception as e:
+                            log_error("post_process.yandere", e)
                     except Exception as e:
-                        log_error("post_process.yandere", e)
-                except Exception as e:
-                    log_error("post_process.mood_state", e)
+                        log_error("post_process.mood_state", e)
 
             # ── capture_turn：写 short_term + event_log（含 turn_id 血缘）───
             try:
                 from core.memory.fixation_pipeline import capture_turn as _capture_turn
-                _turn_id = _capture_turn(user_id, content, reply, _emotion, turn_id=_turn_id, trigger_name=trigger_name)
+                _turn_id = _capture_turn(user_id, content, reply, _emotion, turn_id=_turn_id, trigger_name=trigger_name, envelope=envelope)
                 _critical_written = True
                 logger.debug(f"[pipeline.post_process] capture_turn: {_turn_id}")
             except Exception as e:
                 log_error("post_process.capture_turn", e)
-                slow_queue.enqueue("capture_turn_retry", {
-                    "turn_id": _turn_id,
-                    "uid": user_id,
-                    "user_content": content,
-                    "reply": reply,
-                    "emotion": _emotion,
-                    "trigger_name": trigger_name,
-                })
+                if envelope.can_write_memory:
+                    slow_queue.enqueue("capture_turn_retry", {
+                        "turn_id": _turn_id,
+                        "uid": user_id,
+                        "user_content": content,
+                        "reply": reply,
+                        "emotion": _emotion,
+                        "trigger_name": trigger_name,
+                    })
 
         # ── uid_lock 释放，入慢队列 ───────────────────────────────────────────
         from core.tag_rules import get_tags as _get_tags
@@ -374,18 +381,19 @@ class Pipeline:
 
         # summarize_to_midterm 替代旧的 mid_term_append；
         # 若 emotion 显著，handler 内部会自动入队 reflect_to_episodic（eager）
-        slow_queue.enqueue("summarize_to_midterm", {
-            "turn_id": _turn_id,
-            "uid": user_id,
-            "user_content": content,
-            "reply": reply,
-            "tags": _mt_tags,
-            "emotion": _emotion,
-        })
+        if envelope.can_write_memory:
+            slow_queue.enqueue("summarize_to_midterm", {
+                "turn_id": _turn_id,
+                "uid": user_id,
+                "user_content": content,
+                "reply": reply,
+                "tags": _mt_tags,
+                "emotion": _emotion,
+            })
         slow_queue.enqueue("consistency_check", {
             "reply": reply,
         })
-        if _should_update_profile:
+        if envelope.can_write_memory and _should_update_profile:
             slow_queue.enqueue("user_profile_update", {
                 "uid": user_id,
                 "recent": _profile_recent,

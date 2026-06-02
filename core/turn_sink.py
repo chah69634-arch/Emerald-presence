@@ -143,6 +143,7 @@ async def record_assistant_turn(
     bypass_gate: bool = False,
     exclude_origin_channel: Optional[str] = None,
     pipeline=None,
+    envelope=None,
 ) -> TurnResult:
     """
     Record one completed assistant turn and deliver it to the requested channels.
@@ -150,7 +151,12 @@ async def record_assistant_turn(
     capture_turn still owns disk writes through Pipeline.post_process. source is
     retained here for validation and future audit; current persistence encodes
     non-user sources through trigger_name only.
+    envelope 未传时默认零值（fail-closed）。
     """
+    from core.write_envelope import WriteEnvelope
+    if envelope is None:
+        envelope = WriteEnvelope()
+
     source = TurnSource(source)
     _validate_inputs(assistant_text, source, trigger_name, user_text)
     pipeline = _require_pipeline(pipeline)
@@ -167,6 +173,7 @@ async def record_assistant_turn(
                 memory_input,
                 assistant_text,
                 trigger_name=capture_trigger,
+                envelope=envelope,
             )
         else:
             asyncio.create_task(
@@ -175,6 +182,7 @@ async def record_assistant_turn(
                     memory_input,
                     assistant_text,
                     trigger_name=capture_trigger,
+                    envelope=envelope,
                 )
             )
 

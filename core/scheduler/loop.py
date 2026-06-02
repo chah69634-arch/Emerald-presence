@@ -251,12 +251,16 @@ async def _pipeline_send(
             turn_result = None
             if record_turn:
                 from core.turn_sink import TurnSource, record_assistant_turn
+                from core.write_envelope import stamp_sensor, stamp_trigger
                 if trigger_name == "sensor_aware":
                     source = TurnSource.SENSOR
+                    _envelope = stamp_sensor()
                 elif trigger_name in ("hr_high", "hr_critical", "sleep_end"):
                     source = TurnSource.WATCH
+                    _envelope = stamp_sensor()
                 else:
                     source = TurnSource.TRIGGER
+                    _envelope = stamp_trigger()
                 turn_result = await record_assistant_turn(
                     assistant_text=reply,
                     uid=oid,
@@ -265,6 +269,7 @@ async def _pipeline_send(
                     fanout=[] if output_mode == "return" else "all",
                     bypass_gate=(trigger_name == "hr_critical"),
                     pipeline=_pipeline,
+                    envelope=_envelope,
                 )
             if output_mode == "return":
                 return reply

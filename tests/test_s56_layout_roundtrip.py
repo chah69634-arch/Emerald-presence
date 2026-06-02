@@ -28,9 +28,10 @@ import pytest
 def test_capture_turn_event_log_lands_in_new_layout(sandbox):
     """capture_turn 写 event_log 应落在 memory/yexuan/{uid}/event_log/YYYY-MM-DD.md。"""
     from core.memory.fixation_pipeline import capture_turn
+    from core.write_envelope import stamp_ingest
 
     uid = "s6_uid_el"
-    turn_id = capture_turn(uid, "测试消息", "测试回复", "neutral")
+    turn_id = capture_turn(uid, "测试消息", "测试回复", "neutral", envelope=stamp_ingest())
 
     today = datetime.now().strftime("%Y-%m-%d")
     new_dir = sandbox.user_memory_root(uid) / "event_log"
@@ -50,9 +51,10 @@ def test_capture_turn_event_log_lands_in_new_layout(sandbox):
 def test_capture_turn_short_term_lands_in_new_layout(sandbox):
     """capture_turn 写 short_term 应落在 memory/yexuan/{uid}/history.json。"""
     from core.memory.fixation_pipeline import capture_turn
+    from core.write_envelope import stamp_ingest
 
     uid = "s6_uid_st"
-    capture_turn(uid, "用户说", "角色说", "gentle")
+    capture_turn(uid, "用户说", "角色说", "gentle", envelope=stamp_ingest())
 
     new_path = sandbox.user_memory_root(uid) / "history.json"
     assert new_path.exists(), f"新路径 history.json 不存在: {new_path}"
@@ -105,7 +107,8 @@ def test_reality_chain_full_turn_new_layout(sandbox):
     )
 
     # 跑一轮真实 turn
-    turn_id = capture_turn(uid, "新消息", "新回复", "happy")
+    from core.write_envelope import stamp_ingest
+    turn_id = capture_turn(uid, "新消息", "新回复", "happy", envelope=stamp_ingest())
     assert turn_id is not None
 
     # fixation_state 写新路径

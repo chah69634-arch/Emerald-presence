@@ -56,18 +56,19 @@ async def test_critical_writes_complete_before_slow_tasks(sandbox, monkeypatch, 
     gate = asyncio.Event()
     marker = tmp_path / "episodic_done.txt"
 
-    async def gated_episodic(*_):
+    async def gated_slow(*_):
         await gate.wait()          # 门控：gate.set() 前确定性阻塞
         marker.write_text("done")
 
-    sq.register_handler("mid_term_append",   AsyncMock())
-    sq.register_handler("episodic_compress", gated_episodic)
-    sq.register_handler("consistency_check", AsyncMock())
+    # post_process 现在入队 summarize_to_midterm（新固化链路），用它做门控
+    sq.register_handler("summarize_to_midterm", gated_slow)
+    sq.register_handler("consistency_check",    AsyncMock())
     sq.start_worker()
 
     # ── 调用 post_process ─────────────────────────────────────────────────────
+    from core.write_envelope import stamp_user_chat
     pipeline = Pipeline(_MockCharacter(), lore_engine=None)
-    await pipeline.post_process(uid, "你好吗", reply, target_id="", is_group=False)
+    await pipeline.post_process(uid, "你好吗", reply, target_id="", is_group=False, envelope=stamp_user_chat())
 
     # 让 worker 有机会启动 handler（但 gate 关闭，marker 绝对未写入）
     await asyncio.sleep(0)
@@ -82,7 +83,8 @@ async def test_critical_writes_complete_before_slow_tasks(sandbox, monkeypatch, 
 
     # event_log 今日文件应含 user 行 + assistant 行（含 emotion:happy）
     from core.sandbox import get_paths
-    day_dir = get_paths().event_log() / uid
+    # S6 新布局：event_log 写到 user_memory_root(uid) / "event_log"
+    day_dir = get_paths().user_memory_root(uid) / "event_log"
     assert day_dir.exists(), "event_log 目录未创建"
     day_files = [f for f in day_dir.glob("*.md") if f.name != "full_log.md"]
     assert day_files, "event_log 今日文件未创建"

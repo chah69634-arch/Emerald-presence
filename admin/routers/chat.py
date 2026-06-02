@@ -73,6 +73,7 @@ async def run_owner_chat_turn(message: str, channel_name: str) -> dict:
             channel.set_active(True)
 
         from core.turn_sink import TurnSource, record_assistant_turn
+        from core.write_envelope import stamp_user_chat
         turn_result = await record_assistant_turn(
             assistant_text=reply,
             uid=user_id,
@@ -82,6 +83,7 @@ async def run_owner_chat_turn(message: str, channel_name: str) -> dict:
             bypass_gate=True,
             exclude_origin_channel=channel_name,
             pipeline=pipeline,
+            envelope=stamp_user_chat(),
         )
 
         from core.memory.user_profile import get_affection_level
