@@ -205,13 +205,14 @@ data/
 └── (锁池)                        core/memory/locks.py 管理，运行时内存对象，不落盘
 ```
 
-> **Phase 1 MVP（无磁盘 I/O，未接 pipeline）**：`core/memory/user_hidden_state.py` + `core/memory/user_hidden_state_integrator.py`
+> **Phase 2（disk-wired integrator + Dream 读取接口）**：`core/memory/user_hidden_state.py` + `core/memory/user_hidden_state_integrator.py` + `core/memory/user_hidden_state_store.py`
 > schema：`UserHiddenState`（sensitivity / touch_need / embodied_ease / body_memory）。
-> integrator 入口：`integrate_event(RealityEventType, state, envelope, now)` → 写 `touch_need.deficit`；
-> `integrate_impression(ImpressionInput, state, envelope, now)` → 写 `sensitivity.current`（仅增）。
+> integrator 入口（纯内存）：`integrate_event` → 写 `touch_need.deficit`；`integrate_impression` → 写 `sensitivity.current`（仅增）。
+> integrator 入口（Phase 2 disk-wired）：`integrate_event_and_save(uid, event, envelope, now)` / `integrate_impression_and_save(uid, impression, envelope, now)` — 内部执行 load → integrate → 原子保存（仅 accepted + can_write_memory 时写盘）。
+> Dream 读取：`load_dream_snapshot(uid, now)` → 只读 bucket 快照（low/mid/high），不暴露 float 原始值，不写磁盘，Dream LLM 上下文注入用。
 > 长期层（sensitivity.baseline / touch_need.baseline / embodied_ease / body_memory）integrator 内零写入。
 > 所有变更需 `WriteEnvelope.can_write_memory=True`，Dream 不得直接写任何字段。
-> 数据落盘路径待 Phase 2 确定，届时写入 `data/runtime/memory/{char_id}/{uid}/` 下新文件。
+> 持久化路径：`user_memory_root(uid)/hidden_state.json`，原子写入，store 不做 envelope 门控（由调用方负责）。
 
 > **authored 静态配置**（不走沙盒）：
 > - `content/characters/yexuan/activity_pool.yaml`

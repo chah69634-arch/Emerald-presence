@@ -53,8 +53,9 @@ D:\ai\qq-st-bot\
 | 情景记忆 | `core/memory/episodic_memory.py` |
 | 情绪状态 | `core/memory/mood_state.py` |
 | 用户稳定行为模式 | `core/memory/user_identity.py` |
-| 用户隐性状态（Phase 1 MVP schema + primitive） | `core/memory/user_hidden_state.py` |
-| 用户隐性状态 integrator（Reality Event / Impression → 中期层） | `core/memory/user_hidden_state_integrator.py` |
+| 用户隐性状态（Phase 2 schema + primitive + to_dict/from_dict + to_dream_snapshot） | `core/memory/user_hidden_state.py` |
+| 用户隐性状态 integrator（Reality Event / Impression → 中期层；Phase 2 disk-wired: integrate_*_and_save） | `core/memory/user_hidden_state_integrator.py` |
+| 用户隐性状态持久化（load / save 原子写入；Phase 2 Dream 读取: load_dream_snapshot） | `core/memory/user_hidden_state_store.py` |
 | 角色认知（legacy/兼容） | `core/memory/character_growth.py` |
 | 调度器主循环 | `core/scheduler/loop.py` |
 | 调度器状态机 / gating / proposer | `core/scheduler/state_machine.py` / `core/scheduler/gating.py` / `core/scheduler/proposer_registry.py` |

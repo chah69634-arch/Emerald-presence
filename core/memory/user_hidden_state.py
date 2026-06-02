@@ -744,7 +744,12 @@ class IntegratorInput:
     now: str = ""
 
 
-# ── H. Reader / projection stubs ───────────────────────────────────────────────
+# ── H. Reader / projection ────────────────────────────────────────────────────
+
+# Bucket thresholds (shared by to_dream_snapshot helpers)
+_SNAPSHOT_BUCKET_LOW: float = 35.0
+_SNAPSHOT_BUCKET_HIGH: float = 65.0
+_SNAPSHOT_TOP_CUES: int = 5
 
 
 def read_afterglow_residue(uid: str, now: str) -> Optional[AfterglowResidueInput]:
@@ -777,6 +782,24 @@ def to_dream_snapshot(state: UserHiddenState, now: str) -> dict[str, Any]:
       - Does NOT write memory, mood, profile, or event_log.
       - Does NOT emit a WriteEnvelope stamp.
 
+    SECURITY — fail-closed write-lock:
+      DREAM_DIRECT_WRITABLE = frozenset() — no hidden-state field may be written
+      from within a Dream turn.  This function is a READ-ONLY projection; it
+      carries no WriteEnvelope authority.  All mutations must flow through the
+      Reality-side integrator with can_write_memory=True.
+
+      If an unexpected error occurs, a neutral mid/neutral snapshot is returned
+      rather than raising, so Dream prompts degrade gracefully.
+
+    Projection rules (Phase 2):
+      中期层 → bucket strings only (no raw values):
+        sensitivity.current  → "sensitivity"    low / mid / high
+        touch_need.deficit   → "touch_appetite" low / mid / high
+      长期层 → coarse label only (no raw numbers, no baseline values):
+        embodied_ease        → "embodied_ease"  guarded / neutral / easy
+        body_memory.entries  → "memory_cues"    top-N cue strings by weight
+                                                (weights are NOT included)
+
     Return shape::
 
         {
@@ -786,17 +809,60 @@ def to_dream_snapshot(state: UserHiddenState, now: str) -> dict[str, Any]:
             "memory_cues":     [str, ...],   # top cue strings by weight
         }
 
-    Bucket thresholds (provisional):
+    Bucket thresholds:
       sensitivity / touch_appetite:
         low   < 35
-        mid   35 – 65
+        mid   35 – 65  (inclusive both ends)
         high  > 65
       embodied_ease (user's constitutional ease in body-intimate contexts):
         guarded  < 35   — tends toward tension / wariness
         neutral  35 – 65
         easy     > 65   — tends toward relaxed openness
-
-    Raises:
-        NotImplementedError: Phase 0 — implementation deferred to Phase 1.
     """
-    raise NotImplementedError("to_dream_snapshot: Phase 0 stub")
+    # Fail-closed: any unexpected error returns a neutral mid/neutral snapshot
+    # so the Dream LLM call is never blocked by state-projection errors.
+    _NEUTRAL: dict[str, Any] = {
+        "sensitivity": "mid",
+        "touch_appetite": "mid",
+        "embodied_ease": "neutral",
+        "memory_cues": [],
+    }
+
+    def _lmh(v: float) -> str:
+        if v < _SNAPSHOT_BUCKET_LOW:
+            return "low"
+        return "high" if v > _SNAPSHOT_BUCKET_HIGH else "mid"
+
+    def _ease(v: float) -> str:
+        if v < _SNAPSHOT_BUCKET_LOW:
+            return "guarded"
+        return "easy" if v > _SNAPSHOT_BUCKET_HIGH else "neutral"
+
+    try:
+        # 中期层 → buckets (raw values intentionally excluded from output)
+        sensitivity_bucket = _lmh(state.sensitivity.current.value)
+        appetite_bucket = _lmh(state.touch_need.deficit.value)
+
+        # 长期层 → coarse label only (no raw numbers in output)
+        ease_label = _ease(state.embodied_ease.value)
+
+        # 长期层 → cue strings only, sorted by weight descending (no weights)
+        top_cues = [
+            e.cue
+            for e in sorted(
+                state.body_memory.entries,
+                key=lambda e: e.weight,
+                reverse=True,
+            )[:_SNAPSHOT_TOP_CUES]
+            if e.cue
+        ]
+    except Exception:
+        _log.exception("[to_dream_snapshot] unexpected error — returning neutral snapshot")
+        return dict(_NEUTRAL)
+
+    return {
+        "sensitivity": sensitivity_bucket,
+        "touch_appetite": appetite_bucket,
+        "embodied_ease": ease_label,
+        "memory_cues": top_cues,
+    }

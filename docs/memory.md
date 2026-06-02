@@ -731,16 +731,14 @@ sensor privacy 全系统已经完成。
 
 ---
 
-## 八、用户隐性状态（user_hidden_state）— Phase 1.5
+## 八、用户隐性状态（user_hidden_state）— Phase 2
 
 **文件**：
-- `core/memory/user_hidden_state.py` — 数据结构、常量、primitive 函数、`to_dict` / `from_dict`
-- `core/memory/user_hidden_state_integrator.py` — Reality Event + Dream Impression → 中期层 integrator
-- `core/memory/user_hidden_state_store.py` — 磁盘 I/O（`load_hidden_state` / `save_hidden_state`）
+- `core/memory/user_hidden_state.py` — 数据结构、常量、primitive 函数、`to_dict` / `from_dict` / `to_dream_snapshot`
+- `core/memory/user_hidden_state_integrator.py` — Reality Event + Impression → 中期层 integrator；Phase 2 disk-wired 入口 `integrate_*_and_save`
+- `core/memory/user_hidden_state_store.py` — 磁盘 I/O（`load_hidden_state` / `save_hidden_state` / `load_dream_snapshot`）
 
-**Phase 1 MVP 状态**：Reality Event 和 Dream Impression 可经 integrator 更新中期层字段。无 pipeline 接线，Dream 不得直接写任何字段。
-
-**Phase 1.5 新增**：序列化与持久化已实现，尚未接线至 pipeline。
+**当前状态**：Reality Event / Dream Impression 可经 integrator 更新中期层字段并持久化到磁盘。`to_dream_snapshot` 提供只读 bucket 快照供 Dream LLM 上下文注入。长期层仍受保护，consolidate / baseline 促进为 Phase 3+。
 
 ### 持久化（Phase 1.5）
 
@@ -755,7 +753,22 @@ sensor privacy 全系统已经完成。
 
 **WriteEnvelope 说明**：store 本身不执行 envelope 门控。调用方在调用 `save_hidden_state` 前必须已持有 `WriteEnvelope(can_write_memory=True)`。
 
-**不接线**：Dream、build_snapshot、scheduler、自动保存。
+### Disk-wired integrator（Phase 2）
+
+| 函数 | 说明 |
+|---|---|
+| `integrate_event_and_save(uid, event_type, envelope, now)` | load → integrate_event → 仅 accepted + can_write_memory 时原子保存 |
+| `integrate_impression_and_save(uid, impression, envelope, now)` | load → integrate_impression → 仅 accepted + can_write_memory 时原子保存 |
+
+两个函数均在 `user_hidden_state_integrator.py`，是 Reality-side 的 disk-wired 入口。Dream 不得调用。
+
+### Dream 读取接口（Phase 2）
+
+| 函数 | 文件 | 说明 |
+|---|---|---|
+| `load_dream_snapshot(uid, now)` | `user_hidden_state_store.py` | 唯一的 Dream 读取路径：load → to_dream_snapshot；只读，不写磁盘，不接 pipeline |
+
+**不接线**：Dream pipeline 写路径、build_snapshot、scheduler、自动保存。
 
 ### 字段一览（UserHiddenState）
 

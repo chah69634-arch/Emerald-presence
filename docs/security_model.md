@@ -66,6 +66,28 @@ LLM client 在无显式 proxy 时使用 `trust_env=False`，网易云搜索的 a
 这是 P0 写入准入，不是完整权限系统，也不表示 `policy.py`、完整字段契约或 sensor privacy
 全系统已经完成。
 
+### User Hidden State Phase 2 — 安全边界
+
+Phase 2 在 Phase 1.5 持久化基础上增加了三个组件，边界如下：
+
+**`to_dream_snapshot()` （`core/memory/user_hidden_state.py`）**
+- **只读投影**：不修改任何 `UserHiddenState` 字段，不写磁盘，不发 WriteEnvelope stamp。
+- **低分辨率输出**：只暴露 bucket 字符串（low/mid/high/guarded/neutral/easy）和 cue 字符串列表；原始 float 数值不出现在任何返回值中。
+- **Dream 写锁**：`DREAM_DIRECT_WRITABLE = frozenset()` — Dream turn 不能通过此函数向隐性状态写任何字段。
+- **Fail-closed**：发生意外异常时返回中性 mid/neutral snapshot，Dream LLM 调用不会因状态投影错误而中断。
+
+**`integrate_event_and_save()` / `integrate_impression_and_save()` （`core/memory/user_hidden_state_integrator.py`）**
+- **Reality-side only**：这两个函数是 Reality 侧 integrator 的 disk-wired 入口；Dream turn 不得调用。
+- **WriteEnvelope 门控**：仅在 `write_envelope.can_write_memory=True` **且** `result.accepted=True` 时才写盘；被拒绝的 envelope 不碰磁盘。
+- **中期层限定**：只写 `touch_need.deficit`（事件路径）或 `sensitivity.current`（印象路径）；长期层（`sensitivity.baseline`、`touch_need.baseline`、`embodied_ease`、`body_memory`）永不修改。
+- **原子写入**：底层调用 `safe_write_json`，写临时文件后 `replace`，保证写操作的原子性。
+- **不触发 consolidate**：这两个函数不调用 `consolidate_baselines()`，不触发基线升级。
+
+**`load_dream_snapshot()` （`core/memory/user_hidden_state_store.py`）**
+- **唯一 Dream 读取路径**：Dream session 应通过此函数获取隐性状态快照，不应直接读取 `UserHiddenState` 字段。
+- **读后不写**：函数本身不写磁盘，不接 Dream pipeline 写路径。
+- **结果可变性隔离**：返回的 dict 是新对象，修改它不影响已持久化状态。
+
 ### QQ Dream Guard 与渲染标签收口
 
 - `DREAM_ACTIVE` / `DREAM_CLOSING` 时 QQ owner 消息被拒，不进入现实 pipeline，

@@ -1,11 +1,15 @@
 """
 core/memory/user_hidden_state_integrator.py
 ==========================================
-Phase 1 MVP — Reality Event + Dream Impression → 中期层 integrator
+Phase 1 MVP + Phase 2 save wiring
 
-Entry points:
+Entry points (pure, in-memory):
   integrate_event(event_type, hidden_state, write_envelope, now)
   integrate_impression(impression, hidden_state, write_envelope, now)
+
+Entry points (Phase 2 — load → integrate → save):
+  integrate_event_and_save(uid, event_type, write_envelope, now)
+  integrate_impression_and_save(uid, impression, write_envelope, now)
 
 Writable fields (中期层 only):
   - touch_need.deficit
@@ -21,8 +25,10 @@ Fail-closed contract:
   All mutations require write_envelope.can_write_memory == True.
   If the envelope gate is closed, the state is returned unchanged and
   IntegratorResult.rejected_reasons is populated.
+  The _and_save variants only persist when the envelope is open AND the
+  result is accepted; rejected calls never touch disk.
 
-Not implemented in this MVP (Phase 2+):
+Not implemented (Phase 3+):
   - consolidate / baseline promotion
   - body_memory reinforcement
   - embodied_ease updates
@@ -30,7 +36,6 @@ Not implemented in this MVP (Phase 2+):
   - dream_body_event processing
   - sensor integration
   - build_snapshot
-  - disk I/O / scheduling
 """
 from __future__ import annotations
 
@@ -49,6 +54,7 @@ from core.memory.user_hidden_state import (
     discharge_touch_deficit,
     nudge_current_sensitivity,
 )
+from core.memory.user_hidden_state_store import load_hidden_state, save_hidden_state
 from core.write_envelope import WriteEnvelope
 
 logger = logging.getLogger(__name__)
@@ -254,3 +260,76 @@ def integrate_impression(
     )
 
     return hidden_state, result
+
+
+# ── E. Disk-wired entry points (Phase 2) ─────────────────────────────────────
+
+
+def integrate_event_and_save(
+    uid: str | int,
+    event_type: RealityEventType,
+    write_envelope: WriteEnvelope,
+    now: str,
+) -> tuple[UserHiddenState, IntegratorResult]:
+    """Load hidden state, apply a Reality event, and persist if permitted.
+
+    Steps:
+      1. Load UserHiddenState from store (or default if absent/corrupt).
+      2. Call integrate_event() — 中期层 mutation only.
+      3. If write_envelope.can_write_memory AND result.accepted: atomic save.
+         Otherwise: state is returned unchanged, nothing is written to disk.
+
+    Long-term fields (sensitivity.baseline, touch_need.baseline, embodied_ease,
+    body_memory) are never touched — guaranteed by integrate_event().
+
+    Fail-closed: a rejected envelope or any I/O error leaves disk untouched.
+    The atomic write guarantee comes from safe_write_json inside save_hidden_state.
+
+    Returns:
+        (state_after_mutation, IntegratorResult)
+    """
+    state = load_hidden_state(uid)
+    state, result = integrate_event(event_type, state, write_envelope, now)
+    if write_envelope.can_write_memory and result.accepted:
+        ok = save_hidden_state(uid, state)
+        if not ok:
+            logger.error(
+                "integrate_event_and_save: save failed [uid=%s event=%s]",
+                uid, event_type.value,
+            )
+    return state, result
+
+
+def integrate_impression_and_save(
+    uid: str | int,
+    impression: ImpressionInput,
+    write_envelope: WriteEnvelope,
+    now: str,
+) -> tuple[UserHiddenState, IntegratorResult]:
+    """Load hidden state, apply a Dream-derived impression, and persist if permitted.
+
+    Steps:
+      1. Load UserHiddenState from store (or default if absent/corrupt).
+      2. Call integrate_impression() — sensitivity.current mutation only.
+      3. If write_envelope.can_write_memory AND result.accepted: atomic save.
+         Otherwise: state is returned unchanged, nothing is written to disk.
+
+    Long-term fields are never touched — guaranteed by integrate_impression().
+    Dream-derived inputs must only be supplied at Dream exit by the Reality-side
+    caller; never from within an active Dream turn.
+
+    Fail-closed: rejected envelope, out-of-gate weight, or I/O error → no write.
+    The atomic write guarantee comes from safe_write_json inside save_hidden_state.
+
+    Returns:
+        (state_after_mutation, IntegratorResult)
+    """
+    state = load_hidden_state(uid)
+    state, result = integrate_impression(impression, state, write_envelope, now)
+    if write_envelope.can_write_memory and result.accepted:
+        ok = save_hidden_state(uid, state)
+        if not ok:
+            logger.error(
+                "integrate_impression_and_save: save failed [uid=%s]", uid,
+            )
+    return state, result
