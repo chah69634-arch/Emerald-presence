@@ -32,6 +32,7 @@
 | `6d_diary_context` | 用户近期日记 | 有内容且命中 `emotion.down` / `emotion.indirect` | `diary_context.load()` |
 | `6e_inner_diary_facts` | 叶瑄昨天的记录（事件层，取前200字） | 昨日日记文件存在且含事件层 | `data/runtime/characters/{char_id}/inner/diary/` |
 | `6e_inner_diary_feeling` | 叶瑄昨天的心情（感受层，取前150字） | 昨日日记存在且命中 `emotion.down/indirect/deep` 或 `topic.relation` | `data/runtime/characters/{char_id}/inner/diary/` |
+| `dream_afterglow_soft_hint` | 梦境余韵软提示（只读，非事实，TTL 8h，`may/可能` 限定语气，`neutral+空tags` 不注入） | afterglow_residue.json 存在且 TTL 未过期且 tone≠neutral 或 tags 非空 | `core/prompt_builder._format_afterglow_soft_hint()` → `core/memory/user_hidden_state.read_afterglow_residue()` → `data/user_memory/{uid}/afterglow_residue.json` |
 | `6g_dream_impression` | 梦境印象回流（ambient，≤3条，非事实框定，叶瑄自述"我好像在梦里……"） | 有未过期印象时注入 | `core/dream/impression_loader.load_impression_text()` → `data/runtime/dreams/{char_id}/impressions/{uid}.json` |
 | `7_mes_example_item` | 对话示例（few-shot） | always（有内容） | 角色卡 mes_example |
 | `9_history` | 短期对话历史（近场保留 + 远场加权择优） | always | `short_term.load_for_prompt()` |
@@ -43,8 +44,7 @@
 
 > 层 10 注入安全：工具裸输出经 `ToolResult.safe_summary`（截断上限 2000 字符）包裹后，以定界标记 `<<<TOOL_DATA_START>>>` / `<<<TOOL_DATA_END>>>` 加反注入指令框定，防止外部工具/搜索结果中的不可信文本被模型当作指令执行。原始数据仅落 debug 日志，永不进 prompt/memory。
 >
-> `core/dream/dream_afterglow.py` 的短 TTL loader 已存在，但现实 pipeline 当前没有调用它，
-> 因此没有生效中的 `6f_dream_afterglow` 层；当前 Dream 回流只有 `6g_dream_impression`。
+> Phase 7 起：`dream_afterglow_soft_hint` 层（层 6f 位置）已接线，由 `_format_afterglow_soft_hint()` 读取 `afterglow_residue.json`，注入非事实软提示。该层是只读的，不写 memory / mood / profile / hidden state。TTL 失效或 neutral+空tags 时不注入，读取异常 fail-closed 不阻断。
 
 ---
 
@@ -159,10 +159,11 @@ token_estimate = sum(len(m["content"]) for m in messages)
 ### 裁剪顺序
 
 依次删以下层（通过 `_layer` 字段 startswith 匹配），按质量从低到高：
-6g_dream_impression → 6b_event_search → mid_term → 6d_diary → 6e_inner_diary → 6c_episodic → 5.5_lore
+dream_afterglow_soft_hint → 6g_dream_impression → 6b_event_search → mid_term → 6d_diary → 6e_inner_diary → 6c_episodic → 5.5_lore
 
 设计原则：
-- `6g_dream_impression` 是模糊梦境印象，ambient 注入、低权重、非事实，最先丢（最不关键）
+- `dream_afterglow_soft_hint` 是梦境余韵软提示，非事实、只读、最轻量，最先丢（优先级最低）
+- `6g_dream_impression` 是模糊梦境印象，ambient 注入、低权重、非事实，次先丢
 - `6b_event_search` 是关键词匹配 + 简单评分，质量较低，次先丢
 - `mid_term` / `6d_diary` / `6e_inner_diary` 是被动上下文，丢了不影响相关性
 - `6c_episodic` 经过 LLM 压缩 + strength 校正 + MMR 多样性筛选，是质量最高的记忆层，靠后丢

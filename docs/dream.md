@@ -38,7 +38,7 @@
 - 独立 dream_prompt 组装（不复用现实 prompt_builder，不过反话剧化 sanitizer）
 - 梦境原文写 `tmp/current_dream.jsonl`，退出转 `archive/`
 - 软退出（可被叶瑄挽留）+ 硬退出（绝对穿透）
-- dream_summary + 短 TTL afterglow loader（`dream_afterglow.py` 已有；现实层 6f 尚未接线）
+- dream_summary + 短 TTL afterglow loader（Phase 7：现实层 `dream_afterglow_soft_hint` 已接线，`_format_afterglow_soft_hint()` 只读注入软提示）
 - 隔离合同测试
 
 **三轴结构（v0）**
@@ -144,12 +144,12 @@ WriteEnvelope 双重门控：
 
 | 层 | 内容 | 生命周期 |
 |---|---|---|
-| `6f_dream_afterglow` | 即时情绪余韵（剥场景/世界/身体） | summary 和 loader 已有，现实 prompt pipeline 尚未接 6f 注入；afterglow 当前只写 hidden_state（via integrator），不注入文本层 |
+| `dream_afterglow_soft_hint` | 梦境余韵软提示（只读，非事实，`may/可能` 限定，TTL 8h） | **Phase 7 已接线**：`_format_afterglow_soft_hint()` 读 `afterglow_residue.json`，注入非事实软提示；neutral+空tags 不注入；读取异常 fail-closed |
 | `6g_dream_impression` | 低权"我好像在梦里…"模糊印象 | 慢衰减 |
 
-当前只有 `6g_dream_impression` 从 dream 域读入现实 prompt，并进入 token 裁剪表最早裁剪。
-`6f` loader 仍是独立可测模块，但未接 `core/pipeline.py` / `core/prompt_builder.py`。
-afterglow 回流路径（Phase 6）: Dream exit → `wire_afterglow_from_summary()` → `integrate_afterglow_and_save()` → hidden_state.json（不经过 prompt pipeline）。
+Phase 7 起，`dream_afterglow_soft_hint` 层已接入 Reality prompt builder（`core/prompt_builder.py`），位于层 6e 之后、层 6g 之前。该层进入 token 裁剪表且优先级最低（最先被裁剪）。写隔离不变：只读，不写 memory / mood / profile / hidden state。
+
+afterglow 完整路径：Dream exit → `wire_afterglow_from_summary()` → `integrate_afterglow_and_save()` → hidden_state.json（Phase 6 numeric wiring）; 同时 → Reality prompt `dream_afterglow_soft_hint` 层（Phase 7 text hint）。
 
 ---
 
@@ -273,13 +273,13 @@ REALITY_CHAT → DREAM_ENTRANCE_AVAILABLE → DREAM_ACTIVE → DREAM_CLOSING →
 
 ### CURRENT（当前实现）
 见第二节功能清单。三轴 + 四档 + 六世界 + 软硬双出口已落地；三层产物均会生成，
-但现实 prompt 当前只接 `6g_dream_impression`，`6f_dream_afterglow` 仍未接线。测试数量以
+Phase 7 起，现实 prompt 同时接 `dream_afterglow_soft_hint`（只读软提示，层 6f 位置）和 `6g_dream_impression`。测试数量以
 `tests/test_dream_*.py` 当前收集结果为准，不在合同文档里固定计数。
 
 **现实侧 loader 不引用 dream 路径——已有自动测试护栏**
 `tests/test_dream_isolation_guard.py` 静态扫描 `core/memory/*.py`、`core/pipeline.py`、
 `core/prompt_builder.py` 的非注释源码行，断言不出现 `dreams/`、`impression_loader`、
-`afterglow`、`dream_summary`、`dreams/archive` 等 dream 域标记。
+`afterglow`、`dream_summary`、`dreams/archive` 等 dream 域标记。Phase 7 为 `prompt_builder.py` 的 `afterglow` 引用添加了 allowlist 条目（read-only 用途，注释说明）。
 唯一允许的例外用 `_ALLOWLIST` 显式白名单：`core/pipeline.py` 对 `impression_loader` 的
 import（它只传递预加载文本给 prompt，不读 dream 数据）。
 配有反假绿正样本：断言 `core/dream/impression_loader.py` 本身含有 `dreams/` 标记，

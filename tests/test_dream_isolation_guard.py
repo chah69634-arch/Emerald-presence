@@ -48,6 +48,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("core/memory/user_hidden_state.py", "afterglow"),
     ("core/memory/user_hidden_state_integrator.py", "afterglow"),
     ("core/memory/user_hidden_state_store.py", "afterglow"),
+    # Phase 7: prompt_builder reads afterglow residue (read-only) to inject layer 6f.
+    # No write path; _format_afterglow_soft_hint() is explicitly fail-closed.
+    ("core/prompt_builder.py", "afterglow"),
 }
 
 

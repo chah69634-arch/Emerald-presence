@@ -23,6 +23,51 @@ class LayerSpec:
 logger = logging.getLogger(__name__)
 _prompt_logger = logging.getLogger("prompt_builder.token")
 
+# tone → soft description for afterglow hint (see _format_afterglow_soft_hint)
+_AG_TONE_DESC: dict[str, str] = {
+    "comfort":  "warm, calm",
+    "warm":     "warm, calm",
+    "safe":     "warm, calm",
+    "trusted":  "warm, calm",
+    "calm":     "calm",
+    "stress":   "uneasy",
+    "fear":     "uneasy",
+    "threat":   "uneasy",
+}
+
+
+def _format_afterglow_soft_hint(uid: str) -> str:
+    """Return a short soft-hint string if a fresh afterglow residue exists, else ''.
+
+    Read-only.  Never raises.  Never writes memory / mood / profile / hidden state.
+    Injects only when tone or at least one emotional_tag is in _AG_TONE_DESC (whitelist).
+    Returns '' when: residue absent, TTL expired, tone not whitelisted and no whitelisted
+    tag found, or any read error.
+    """
+    try:
+        from core.memory.user_hidden_state import read_afterglow_residue
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        residue = read_afterglow_residue(uid, now)
+        if residue is None:
+            return ""
+        tone_desc = _AG_TONE_DESC.get(residue.tone, "")
+        if not tone_desc:
+            # Tone not whitelisted — check tags for any whitelisted entry
+            for tag in residue.emotional_tags:
+                tone_desc = _AG_TONE_DESC.get(tag, "")
+                if tone_desc:
+                    break
+        if not tone_desc:
+            return ""
+        return (
+            "[recent_dream_afterglow]\n"
+            f"近期梦境余韵可能轻微影响用户此刻的语气：{tone_desc}。"
+        )
+    except Exception as exc:
+        logger.warning("[prompt_builder] afterglow soft hint read failed: %s", exc)
+        return ""
+
 def _load_activity_snapshot() -> str:
     from core.sandbox import get_paths
     import json
@@ -611,6 +656,20 @@ def build(
         pass
 
     # ─────────────────────────────────────────────────────────────────────────
+    # 层 6f：梦境余韵软提示（只读，非事实，TTL 失效/neutral+空tags 不注入）
+    # 来自 afterglow_residue.json；用于让 LLM 感知用户可能带着的余韵语气。
+    # 禁止从此层推断现实事件、身份或记忆，内容只表达 "may/可能"。
+    # ─────────────────────────────────────────────────────────────────────────
+    _afterglow_hint = _format_afterglow_soft_hint(user_id)
+    if _afterglow_hint:
+        _layers.append("dream_afterglow_soft_hint")
+        messages.append({
+            "role": "system",
+            "content": _afterglow_hint,
+            "_layer": "dream_afterglow_soft_hint",
+        })
+
+    # ─────────────────────────────────────────────────────────────────────────
     # 层 6g：梦境印象回流（ambient，非事实框定，最先裁剪）
     # 来自 impression_loader；仅当有未过期印象时注入。
     # ─────────────────────────────────────────────────────────────────────────
@@ -758,7 +817,7 @@ def build(
         _prompt_logger.warning(f"[prompt] token估算超硬上限: {token_estimate}，触发层裁剪")
         # 强制裁剪：按优先级删层，先删6b/6c/6d，再删5.5/6e
         # 按质量从低到高排序：先丢质量最低的（关键词匹配），最后才丢质量最高的（LLM压缩+MMR筛选）和世界设定
-        _DROPPABLE = ["6g_dream_impression", "6b_event_search", "mid_term", "6d_diary", "6e_inner_diary", "6c_episodic", "5.5_lore"]
+        _DROPPABLE = ["dream_afterglow_soft_hint", "6g_dream_impression", "6b_event_search", "mid_term", "6d_diary", "6e_inner_diary", "6c_episodic", "5.5_lore"]
         for drop in _DROPPABLE:
             if token_estimate <= 18000:
                 break
