@@ -1,11 +1,8 @@
 data/
 logs/
-# 角色卡及作者注（模板文件保留，实际角色文件含隐私内容不提交）
+# 角色卡（实际角色文件含隐私内容不提交；模板和示例文件已移至 docs/templates/）
 characters/*.json
 characters/*.txt
-!characters/character_template.json
-!characters/character_author_notes_template.json
-!characters/*.example.json
 # characters/dream_presets/ — 私人梦境预设（不含 .example），ignore-but-authored
 characters/dream_presets/
 # content/characters/ 内 ignore-but-authored 私人本体（.example.yaml 仍 track）

@@ -33,65 +33,66 @@ class Character:
     world_book: list[dict] = field(default_factory=list)  # 世界书条目
 
 
-def load(filename: str) -> Character:
+def load(filename_or_id: str) -> Character:
     """
-    加载角色卡文件，支持三种格式：
+    加载角色卡。参数可以是 id ("yexuan")、legacy filename ("yexuan.json")
+    或 legacy 中文 label ("叶瑄")，均通过 asset registry 规范化。
 
-    - .json  — SillyTavern 格式，解析各字段
-    - .txt   — 纯文本，全文作为 description，文件名（去后缀）作为 name
-    - .md    — 同 .txt，全文作为 description
-
-    参数:
-        filename: characters/ 目录下的文件名，如 "叶瑄.json" 或 "叶瑄.txt"
-
-    返回:
-        Character 对象；加载失败时返回默认空角色
+    出错时抛出异常，不静默兜底：
+    - ValueError:          id 在 registry 中不存在（unknown character id）
+    - FileNotFoundError:   文件记录在 registry 但磁盘上不存在
+    - json.JSONDecodeError: JSON 损坏
+    - RuntimeError:        其他意外错误
     """
-    path = CHARACTERS_DIR / filename
-    suffix = Path(filename).suffix.lower()
+    from core.asset_registry import get_registry
 
-    try:
-        # ── 纯文本 / Markdown 格式 ────────────────────────────────────────────
-        if suffix in (".txt", ".md"):
-            text = path.read_text(encoding="utf-8")
-            name = Path(filename).stem  # 文件名去掉后缀作为角色名
-            char = Character(
-                name=name,
-                description=text,
-            )
-            logger.info(f"[character_loader] 角色 '{name}' 加载成功（纯文本格式）")
-            return char
+    reg = get_registry()
 
-        # ── JSON 格式（原有逻辑） ─────────────────────────────────────────────
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+    # Step 1: 规范化 legacy 形式 → 标准 id
+    asset_id = reg.normalize_legacy(filename_or_id, "character")
 
-        char = Character(
-            name=data.get("name", "AI"),
-            description=data.get("description", ""),
-            personality=data.get("personality", ""),
-            scenario=data.get("scenario", ""),
-            mes_example=data.get("mes_example", ""),
-            first_mes=data.get("first_mes", ""),
-            system_prompt=data.get("system_prompt", ""),
-            world_book=data.get("world_book", []),
+    # Step 2: registry resolve — 失败直接 raise ValueError
+    entry = reg.resolve(asset_id, "character")
+
+    path = entry.path()
+    suffix = path.suffix.lower()
+
+    # Step 3: 文件必须存在
+    if not path.exists():
+        raise FileNotFoundError(
+            f"[character_loader] 角色文件不存在: {path} "
+            f"(id={asset_id!r}, 已在 registry 中注册但磁盘文件缺失)"
         )
-        for field_name in ("system_prompt", "description", "personality", "scenario"):
-            val = getattr(char, field_name)
-            if isinstance(val, list):
-                setattr(char, field_name, "".join(val))
-        logger.info(f"[character_loader] 角色 '{char.name}' 加载成功")
+
+    # Step 4: 解析
+    if suffix in (".txt", ".md"):
+        text = path.read_text(encoding="utf-8")
+        name = path.stem
+        char = Character(name=name, description=text)
+        logger.info(f"[character_loader] 角色 '{name}' 加载成功（纯文本格式）")
         return char
 
-    except FileNotFoundError:
-        logger.error(f"[character_loader] 角色文件不存在: {path}")
-    except json.JSONDecodeError as e:
-        logger.error(f"[character_loader] 角色文件 JSON 解析失败: {e}")
-    except Exception as e:
-        log_error("character_loader.load", e)
+    # JSON 格式 — json.JSONDecodeError 直接向上抛
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-    # 返回最基础的默认角色，避免程序崩溃
-    return Character(name="AI", system_prompt="你是一个友好的AI助手。")
+    char = Character(
+        name=data.get("name", path.stem),
+        description=data.get("description", ""),
+        personality=data.get("personality", ""),
+        scenario=data.get("scenario", ""),
+        mes_example=data.get("mes_example", ""),
+        first_mes=data.get("first_mes", ""),
+        system_prompt=data.get("system_prompt", ""),
+        world_book=data.get("world_book", []),
+    )
+    for field_name in ("system_prompt", "description", "personality", "scenario"):
+        val = getattr(char, field_name)
+        if isinstance(val, list):
+            setattr(char, field_name, "".join(val))
+
+    logger.info(f"[character_loader] 角色 '{char.name}' 加载成功")
+    return char
 
 
 async def consistency_check(character: Character, last_reply: str) -> dict:

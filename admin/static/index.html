@@ -2386,9 +2386,20 @@ async function saveGroupCard() {
 // ══════════════════════════════════════════════════════════
 //  角色卡编辑器
 // ══════════════════════════════════════════════════════════
+// _charList: [{id, label, filename, hidden}] from GET /characters
 let _charList = [];
-let _charEditing = '';   // 当前正在编辑的文件名
-let _charData = {};      // 当前载入的原始 JSON（保留未知字段）
+let _charEditing = '';  // 当前正在编辑的文件名 (with extension, used by file-management endpoints)
+let _charData = {};     // 当前载入的原始 JSON（保留未知字段）
+
+function _charFilenameById(id) {
+  const c = _charList.find(c => c.id === id);
+  return c ? c.filename : id;
+}
+
+function _charLabelById(id) {
+  const c = _charList.find(c => c.id === id);
+  return c ? (c.label || c.id) : id;
+}
 
 async function loadCharacterPage() {
   await loadCharacterList();
@@ -2397,45 +2408,46 @@ async function loadCharacterPage() {
 async function loadCharacterList() {
   try {
     const d = await api('GET', '/characters');
-    _charList = d.characters || [];
-    const active = d.active || '';
+    // Exclude hidden assets from the selector; editors can still open them via direct URL
+    _charList = (d.characters || []).filter(c => !c.hidden);
+    const activeId = d.active_id || '';
     const sel = document.getElementById('char-select');
     sel.innerHTML = '<option value="">-- 选择角色卡 --</option>' +
-      _charList.map(name =>
-        `<option value="${escapeHtml(name)}"${name === active ? ' selected' : ''}>${escapeHtml(name)}</option>`
+      _charList.map(c =>
+        `<option value="${escapeHtml(c.id)}"${c.id === activeId ? ' selected' : ''}>${escapeHtml(c.label || c.id)}</option>`
       ).join('');
     // 显示活跃标记
     const badge = document.getElementById('char-active-badge');
-    if (active) {
-      badge.textContent = '当前：' + active;
+    if (activeId) {
+      badge.textContent = '当前：' + _charLabelById(activeId);
       badge.style.display = '';
     } else {
       badge.style.display = 'none';
     }
     // 自动加载当前活跃角色
-    if (active && _charList.includes(active)) {
-      sel.value = active;
-      await loadCharacterDetail(active);
+    if (activeId && _charList.some(c => c.id === activeId)) {
+      sel.value = activeId;
+      await loadCharacterDetail(_charFilenameById(activeId));
     }
   } catch(e) { toast('加载角色卡列表失败：' + e.message, 'err'); }
 }
 
 async function onCharSelectChange() {
-  const name = document.getElementById('char-select').value;
-  if (!name) {
+  const id = document.getElementById('char-select').value;
+  if (!id) {
     document.getElementById('char-edit-form').style.display = 'none';
     document.getElementById('char-empty').style.display = '';
     return;
   }
-  await loadCharacterDetail(name);
+  await loadCharacterDetail(_charFilenameById(id));
 }
 
-async function loadCharacterDetail(name) {
+async function loadCharacterDetail(filename) {
   try {
-    const d = await api('GET', `/characters/${encodeURIComponent(name)}`);
-    _charEditing = name;
+    const d = await api('GET', `/characters/${encodeURIComponent(filename)}`);
+    _charEditing = filename;
     _charData = d;
-    document.getElementById('char-edit-title').textContent = `编辑：${name}`;
+    document.getElementById('char-edit-title').textContent = `编辑：${filename}`;
     document.getElementById('char-empty').style.display = 'none';
 
     if (d.type === 'text') {
@@ -2488,13 +2500,14 @@ async function saveCharacter() {
 }
 
 async function setActiveCharacter() {
-  const name = document.getElementById('char-select').value;
-  if (!name) { toast('请先选择角色卡', 'warn'); return; }
+  const id = document.getElementById('char-select').value;
+  if (!id) { toast('请先选择角色卡', 'warn'); return; }
   try {
-    const d = await api('PUT', '/characters/active', { name });
+    // Submit id (not filename) to the backend
+    const d = await api('PUT', '/characters/active', { id });
     toast(d.message, 'ok');
     const badge = document.getElementById('char-active-badge');
-    badge.textContent = '当前：' + name;
+    badge.textContent = '当前：' + (d.label || _charLabelById(id));
     badge.style.display = '';
   } catch(e) { toast('切换失败：' + e.message, 'err'); }
 }
@@ -2514,10 +2527,13 @@ async function uploadCharacterFile(evt) {
     const d = await r.json();
     toast(d.message, 'ok');
     await loadCharacterList();
-    // 自动选中并打开刚上传的文件
-    const sel = document.getElementById('char-select');
-    sel.value = file.name;
-    await loadCharacterDetail(file.name);
+    // 自动选中并打开刚上传的文件（通过 filename 查找对应 id）
+    const uploaded = _charList.find(c => c.filename === file.name);
+    if (uploaded) {
+      const sel = document.getElementById('char-select');
+      sel.value = uploaded.id;
+      await loadCharacterDetail(uploaded.filename);
+    }
   } catch(e) { toast('上传失败：' + e.message, 'err'); }
   evt.target.value = '';
 }
@@ -2547,6 +2563,12 @@ async function renameCharacter() {
     toast(d.message, 'ok');
     _charEditing = new_name;
     await loadCharacterList();
+    // 自动选中重命名后的文件
+    const renamed = _charList.find(c => c.filename === new_name);
+    if (renamed) {
+      document.getElementById('char-select').value = renamed.id;
+      await loadCharacterDetail(renamed.filename);
+    }
   } catch(e) { toast('重命名失败：' + e.message, 'err'); }
 }
 

@@ -20,7 +20,7 @@ _paths = init_paths(mode="test")
 print("=" * 60)
 print(f"[TEST] session_id  : {_paths.test_session_id}")
 print(f"[TEST] 数据根目录   : {_paths._base.resolve()}")
-print(f"[TEST] config.yaml 已写入 data_prefix 字段（供 Emerald-desktop 同步）")
+print(f"[TEST] config.yaml 已写入 data_prefix 字段（供 Emerald-desktop （该前端已废弃，现在Emerald-client）同步）")
 print("=" * 60)
 print()
 

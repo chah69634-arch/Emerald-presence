@@ -10,8 +10,7 @@
 
 | 路径 | 说明 |
 |------|------|
-| `characters/character_template.json` | 角色卡空模板 |
-| `characters/character_author_notes_template.json` | 作者注空模板 |
+| `docs/templates/character_template.json` | 角色卡空模板（已从 characters/ 移出，不再出现在 admin UI 列表中） |
 | `characters/dream_worlds/*/lorebook.yaml` | 内置梦世界 lorebook（6 个世界） |
 | `characters/dream_worlds/*/ruleset.md` | 梦世界规则文本 |
 | `characters/dream_worlds/*/mes_example.md` | 梦世界对话示例 |
@@ -25,7 +24,6 @@
 | `content/characters/yexuan/traits.example.yaml` | traits 编写模板 |
 | `content/characters/yexuan/activity_pool.example.yaml` | 活动池编写模板 |
 | `content/jailbreak_presets/示例.example.json` | jailbreak 预设模板 |
-| `characters/yexuan_author_notes.example.json` | 作者注编写模板 |
 | `defaults/lorebook.yaml` | lorebook 空种子（`entries: []`） |
 | `defaults/relations.yaml` | relations 最小默认种子 |
 | `defaults/blacklist.yaml` | blacklist 空种子 |
@@ -65,14 +63,14 @@
 
 | 路径 | DataPaths 方法 | 说明 |
 |------|---------------|------|
-| `characters/reality/lorebook.yaml` | `lorebook()` | 现实世界书条目（defaults/ 种子为空） |
-| `characters/reality/jailbreak_entries.json` | `jailbreak_entries()` | 破限预设条目（defaults/ 种子为空） |
+| `characters/reality/lorebook.yaml` | `lorebook()` | 现实世界书条目（defaults/ 空种子仅用于 test sandbox） |
+| `characters/reality/jailbreak_entries.json` | `jailbreak_entries()` | 破限预设条目（defaults/ 空种子仅用于 test sandbox） |
 | `data/relations.yaml` | `relations()` | 实际关系数据（defaults/ 种子为最小默认） |
 | `data/blacklist.yaml` | `blacklist()` | 实际黑名单（defaults/ 种子为空） |
 
-> 这类文件 git_policy = `seed`（registry 中正确），种子可从 git 恢复，但运行时的私人定制内容只在磁盘上。
->
-> 注意：`characters/reality/lorebook.yaml` 和 `characters/reality/jailbreak_entries.json` 已从 `data/` 迁移至 `characters/reality/`，旧路径不再运行时读取。
+> `lorebook.yaml` 和 `jailbreak_entries.json` 在 production 模式下不再自动从 defaults/ 种子生成——
+> 若文件缺失，`data_paths.py` 会打印 ERROR 日志并返回原路径，调用方自行 fallback 空列表。
+> 文件缺失时应从版本库（`git checkout`）或磁盘备份恢复。
 
 ### 2d. 用户级不可重建配置
 

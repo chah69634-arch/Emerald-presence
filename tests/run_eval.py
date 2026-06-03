@@ -49,8 +49,13 @@ def main():
     cases = json.loads(eval_path.read_text(encoding="utf-8"))
 
     cfg = get_config()
-    char_filename = cfg.get("character", {}).get("default", "default.json")
-    character = character_loader.load(char_filename)
+    char_ref = cfg.get("character", {}).get("default", "")
+    if not char_ref:
+        raise RuntimeError(
+            "config.yaml 缺少 character.default 字段。"
+            " 请设置 character.default: <角色id>"
+        )
+    character = character_loader.load(char_ref)
     lore_engine = LoreEngine(character.world_book)
     lore_engine.load()
     pipeline = Pipeline(character, lore_engine)

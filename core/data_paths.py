@@ -314,15 +314,16 @@ class DataPaths:
         """主路径：characters/reality/jailbreak_entries.json（无 data/ fallback）"""
         p = self._reality_p("jailbreak_entries.json")
         if not p.exists():
-            src = _DEFAULTS_ROOT / "jailbreak_entries.json"
-            if src.exists():
-                p.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, p)
-                logger.info(f"[sandbox] seeded {p} from {src}")
+            if self.mode == "test":
+                src = _DEFAULTS_ROOT / "jailbreak_entries.json"
+                if src.exists():
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, p)
+                    logger.info(f"[sandbox] seeded {p} from {src}")
             else:
-                logger.warning(
-                    f"[data_paths] characters/reality/jailbreak_entries.json 不存在"
-                    f"，defaults 种子也不存在 ({src})，将返回空列表"
+                logger.error(
+                    f"[data_paths] authored asset missing: {p}  "
+                    f"— 请从版本库恢复或从备份拷贝；运行时不自动生成。"
                 )
         return p
 
@@ -330,15 +331,16 @@ class DataPaths:
         """主路径：characters/reality/lorebook.yaml（无 data/ fallback）"""
         p = self._reality_p("lorebook.yaml")
         if not p.exists():
-            src = _DEFAULTS_ROOT / "lorebook.yaml"
-            if src.exists():
-                p.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, p)
-                logger.info(f"[sandbox] seeded {p} from {src}")
+            if self.mode == "test":
+                src = _DEFAULTS_ROOT / "lorebook.yaml"
+                if src.exists():
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, p)
+                    logger.info(f"[sandbox] seeded {p} from {src}")
             else:
-                logger.warning(
-                    f"[data_paths] characters/reality/lorebook.yaml 不存在"
-                    f"，defaults 种子也不存在 ({src})，将返回空列表"
+                logger.error(
+                    f"[data_paths] authored asset missing: {p}  "
+                    f"— 请从版本库恢复或从备份拷贝；运行时不自动生成。"
                 )
         return p
 

@@ -18,6 +18,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from admin.auth import verify_token
+from core.asset_registry import get_registry, reload_registry
 from core.config_loader import get_config
 
 router = APIRouter()
@@ -37,47 +38,100 @@ def _safe_path(name: str) -> Path:
     return resolved
 
 
+def _active_character_id() -> str:
+    """Return the current active character id from config.yaml (normalized)."""
+    raw = get_config().get("character", {}).get("default", "")
+    if not raw:
+        return ""
+    # Normalize: strip extension if present (legacy compat: "yexuan.json" -> "yexuan")
+    return Path(raw).stem if "." in raw else raw
+
+
 def _reload_character():
-    """热重载 main.py 中的角色实例和世界书引擎"""
+    """热重载 main.py 中的角色实例和世界书引擎。
+
+    只吞掉 "admin 单独运行时 main 未初始化" 这一种情况；
+    角色加载失败（id 不存在、文件缺失、JSON 损坏）会直接向上抛。
+    """
     try:
         import main as _main
-        if not hasattr(_main, "_character"):
-            return
-        from core import character_loader
-        cfg = get_config()
-        filename = cfg.get("character", {}).get("default", "default.json")
-        _main._character = character_loader.load(filename)
-        if hasattr(_main, "_lore_engine") and _main._lore_engine is not None:
-            _main._lore_engine.load()
-            if _main._character.world_book:
-                _main._lore_engine.load_entries(_main._character.world_book)
     except Exception:
-        pass  # admin 单独运行时 main 可能未初始化，忽略
+        return  # admin 单独运行时 main.py 未初始化，跳过
+    if not hasattr(_main, "_character"):
+        return
+
+    from core import character_loader
+    cfg = get_config()
+    char_ref = cfg.get("character", {}).get("default", "")
+    if not char_ref:
+        raise ValueError(
+            "[character_loader] config.yaml 缺少 character.default，无法热重载角色"
+        )
+    # load() 现在 fail-loud：id 不存在 → ValueError，文件缺失 → FileNotFoundError
+    _main._character = character_loader.load(char_ref)
+    if hasattr(_main, "_lore_engine") and _main._lore_engine is not None:
+        _main._lore_engine.load()
+        if _main._character.world_book:
+            _main._lore_engine.load_entries(_main._character.world_book)
 
 
 # ─── 路由（注意：精确路由必须在参数路由之前声明）────────────────────────────────
 
 @router.get("/characters", summary="列出所有角色卡文件")
 async def list_characters(auth=Depends(verify_token)):
-    """返回 characters/ 目录下所有 .json/.txt/.md 文件名及当前活跃角色"""
+    """返回 characters/ 顶层目录下的角色卡资产列表（不含 hidden/template/author_notes 资产）。
+
+    Response shape:
+      {
+        "characters": [{"id": "yexuan", "label": "叶瑄", "filename": "yexuan.json"}, ...],
+        "active_id": "yexuan"
+      }
+    """
     CHARACTERS_DIR.mkdir(parents=True, exist_ok=True)
-    files = sorted(
-        p.name for p in CHARACTERS_DIR.iterdir()
-        if p.suffix.lower() in (".json", ".txt", ".md")
-    )
-    active = get_config().get("character", {}).get("default", "default.json")
-    return {"characters": files, "active": active}
+    reg = get_registry()
+    # list_ui excludes hidden; include both hidden=False and hidden=True here so editors can
+    # still open all files — but mark hidden ones so the frontend can omit them from the
+    # "set active" picker.
+    entries = reg.list_all("character")
+    chars = [
+        {"id": e.id, "label": e.label, "filename": e.filename, "hidden": e.hidden}
+        for e in sorted(entries, key=lambda e: e.id)
+    ]
+    return {"characters": chars, "active_id": _active_character_id()}
 
 
 @router.put("/characters/active", summary="切换当前活跃角色卡")
 async def set_active_character(body: Dict[str, Any], auth=Depends(verify_token)):
-    """将 config.yaml 中的 character.default 更新为指定文件名，并热重载"""
-    name = (body.get("name") or "").strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="name 不能为空")
-    path = _safe_path(name)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"角色卡 {name} 不存在")
+    """将 config.yaml 中的 character.default 更新为指定角色 id，并热重载。
+
+    Request body: {"id": "yexuan"}
+    Legacy compat: {"name": "yexuan.json"} is also accepted and normalized to id.
+
+    Rejects: label strings ("叶瑄") and unknown ids — fail-loud.
+    """
+    # Accept both "id" (new) and "name" (legacy filename form)
+    raw = (body.get("id") or body.get("name") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail="id 不能为空")
+
+    reg = get_registry()
+    # Normalize legacy filename to id ("yexuan.json" → "yexuan")
+    char_id = reg.normalize_legacy(raw, "character")
+
+    # Validate: id must be known, and must not be a hidden template/example
+    try:
+        entry = reg.resolve(char_id, "character")
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"未知角色 id {char_id!r}。如果提交了 label 或 filename，请改为提交 id。",
+        )
+
+    if entry.hidden:
+        raise HTTPException(
+            status_code=422,
+            detail=f"角色 {char_id!r} 是 template/example 资产，不能设为活跃角色。",
+        )
 
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -85,7 +139,8 @@ async def set_active_character(body: Dict[str, Any], auth=Depends(verify_token))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取配置失败: {e}")
 
-    full_cfg.setdefault("character", {})["default"] = name
+    # Write id (not filename) to config
+    full_cfg.setdefault("character", {})["default"] = char_id
 
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -96,7 +151,8 @@ async def set_active_character(body: Dict[str, Any], auth=Depends(verify_token))
     from core import config_loader
     config_loader.reload_config()
     _reload_character()
-    return {"message": f"当前角色已切换为 {name}"}
+    reload_registry()
+    return {"message": f"当前角色已切换为 {char_id}", "active_id": char_id, "label": entry.label}
 
 
 @router.post("/characters/upload", summary="上传新角色卡（.json / .txt / .md）")
@@ -199,17 +255,20 @@ async def rename_character(name: str, body: Dict[str, Any], auth=Depends(verify_
     if dst.exists():
         raise HTTPException(status_code=409, detail=f"角色卡 {new_name} 已存在")
     src.rename(dst)
-    # 如果是当前活跃角色，同步更新config
-    cfg = get_config()
-    if cfg.get("character", {}).get("default") == name:
+    # 如果是当前活跃角色，同步更新 config.yaml（写新 id，不写 filename）
+    new_id = Path(new_name).stem
+    current_id = _active_character_id()
+    old_id = Path(name).stem
+    if current_id == old_id:
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 full_cfg = yaml.safe_load(f) or {}
-            full_cfg.setdefault("character", {})["default"] = new_name
+            full_cfg.setdefault("character", {})["default"] = new_id
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 yaml.dump(full_cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
             from core import config_loader
             config_loader.reload_config()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"更新配置失败: {e}")
-    return {"message": f"已重命名为 {new_name}", "new_name": new_name}
+    reload_registry()
+    return {"message": f"已重命名为 {new_name}", "new_name": new_name, "new_id": new_id}

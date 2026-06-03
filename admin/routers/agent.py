@@ -1,5 +1,5 @@
 """
-agent路由 — 供Emerald-Desktop的agent loop调用。
+agent路由 — 供Emerald-Desktop（该前端已废弃，新Emerald-client）的agent loop调用。
 提供纯LLM推理接口，不走完整pipeline。
 """
 
