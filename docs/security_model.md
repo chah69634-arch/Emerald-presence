@@ -103,6 +103,7 @@ Phase 2 在 Phase 1.5 持久化基础上增加了三个组件，边界如下：
 
 以下入口当前无 token：
 - `POST /desktop/chat`
+- `POST /desktop/wake`
 - `POST /desktop/activate`
 - `POST /desktop/deactivate`
 - `POST /upload/ingest`
