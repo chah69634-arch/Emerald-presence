@@ -233,7 +233,7 @@ def test_capture_turn_event_log_is_scrubbed(sandbox):
     appended_st: list[dict] = []
     appended_el: list[dict] = []
 
-    def fake_st_append(user_id, role, content, turn_id=None):
+    def fake_st_append(user_id, role, content, turn_id=None, **kwargs):
         appended_st.append({"role": role, "content": content})
         return True
 
@@ -274,7 +274,7 @@ def test_capture_turn_all_action_skips_both_writes(sandbox):
     appended_st: list[dict] = []
     appended_el: list[dict] = []
 
-    def fake_st_append(user_id, role, content, turn_id=None):
+    def fake_st_append(user_id, role, content, turn_id=None, **kwargs):
         appended_st.append({"role": role, "content": content})
         return True
 
@@ -376,7 +376,7 @@ def test_short_term_history_scrubbed(sandbox):
 
     appended_st: list[dict] = []
 
-    def fake_st_append(user_id, role, content, turn_id=None):
+    def fake_st_append(user_id, role, content, turn_id=None, **kwargs):
         appended_st.append({"role": role, "content": content})
         return True
 

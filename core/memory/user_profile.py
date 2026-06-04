@@ -40,11 +40,11 @@ def _profile_write_path(user_id: str, *, char_id: str = "yexuan") -> Path:
     return p
 
 
-def load(user_id: str) -> dict:
+def load(user_id: str, *, char_id: str = "yexuan") -> dict:
     """
     读取用户画像，文件不存在时返回空模板
     """
-    path = _profile_read_path(user_id)
+    path = _profile_read_path(user_id, char_id=char_id)
     try:
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -102,7 +102,7 @@ async def _compress_facts(facts: list) -> list:
     return facts
 
 
-async def update(user_id: str, new_facts: dict):
+async def update(user_id: str, new_facts: dict, *, char_id: str = "yexuan"):
     """
     合并更新用户画像，不覆盖已有非空值
 
@@ -110,7 +110,7 @@ async def update(user_id: str, new_facts: dict):
     追加后若总数超过 50 条，触发 LLM 压缩到 30 条以内。
     其他字段只在原值为 None 时更新
     """
-    profile = load(user_id)
+    profile = load(user_id, char_id=char_id)
 
     for key, value in new_facts.items():
         if key == "important_facts":
@@ -136,10 +136,10 @@ async def update(user_id: str, new_facts: dict):
             if not profile.get(key) and value:
                 profile[key] = value
 
-    _save(user_id, profile)
+    _save(user_id, profile, char_id=char_id)
 
 
-async def extract_and_update(user_id: str, recent_messages: list[dict]):
+async def extract_and_update(user_id: str, recent_messages: list[dict], *, char_id: str = "yexuan"):
     """
     用 LLM 从最近对话中提取新的用户信息，并更新画像
     应每 N 轮调用一次（N = summary_every_n_rounds）
@@ -190,15 +190,15 @@ async def extract_and_update(user_id: str, recent_messages: list[dict]):
         if _issues:
             logger.warning(f"[user_profile] 内容未通过规则纠察，拒绝写入: {_issues}")
             return
-        await update(user_id, new_facts)
+        await update(user_id, new_facts, char_id=char_id)
         logger.info(f"[user_profile] 用户 {user_id} 画像已更新")
     except Exception as e:
         log_error("user_profile.extract_and_update", e)
 
 
-def _save(user_id: str, profile: dict):
+def _save(user_id: str, profile: dict, *, char_id: str = "yexuan"):
     """把画像写回磁盘"""
-    path = _profile_write_path(user_id)
+    path = _profile_write_path(user_id, char_id=char_id)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=2)

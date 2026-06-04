@@ -38,41 +38,52 @@ def _safe_path(name: str) -> Path:
     return resolved
 
 
+import logging as _logging
+_char_logger = _logging.getLogger(__name__)
+
+
 def _active_character_id() -> str:
-    """Return the current active character id from config.yaml (normalized)."""
+    """Return the current active character id.
+
+    Priority: active_prompt_assets.json > config.yaml character.default.
+    """
+    import json as _json
+    from core.sandbox import get_paths as _get_paths
+    try:
+        active_id = _json.loads(
+            _get_paths().active_prompt_assets().read_text(encoding="utf-8")
+        ).get("active_character", "")
+        if active_id:
+            return active_id
+    except Exception:
+        pass
     raw = get_config().get("character", {}).get("default", "")
     if not raw:
         return ""
-    # Normalize: strip extension if present (legacy compat: "yexuan.json" -> "yexuan")
     return Path(raw).stem if "." in raw else raw
 
 
-def _reload_character():
-    """热重载 main.py 中的角色实例和世界书引擎。
+def _reload_character(char_id: str) -> None:
+    """Hot-reload character on the running pipeline.
 
-    只吞掉 "admin 单独运行时 main 未初始化" 这一种情况；
-    角色加载失败（id 不存在、文件缺失、JSON 损坏）会直接向上抛。
+    Fail-loud on unknown id / missing file — callers should catch and surface errors.
+    Silently skips when pipeline is not yet initialized (standalone admin mode).
     """
-    try:
-        import main as _main
-    except Exception:
-        return  # admin 单独运行时 main.py 未初始化，跳过
-    if not hasattr(_main, "_character"):
-        return
-
     from core import character_loader
-    cfg = get_config()
-    char_ref = cfg.get("character", {}).get("default", "")
-    if not char_ref:
-        raise ValueError(
-            "[character_loader] config.yaml 缺少 character.default，无法热重载角色"
-        )
-    # load() 现在 fail-loud：id 不存在 → ValueError，文件缺失 → FileNotFoundError
-    _main._character = character_loader.load(char_ref)
-    if hasattr(_main, "_lore_engine") and _main._lore_engine is not None:
-        _main._lore_engine.load()
-        if _main._character.world_book:
-            _main._lore_engine.load_entries(_main._character.world_book)
+    from core.pipeline_registry import get as _get_pipeline
+
+    pipeline = _get_pipeline()
+    if pipeline is None:
+        return  # admin running standalone, no pipeline yet
+
+    new_char = character_loader.load(char_id)
+    pipeline.character = new_char
+    pipeline._active_character_id = char_id
+    if pipeline.lore_engine is not None:
+        pipeline.lore_engine.load()
+        if new_char.world_book:
+            pipeline.lore_engine.load_entries(new_char.world_book)
+    _char_logger.info(f"[character] hot-reloaded {char_id!r} ({new_char.name}) on pipeline")
 
 
 # ─── 路由（注意：精确路由必须在参数路由之前声明）────────────────────────────────
@@ -148,9 +159,25 @@ async def set_active_character(body: Dict[str, Any], auth=Depends(verify_token))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"写入配置失败: {e}")
 
+    # Also persist to active_prompt_assets.json (runtime source of truth)
+    import json as _json
+    from core.sandbox import get_paths as _get_paths
+    try:
+        _paths = _get_paths()
+        _active = _json.loads(_paths.active_prompt_assets().read_text(encoding="utf-8"))
+        _active["active_character"] = char_id
+        _paths.active_prompt_assets().write_text(
+            _json.dumps(_active, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as _e:
+        _char_logger.warning(f"[character] active_prompt_assets.json 更新失败: {_e}")
+
     from core import config_loader
     config_loader.reload_config()
-    _reload_character()
+    try:
+        _reload_character(char_id)
+    except Exception as _reload_exc:
+        _char_logger.warning(f"[character] pipeline hot-reload failed (non-fatal): {_reload_exc}")
     reload_registry()
     return {"message": f"当前角色已切换为 {char_id}", "active_id": char_id, "label": entry.label}
 
@@ -238,7 +265,13 @@ async def save_character(name: str, request: Request, _auth=Depends(verify_token
                 json.dump(body, f, ensure_ascii=False, indent=2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存失败: {e}")
-    _reload_character()
+    # Reload the currently-active character (the saved file may or may not be active)
+    _active_id = _active_character_id()
+    if _active_id:
+        try:
+            _reload_character(_active_id)
+        except Exception as _e:
+            _char_logger.warning(f"[character] save hot-reload failed (non-fatal): {_e}")
     return {"message": f"角色卡 {name} 已保存并热重载"}
 
 

@@ -21,14 +21,14 @@ from core.dream.dream_state import apply_dream_artifact_sentinel
 logger = logging.getLogger(__name__)
 
 
-def _tmp_path(user_id: str | int) -> Path:
-    d = get_paths().dreams_tmp_dir()
+def _tmp_path(user_id: str | int, *, char_id: str = "yexuan") -> Path:
+    d = get_paths().dreams_tmp_dir(char_id=char_id)
     d.mkdir(parents=True, exist_ok=True)
     return d / f"current_dream_{safe_user_id(user_id)}.jsonl"
 
 
-def _archive_dir() -> Path:
-    d = get_paths().dreams_archive_dir()
+def _archive_dir(*, char_id: str = "yexuan") -> Path:
+    d = get_paths().dreams_archive_dir(char_id=char_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -39,6 +39,8 @@ def append_turn(
     role: str,
     content: str,
     extra: dict[str, Any] | None = None,
+    *,
+    char_id: str = "yexuan",
 ) -> bool:
     """Append one dream turn to current_dream.jsonl with sentinel fields."""
     record: dict[str, Any] = {
@@ -50,12 +52,12 @@ def append_turn(
     if extra:
         record.update(extra)
     record = apply_dream_artifact_sentinel(record)
-    return safe_append_jsonl(_tmp_path(user_id), record)
+    return safe_append_jsonl(_tmp_path(user_id, char_id=char_id), record)
 
 
-def read_current(user_id: str | int) -> list[dict[str, Any]]:
+def read_current(user_id: str | int, *, char_id: str = "yexuan") -> list[dict[str, Any]]:
     """Read all turns from the active dream session."""
-    path = _tmp_path(user_id)
+    path = _tmp_path(user_id, char_id=char_id)
     if not path.exists():
         return []
     turns: list[dict[str, Any]] = []
@@ -70,12 +72,12 @@ def read_current(user_id: str | int) -> list[dict[str, Any]]:
     return turns
 
 
-def archive_current(user_id: str | int, dream_id: str) -> bool:
+def archive_current(user_id: str | int, dream_id: str, *, char_id: str = "yexuan") -> bool:
     """Move current_dream.jsonl to archive/dream_{dream_id}.jsonl (dead storage)."""
-    tmp = _tmp_path(user_id)
+    tmp = _tmp_path(user_id, char_id=char_id)
     if not tmp.exists():
         return True
-    dest = _archive_dir() / f"dream_{dream_id}.jsonl"
+    dest = _archive_dir(char_id=char_id) / f"dream_{dream_id}.jsonl"
     try:
         dest.write_bytes(tmp.read_bytes())
         tmp.unlink()
@@ -86,11 +88,11 @@ def archive_current(user_id: str | int, dream_id: str) -> bool:
         return False
 
 
-def prune_archive(max_files: int = 200) -> int:
+def prune_archive(max_files: int = 200, *, char_id: str = "yexuan") -> int:
     """当 archive 文件数超过 max_files 时，按 mtime 删除最旧的。返回删除数。
     archive 是 write-once dead storage，distill/summary 仅在 close 时读一次，之后无 loader 读取。
     """
-    archive_dir = get_paths().dreams_archive_dir()
+    archive_dir = get_paths().dreams_archive_dir(char_id=char_id)
     if not archive_dir.exists():
         return 0
     files = sorted(archive_dir.glob("dream_*.jsonl"), key=lambda f: f.stat().st_mtime)
@@ -108,9 +110,9 @@ def prune_archive(max_files: int = 200) -> int:
     return count
 
 
-def clear_current(user_id: str | int) -> bool:
+def clear_current(user_id: str | int, *, char_id: str = "yexuan") -> bool:
     """Delete current_dream.jsonl without archiving (emergency force-clear)."""
-    tmp = _tmp_path(user_id)
+    tmp = _tmp_path(user_id, char_id=char_id)
     try:
         if tmp.exists():
             tmp.unlink()

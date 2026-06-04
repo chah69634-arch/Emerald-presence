@@ -887,7 +887,7 @@ _SNAPSHOT_BUCKET_HIGH: float = 65.0
 _SNAPSHOT_TOP_CUES: int = 5
 
 
-def read_afterglow_residue(uid: str, now: str) -> Optional[AfterglowResidueInput]:
+def read_afterglow_residue(uid: str, now: str, *, char_id: str = "yexuan") -> Optional[AfterglowResidueInput]:
     """Return the most recent afterglow residue for uid if within TTL, else None.
 
     Phase 5 implementation.  Reads from disk via the store (lazy import to
@@ -905,7 +905,7 @@ def read_afterglow_residue(uid: str, now: str) -> Optional[AfterglowResidueInput
     """
     from core.memory.user_hidden_state_store import _load_afterglow_raw as _load  # lazy
 
-    raw = _load(uid)
+    raw = _load(uid, char_id=char_id)
     if raw is None:
         return None
 

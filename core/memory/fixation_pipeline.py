@@ -108,9 +108,9 @@ def _state_write_file(uid: str, *, char_id: str = "yexuan") -> Path:
     return p
 
 
-def _load_fixation_state(uid: str) -> dict:
+def _load_fixation_state(uid: str, *, char_id: str = "yexuan") -> dict:
     """读取 fixation_state，缺失字段按默认值填充，不阻塞读路径。"""
-    path = _state_read_file(uid)
+    path = _state_read_file(uid, char_id=char_id)
     try:
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -122,8 +122,8 @@ def _load_fixation_state(uid: str) -> dict:
     return dict(_STATE_DEFAULTS)
 
 
-def _save_fixation_state(uid: str, state: dict) -> None:
-    safe_write_json(_state_write_file(uid), state)
+def _save_fixation_state(uid: str, state: dict, *, char_id: str = "yexuan") -> None:
+    safe_write_json(_state_write_file(uid, char_id=char_id), state)
 
 
 def _should_consolidate(state: dict) -> bool:
@@ -223,6 +223,8 @@ def capture_turn(
     turn_id: str | None = None,
     trigger_name: str = "",
     envelope=None,
+    *,
+    char_id: str = "yexuan",
 ) -> str:
     """
     生成 turn_id，写 short_term + event_log。
@@ -231,6 +233,7 @@ def capture_turn(
 
     调用约束：必须在 uid_lock 内、detect_emotion 完成后调用。
     envelope 未传时默认零值（fail-closed）。
+    char_id 决定写入哪个角色桶，生产路径必须显式传入。
     """
     from core.write_envelope import WriteEnvelope
     if envelope is None:
@@ -253,19 +256,19 @@ def capture_turn(
         # scheduler 触发：只写 assistant，跳过 user 行（prompt 是系统注入的情景描述）
         writes = [
             # Skip short_term when scrubber returned nothing (all non-dialogue)
-            short_term.append(uid, "assistant", _scrubbed_reply, turn_id=turn_id)
+            short_term.append(uid, "assistant", _scrubbed_reply, turn_id=turn_id, char_id=char_id)
             if _scrubbed_reply is not None else True,
             # event_log also stores scrubbed text — no raw action descriptions persist
-            event_log.append(uid, "assistant", _scrubbed_reply, emotion=emotion, turn_id=turn_id, trigger_name=trigger_name)
+            event_log.append(uid, "assistant", _scrubbed_reply, emotion=emotion, turn_id=turn_id, trigger_name=trigger_name, char_id=char_id)
             if _scrubbed_reply is not None else True,
         ]
     else:
         writes = [
-            short_term.append(uid, "user", user_msg, turn_id=turn_id),
-            short_term.append(uid, "assistant", _scrubbed_reply, turn_id=turn_id)
+            short_term.append(uid, "user", user_msg, turn_id=turn_id, char_id=char_id),
+            short_term.append(uid, "assistant", _scrubbed_reply, turn_id=turn_id, char_id=char_id)
             if _scrubbed_reply is not None else True,
-            event_log.append(uid, "user", user_msg, turn_id=turn_id),
-            event_log.append(uid, "assistant", _scrubbed_reply, emotion=emotion, turn_id=turn_id)
+            event_log.append(uid, "user", user_msg, turn_id=turn_id, char_id=char_id),
+            event_log.append(uid, "assistant", _scrubbed_reply, emotion=emotion, turn_id=turn_id, char_id=char_id)
             if _scrubbed_reply is not None else True,
         ]
     if not all(writes):
@@ -285,6 +288,8 @@ async def summarize_to_midterm(
     reply: str,
     tags: list[str],
     emotion: str = "neutral",
+    *,
+    char_id: str = "yexuan",
 ) -> str | None:
     """
     LLM 压缩单轮对话到 mid_term，写入血缘字段。
@@ -300,7 +305,7 @@ async def summarize_to_midterm(
     _ts_start = time.time()
 
     async with locks.uid_lock(uid):
-        existing = _mt.load(uid)
+        existing = _mt.load(uid, char_id=char_id)
         if any(e.get("source_turn_id") == turn_id for e in existing):
             logger.debug(f"[fixation] summarize_to_midterm 幂等命中: turn_id={turn_id}")
             return None
@@ -311,23 +316,24 @@ async def summarize_to_midterm(
 
     mid_id = f"mt_{uid}_{int(time.time() * 1000)}"
     async with locks.uid_lock(uid):
-        existing = _mt.load(uid)
+        existing = _mt.load(uid, char_id=char_id)
         if any(e.get("source_turn_id") == turn_id for e in existing):
             logger.debug(f"[fixation] summarize_to_midterm 幂等命中: turn_id={turn_id}")
             return None
-        _mt.append(uid, summary, tags=tags, mid_id=mid_id, source_turn_id=turn_id)
+        _mt.append(uid, summary, tags=tags, mid_id=mid_id, source_turn_id=turn_id, char_id=char_id)
 
     duration_ms = int((time.time() - _ts_start) * 1000)
     _log_fixation("summarize_to_midterm", uid, {
         "mid_id": mid_id, "turn_id": turn_id, "duration_ms": duration_ms,
     }, "ok")
 
-    # eager 触发：情绪显著则立即入队 reflect
+    # eager 触发：情绪显著则立即入队 reflect，携带入队时的 char_id 快照
     if emotion in ("sad", "angry", "happy"):
         slow_queue.enqueue("reflect_to_episodic", {
             "uid": uid,
             "mid_ids": [mid_id],
             "trigger": "eager",
+            "char_id": char_id,
         })
         logger.info(f"[fixation] reflect_to_episodic eager 已入队: uid={uid} emotion={emotion}")
 
@@ -342,6 +348,8 @@ async def reflect_to_episodic(
     uid: str,
     mid_ids: list[str],
     trigger: Literal["eager", "sweep"] = "eager",
+    *,
+    char_id: str = "yexuan",
 ) -> str | None:
     """
     将一批 mid_term 条目合并反思为一条 episodic 记忆。
@@ -362,7 +370,7 @@ async def reflect_to_episodic(
     ep_id: str | None = None
 
     async with locks.uid_lock(uid):
-        all_events = _mt.load(uid)
+        all_events = _mt.load(uid, char_id=char_id)
 
         # 只处理请求的、且未晋升的条目
         to_process = [
@@ -377,7 +385,7 @@ async def reflect_to_episodic(
             return None
 
         # 幂等：检查 episodic 里是否已有相同 source_mid_ids 的条目
-        existing_eps = _load_memories(uid)
+        existing_eps = _load_memories(uid, char_id=char_id)
         for ep in existing_eps:
             if mid_ids_set & set(ep.get("source_mid_ids", [])):
                 _log_fixation("reflect_to_episodic", uid, {
@@ -446,28 +454,28 @@ async def reflect_to_episodic(
             "consolidated_at": None,
         }
 
-        write_episode(uid, episode)
+        write_episode(uid, episode, char_id=char_id)
         _reset(_fail_key)
 
         # 回写 mid_term：标记已晋升
         for e in to_process:
             if e.get("mid_id"):
-                _mt.mark_promoted(uid, e["mid_id"], ep_id)
+                _mt.mark_promoted(uid, e["mid_id"], ep_id, char_id=char_id)
 
         # 更新 fixation_state
         strength = episode.get("strength", 0.0)
-        state = _load_fixation_state(uid)
+        state = _load_fixation_state(uid, char_id=char_id)
         state["episodic_since_last"] = state.get("episodic_since_last", 0) + 1
         if strength >= _HIGH_STRENGTH_THRESHOLD:
             state["high_strength_since_last"] = state.get("high_strength_since_last", 0) + 1
         state["strength_accumulated"] = round(
             state.get("strength_accumulated", 0.0) + strength, 3
         )
-        _save_fixation_state(uid, state)
+        _save_fixation_state(uid, state, char_id=char_id)
 
-    # uid_lock 释放后检查阈值
+    # uid_lock 释放后检查阈值，携带入队时的 char_id 快照
     if _should_consolidate(state):
-        slow_queue.enqueue("consolidate_to_identity", {"uid": uid})
+        slow_queue.enqueue("consolidate_to_identity", {"uid": uid, "char_id": char_id})
         logger.info(f"[fixation] consolidate_to_identity 已入队: uid={uid}")
 
     duration_ms = int((time.time() - _ts_start) * 1000)
@@ -604,7 +612,7 @@ async def _synthesize_identity(
     return result
 
 
-async def consolidate_to_identity(uid: str, llm_client) -> bool:
+async def consolidate_to_identity(uid: str, llm_client, *, char_id: str = "yexuan") -> bool:
     """
     读取待固化 episodic，调 _synthesize_identity 生成新 identity，
     写入 user_identity.yaml，标记 episodic consolidated_at，重置 fixation_state。
@@ -620,9 +628,9 @@ async def consolidate_to_identity(uid: str, llm_client) -> bool:
     _fail_key = f"consolidate_to_identity_{uid}"
 
     # 读旧 identity、待处理 episodic、user profile（各自管理自身锁）
-    old_identity = await _ui.load(uid)
-    new_episodes = load_unconsolidated(uid)
-    user_profile_data = _up.load(uid)
+    old_identity = await _ui.load(uid, char_id=char_id)
+    new_episodes = load_unconsolidated(uid, char_id=char_id)
+    user_profile_data = _up.load(uid, char_id=char_id)
 
     if not new_episodes:
         _log_fixation("consolidate_to_identity", uid, {}, "ok", "no unconsolidated episodes")
@@ -640,7 +648,7 @@ async def consolidate_to_identity(uid: str, llm_client) -> bool:
 
     # 非空 → 写 identity；空 dict → LLM 判断无更新，跳过写入，仍标记 episodes
     if new_identity:
-        ok = await _ui.save(uid, new_identity)
+        ok = await _ui.save(uid, new_identity, char_id=char_id)
         if not ok:
             _log_fixation("consolidate_to_identity", uid, {}, "error", "identity 写入失败")
             raise RuntimeError(f"consolidate_to_identity identity 写入失败: uid={uid}")
@@ -652,18 +660,18 @@ async def consolidate_to_identity(uid: str, llm_client) -> bool:
     snapshot_ids = {ep.get("id") for ep in new_episodes}
 
     async with locks.uid_lock(uid):
-        all_episodes = _load_memories(uid)
+        all_episodes = _load_memories(uid, char_id=char_id)
         for ep in all_episodes:
             if ep.get("id") in snapshot_ids and ep.get("consolidated_at") is None:
                 ep["consolidated_at"] = now
-        _save_memories(uid, all_episodes)
+        _save_memories(uid, all_episodes, char_id=char_id)
 
-        state = _load_fixation_state(uid)
+        state = _load_fixation_state(uid, char_id=char_id)
         state["episodic_since_last"] = 0
         state["high_strength_since_last"] = 0
         state["strength_accumulated"] = 0.0
         state["last_consolidated_at"] = now
-        _save_fixation_state(uid, state)
+        _save_fixation_state(uid, state, char_id=char_id)
 
     ep_count = len(snapshot_ids)
     duration_ms = int((time.time() - _ts_start) * 1000)
@@ -679,7 +687,22 @@ async def consolidate_to_identity(uid: str, llm_client) -> bool:
 # slow_queue handler 包装
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _get_char_id_from_payload(payload: dict, handler_name: str) -> str:
+    """从 payload 读取 char_id，缺失时 WARN fallback yexuan（DLQ 兼容层）。"""
+    char_id = payload.get("char_id")
+    if char_id is None:
+        uid = payload.get("uid", "unknown")
+        logger.warning(
+            "[fixation.%s] payload 缺少 char_id，使用 legacy DLQ fallback char_id=yexuan "
+            "(uid=%s, task_type=%s)",
+            handler_name, uid, handler_name,
+        )
+        return "yexuan"
+    return char_id
+
+
 async def handler_summarize_to_midterm(payload: dict) -> None:
+    char_id = _get_char_id_from_payload(payload, "handler_summarize_to_midterm")
     await summarize_to_midterm(
         turn_id=payload["turn_id"],
         uid=payload["uid"],
@@ -687,6 +710,7 @@ async def handler_summarize_to_midterm(payload: dict) -> None:
         reply=payload["reply"],
         tags=payload.get("tags", []),
         emotion=payload.get("emotion", "neutral"),
+        char_id=char_id,
     )
 
 
@@ -695,6 +719,7 @@ async def handler_capture_turn_retry(payload: dict) -> None:
     from core.write_envelope import WriteEnvelope, SourceType
 
     uid = payload["uid"]
+    char_id = _get_char_id_from_payload(payload, "handler_capture_turn_retry")
     # retry 只有在原调用拥有写入权限时才会入队，固定用 INGEST 源恢复写入
     _env = WriteEnvelope(
         source=SourceType.INGEST,
@@ -710,18 +735,22 @@ async def handler_capture_turn_retry(payload: dict) -> None:
             turn_id=payload["turn_id"],
             trigger_name=payload.get("trigger_name", ""),
             envelope=_env,
+            char_id=char_id,
         )
     logger.info(f"[fixation] capture_turn retry 完成: {payload['turn_id']}")
 
 
 async def handler_reflect_to_episodic(payload: dict) -> None:
+    char_id = _get_char_id_from_payload(payload, "handler_reflect_to_episodic")
     await reflect_to_episodic(
         uid=payload["uid"],
         mid_ids=payload.get("mid_ids", []),
         trigger=payload.get("trigger", "eager"),
+        char_id=char_id,
     )
 
 
 async def handler_consolidate_to_identity(payload: dict) -> None:
     from core import llm_client
-    await consolidate_to_identity(uid=payload["uid"], llm_client=llm_client)
+    char_id = _get_char_id_from_payload(payload, "handler_consolidate_to_identity")
+    await consolidate_to_identity(uid=payload["uid"], llm_client=llm_client, char_id=char_id)

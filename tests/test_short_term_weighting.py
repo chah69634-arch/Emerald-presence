@@ -57,7 +57,7 @@ def test_group_turns_scores_and_load_for_prompt_selection(monkeypatch):
     assert capped_score <= short_term.TURN_SCORE_CAP
     assert any(value > 0 for value in capped_parts.values())
 
-    monkeypatch.setattr(short_term, "load", lambda user_id: [dict(item) for item in history])
+    monkeypatch.setattr(short_term, "load", lambda user_id, *, char_id="yexuan": [dict(item) for item in history])
     selected = short_term.load_for_prompt("u_weight", budget_rounds=4, near_k=2)
 
     selected_turn_ids = [m.get("_turn_id") for m in selected]

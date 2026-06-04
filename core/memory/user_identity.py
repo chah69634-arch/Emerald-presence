@@ -44,14 +44,14 @@ def _identity_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
     return p
 
 
-async def load(user_id: str) -> dict:
+async def load(user_id: str, *, char_id: str = "yexuan") -> dict:
     """读取用户身份文件，返回通过校验的维度 dict。
 
     文件不存在返回空 dict。
     未知维度 key 记 warning 并跳过；维度数据缺必要字段同样 warning 并跳过整个维度。
     不带检索语义，不更新 strength。
     """
-    path = _identity_read_file(user_id)
+    path = _identity_read_file(user_id, char_id=char_id)
     async with uid_lock(user_id):
         if not path.exists():
             return {}
@@ -82,14 +82,14 @@ async def load(user_id: str) -> dict:
     return result
 
 
-async def save(user_id: str, identity_dict: dict) -> bool:
+async def save(user_id: str, identity_dict: dict, *, char_id: str = "yexuan") -> bool:
     """写入用户身份文件，写入前备份现有文件为 .yaml.bak。
 
     identity_dict 中不在 IDENTITY_DIMENSIONS 的 key 记 warning 并过滤掉；
     允许部分维度未填，不报错。
     成功返回 True，失败返回 False（不抛异常）。
     """
-    write_path = _identity_write_file(user_id)
+    write_path = _identity_write_file(user_id, char_id=char_id)
 
     filtered = {}
     for key, value in identity_dict.items():
@@ -115,13 +115,13 @@ async def save(user_id: str, identity_dict: dict) -> bool:
         return safe_write_text(write_path, text)
 
 
-async def format_for_prompt(user_id: str, min_confidence: float = 0.5) -> str:
+async def format_for_prompt(user_id: str, min_confidence: float = 0.5, *, char_id: str = "yexuan") -> str:
     """返回 confidence >= min_confidence 的维度描述，按 IDENTITY_DIMENSIONS 顺序拼接。
 
     每条前缀 "- "，以换行符连接。空结果（无维度或全不达标）返回 ""。
     框架句由 prompt_builder 负责，本函数不添加。
     """
-    identity = await load(user_id)
+    identity = await load(user_id, char_id=char_id)
     if not identity:
         return ""
 

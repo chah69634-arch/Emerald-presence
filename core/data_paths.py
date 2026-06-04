@@ -282,19 +282,42 @@ class DataPaths:
     # ── Runtime prompt asset selection config ────────────────────────────────
     def active_prompt_assets(self) -> Path:
         """Runtime config: data/runtime/active_prompt_assets.json
-        文件不存在时自动生成默认内容，不 fallback 到旧文件。
+
+        First-run init: if the file doesn't exist, reads config.yaml character.default
+        (via absolute _CONFIG_PATH) to seed active_character.
+        Raises RuntimeError if character.default is not configured.
+
+        Runtime reads: returns path directly; callers validate active_character content.
+        No silent fallback to any hardcoded character id.
         """
-        import json
+        import json as _json
         p = self._p("runtime", "active_prompt_assets.json")
         if not p.exists():
+            import yaml as _yaml
+            try:
+                cfg = _yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
+            except (FileNotFoundError, OSError, _yaml.YAMLError):
+                cfg = {}
+            raw_default = (cfg.get("character", {}).get("default") or "").strip()
+            if not raw_default:
+                raise RuntimeError(
+                    "[data_paths] active_prompt_assets.json 不存在，"
+                    "且 config.yaml character.default 未配置，无法初始化 active_character。"
+                    "请在 config.yaml 中设置 character.default，或手动创建 active_prompt_assets.json。"
+                )
+            # Strip .json extension if config.default is a legacy filename
+            char_id = raw_default[:-5] if raw_default.endswith(".json") else raw_default
             p.parent.mkdir(parents=True, exist_ok=True)
             default = {
-                "active_character": "yexuan",
+                "active_character": char_id,
                 "enabled_lorebooks": ["base"],
                 "enabled_jailbreaks": ["base"],
             }
-            p.write_text(json.dumps(default, ensure_ascii=False, indent=2), encoding="utf-8")
-            logger.info(f"[data_paths] 自动生成默认 active_prompt_assets.json: {p}")
+            p.write_text(_json.dumps(default, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info(
+                f"[data_paths] 首次初始化 active_prompt_assets.json "
+                f"(active_character={char_id!r} from config.default): {p}"
+            )
         return p
 
     def lorebooks_dir(self) -> Path:

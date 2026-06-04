@@ -43,37 +43,37 @@ def _index_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
     return p
 
 
-def _load_memories(user_id: str) -> list:
+def _load_memories(user_id: str, *, char_id: str = "yexuan") -> list:
     try:
-        return json.loads(_mem_read_file(user_id).read_text(encoding="utf-8"))
+        return json.loads(_mem_read_file(user_id, char_id=char_id).read_text(encoding="utf-8"))
     except Exception:
         return []
 
 
-def _save_memories(user_id: str, memories: list) -> None:
-    safe_write_json(_mem_write_file(user_id), memories)
+def _save_memories(user_id: str, memories: list, *, char_id: str = "yexuan") -> None:
+    safe_write_json(_mem_write_file(user_id, char_id=char_id), memories)
 
 
-def load_unconsolidated(user_id: str) -> list[dict]:
+def load_unconsolidated(user_id: str, *, char_id: str = "yexuan") -> list[dict]:
     """供 consolidate 类慢任务读取待处理 episodic 的接口。
 
     返回所有 consolidated_at 为 None 的条目，按 timestamp 升序排列，
     便于增量处理时从最旧的记忆开始合并。
     不带检索语义（不评分、不做 topic 匹配），也不更新 strength 或 retrieval_count。
     """
-    raw = [m for m in _load_memories(user_id) if m.get("consolidated_at") is None]
+    raw = [m for m in _load_memories(user_id, char_id=char_id) if m.get("consolidated_at") is None]
     return sorted(raw, key=lambda m: m.get("timestamp", 0))
 
 
-def _load_index(user_id: str) -> dict:
+def _load_index(user_id: str, *, char_id: str = "yexuan") -> dict:
     try:
-        return json.loads(_index_read_file(user_id).read_text(encoding="utf-8"))
+        return json.loads(_index_read_file(user_id, char_id=char_id).read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def _save_index(user_id: str, index: dict) -> None:
-    _index_write_file(user_id).write_text(
+def _save_index(user_id: str, index: dict, *, char_id: str = "yexuan") -> None:
+    _index_write_file(user_id, char_id=char_id).write_text(
         json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
@@ -98,7 +98,7 @@ def _texture_similarity(a: str, b: str) -> float:
     return intersection / union if union > 0 else 0.0
 
 
-def _rebuild_index(user_id: str, memories: list) -> None:
+def _rebuild_index(user_id: str, memories: list, *, char_id: str = "yexuan") -> None:
     """按标签建倒排索引：tag -> [memory_id, ...]"""
     index = {}
     for mem in memories:
@@ -107,10 +107,10 @@ def _rebuild_index(user_id: str, memories: list) -> None:
             index.setdefault(tag, [])
             if mem["id"] not in index[tag]:
                 index[tag].append(mem["id"])
-    _save_index(user_id, index)
+    _save_index(user_id, index, char_id=char_id)
 
 
-def write_episode(user_id: str, episode: dict) -> None:
+def write_episode(user_id: str, episode: dict, *, char_id: str = "yexuan") -> None:
     """
     写入一条情景记忆。
     episode格式（新字段）：
@@ -132,7 +132,7 @@ def write_episode(user_id: str, episode: dict) -> None:
       "tags": [...]            # 旧，兼容保留
     }
     """
-    memories = _load_memories(user_id)
+    memories = _load_memories(user_id, char_id=char_id)
 
     if not isinstance(episode, dict):
         record_failure("episodic_memory", str(episode), user_id)
@@ -205,17 +205,17 @@ def write_episode(user_id: str, episode: dict) -> None:
         episode["retrieval_count"] = 0
 
     memories.append(episode)
-    _save_memories(user_id, memories)
-    _rebuild_index(user_id, memories)
+    _save_memories(user_id, memories, char_id=char_id)
+    _rebuild_index(user_id, memories, char_id=char_id)
     logger.info(f"[episodic] 写入情景记忆: {episode['id']}")
 
 
-def retrieve(user_id: str, topic: str = "", top_k: int = 3) -> list:
+def retrieve(user_id: str, topic: str = "", top_k: int = 3, *, char_id: str = "yexuan") -> list:
     """
     按话题标签+情绪检索最相关的情景记忆，检索后强化strength。
     返回list[dict]，按相关性排序。
     """
-    memories = _load_memories(user_id)
+    memories = _load_memories(user_id, char_id=char_id)
     if not memories:
         return []
 
@@ -223,7 +223,7 @@ def retrieve(user_id: str, topic: str = "", top_k: int = 3) -> list:
     _current_mood = _get_mood()
     _mood_intensity = _get_intensity()
 
-    index = _load_index(user_id)
+    index = _load_index(user_id, char_id=char_id)
     now = time.time()
 
     # 候选集：同时匹配 topic_keywords 和 raw_facts，兼容旧记忆
@@ -312,7 +312,7 @@ def retrieve(user_id: str, topic: str = "", top_k: int = 3) -> list:
             changed = True
 
     if changed:
-        _save_memories(user_id, memories)
+        _save_memories(user_id, memories, char_id=char_id)
 
     from core.memory.mood_state import nudge_from_memory
     for mem in result:
@@ -397,12 +397,12 @@ def format_for_prompt(
     return "\n".join(lines)
 
 
-def retrieve_fallback(user_id: str, recent_history: list[str], top_k: int = 1) -> list[dict]:
+def retrieve_fallback(user_id: str, recent_history: list[str], top_k: int = 1, *, char_id: str = "yexuan") -> list[dict]:
     """
     tag 未命中时的兜底召回。不依赖 query，按强度+时间挑近期高强度记忆。
     筛选条件：7天内、strength >= 0.6、不在最近 short_term 内容里。
     """
-    memories = _load_memories(user_id)
+    memories = _load_memories(user_id, char_id=char_id)
     now = time.time()
     candidates = []
     for m in memories:

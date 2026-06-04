@@ -64,8 +64,17 @@ async def dream_enter(body: dict = {}):
     uid = _owner_uid()
     entry_reason = (body.get("entry_reason") or "").strip()
 
+    from core.pipeline_registry import get as _get_pipeline
     from core.dream.dream_pipeline import enter_dream
-    result = await enter_dream(uid, entry_reason=entry_reason)
+
+    pl = _get_pipeline()
+    if pl is None:
+        raise HTTPException(status_code=503, detail="pipeline not initialized")
+    char_id = pl._active_character_id
+    if not char_id:
+        raise HTTPException(status_code=503, detail="active character not set")
+
+    result = await enter_dream(uid, entry_reason=entry_reason, char_id=char_id)
     if not result.get("ok"):
         raise HTTPException(status_code=409, detail=result.get("error", "cannot enter dream"))
     return result

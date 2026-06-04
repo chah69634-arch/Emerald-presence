@@ -21,7 +21,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]:
+async def build_snapshot(user_id: str, entry_reason: str = "", *, char_id: str = "yexuan") -> dict[str, Any]:
     """
     Assemble and return the frozen dream context snapshot.
 
@@ -108,7 +108,7 @@ async def build_snapshot(user_id: str, entry_reason: str = "") -> dict[str, Any]
     try:
         from core.memory.user_hidden_state_store import load_dream_snapshot as _load_hs
         _hs_now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        snapshot["user_hidden_state_snapshot"] = _load_hs(user_id, _hs_now)
+        snapshot["user_hidden_state_snapshot"] = _load_hs(user_id, _hs_now, char_id=char_id)
     except Exception as _hs_exc:
         logger.warning(f"[dream_context] user_hidden_state_snapshot failed: {_hs_exc}")
         snapshot["user_hidden_state_snapshot"] = {}

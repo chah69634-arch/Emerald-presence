@@ -30,22 +30,28 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def wire_afterglow_from_summary(uid: str, dream_id: str, exit_type: str) -> None:
+def wire_afterglow_from_summary(
+    uid: str, dream_id: str, exit_type: str, *, char_id: str = "yexuan"
+) -> None:
     """Save afterglow residue and integrate into hidden state at Dream exit.
 
     Called at Dream exit (Reality-side), AFTER generate_summary() has written
     the summary file to disk.  Always completes without raising — any internal
     failure is logged at WARNING level and silently swallowed.
 
+    char_id must match the char_id used in generate_summary() so the correct
+    summaries sub-directory is read.  T-06 will use char_id for scoped
+    hidden_state writes; for now it is threaded through as a forward seam.
+
     Steps:
-      1. Load summary from dreams/summaries/dream_{dream_id}.summary.json.
+      1. Load summary from dreams/{char_id}/summaries/dream_{dream_id}.summary.json.
       2. Derive tone from afterglow field + exit_type.
       3. Build AfterglowResidueInput (age_hours=0.0 — freshly generated).
       4. save_afterglow_residue() — atomic write, overwrites previous residue.
       5. integrate_afterglow_and_save() with stamp_dream_afterglow().
     """
     try:
-        _do_wire(uid, dream_id, exit_type)
+        _do_wire(uid, dream_id, exit_type, char_id=char_id)
     except Exception as exc:
         logger.warning(
             "[dream_exit_afterglow] wire_afterglow_from_summary failed "
@@ -54,7 +60,7 @@ def wire_afterglow_from_summary(uid: str, dream_id: str, exit_type: str) -> None
         )
 
 
-def _do_wire(uid: str, dream_id: str, exit_type: str) -> None:
+def _do_wire(uid: str, dream_id: str, exit_type: str, *, char_id: str = "yexuan") -> None:
     from core.memory.user_hidden_state import AfterglowResidueInput
     from core.memory.user_hidden_state_store import save_afterglow_residue
     from core.memory.user_hidden_state_integrator import integrate_afterglow_and_save
@@ -62,7 +68,7 @@ def _do_wire(uid: str, dream_id: str, exit_type: str) -> None:
     from core.sandbox import get_paths
 
     # 1. Load summary record written by generate_summary()
-    summaries_dir: Path = get_paths().dreams_summaries_dir()
+    summaries_dir: Path = get_paths().dreams_summaries_dir(char_id=char_id)
     summary_path = summaries_dir / f"dream_{dream_id}.summary.json"
     summary_data = _load_summary(summary_path)
 
@@ -80,7 +86,7 @@ def _do_wire(uid: str, dream_id: str, exit_type: str) -> None:
 
     # 4. Persist residue (atomic write, overwrites previous; TTL checked at read time)
     try:
-        ok = save_afterglow_residue(uid, residue, created_at=now_str)
+        ok = save_afterglow_residue(uid, residue, created_at=now_str, char_id=char_id)
         if not ok:
             logger.warning(
                 "[dream_exit_afterglow] save_afterglow_residue returned False uid=%s", uid
@@ -98,6 +104,7 @@ def _do_wire(uid: str, dream_id: str, exit_type: str) -> None:
             residue,
             write_envelope=envelope,
             now=now_str,
+            char_id=char_id,
         )
         if result.accepted:
             logger.info(

@@ -39,6 +39,23 @@ def _owner_uid() -> str:
     return str(get_config().get("scheduler", {}).get("owner_id", "owner"))
 
 
+def _active_char_id() -> str:
+    """Read active_character from active_prompt_assets.json.
+
+    Raises ValueError if the field is missing or empty (fail-loud, not silent fallback).
+    """
+    import json as _json
+    from core.sandbox import get_paths
+    p = get_paths().active_prompt_assets()
+    data = _json.loads(p.read_text(encoding="utf-8"))
+    char_id = (data.get("active_character") or "").strip()
+    if not char_id:
+        raise ValueError(
+            "[hidden_state_debug] active_prompt_assets.json has empty active_character"
+        )
+    return char_id
+
+
 @router.get(
     "/debug/user-hidden-state",
     summary="[DEV] 读取 UserHiddenState + Dream Snapshot（只读）",
@@ -60,9 +77,10 @@ async def get_user_hidden_state_debug(auth=Depends(verify_token)):
         from core.memory.user_hidden_state_store import load_hidden_state
 
         uid = _owner_uid()
+        char_id = _active_char_id()
         now = datetime.now(timezone.utc).isoformat()
 
-        state = load_hidden_state(uid)
+        state = load_hidden_state(uid, char_id=char_id)
         raw = to_dict(state)
         snapshot = to_dream_snapshot(state, now)
 

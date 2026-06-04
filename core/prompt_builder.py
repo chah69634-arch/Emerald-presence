@@ -36,7 +36,7 @@ _AG_TONE_DESC: dict[str, str] = {
 }
 
 
-def _format_afterglow_soft_hint(uid: str) -> str:
+def _format_afterglow_soft_hint(uid: str, *, char_id: str = "yexuan") -> str:
     """Return a short soft-hint string if a fresh afterglow residue exists, else ''.
 
     Read-only.  Never raises.  Never writes memory / mood / profile / hidden state.
@@ -48,7 +48,7 @@ def _format_afterglow_soft_hint(uid: str) -> str:
         from core.memory.user_hidden_state import read_afterglow_residue
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
-        residue = read_afterglow_residue(uid, now)
+        residue = read_afterglow_residue(uid, now, char_id=char_id)
         if residue is None:
             return ""
         tone_desc = _AG_TONE_DESC.get(residue.tone, "")
@@ -191,6 +191,7 @@ def build(
     mid_term_context: str = "",
     tags: set[str] | None = None,
     dream_impression_text: str = "",
+    char_id: str = "yexuan",
 ) -> tuple[list[dict], dict]:
     """
     组装完整的 prompt 消息列表
@@ -660,7 +661,7 @@ def build(
     # 来自 afterglow_residue.json；用于让 LLM 感知用户可能带着的余韵语气。
     # 禁止从此层推断现实事件、身份或记忆，内容只表达 "may/可能"。
     # ─────────────────────────────────────────────────────────────────────────
-    _afterglow_hint = _format_afterglow_soft_hint(user_id)
+    _afterglow_hint = _format_afterglow_soft_hint(user_id, char_id=char_id)
     if _afterglow_hint:
         _layers.append("dream_afterglow_soft_hint")
         messages.append({

@@ -1,6 +1,6 @@
 """
 mood_state — 角色情绪状态持久化。
-全局单一状态（角色是单用户项目）。
+scope = character only，无 uid 维度。
 情绪不硬切，每轮做加权漂移：新情绪占30%，旧情绪占70%。
 """
 import json
@@ -48,22 +48,22 @@ _DEFAULT = {
 }
 
 
-def _write_path() -> Path:
-    return get_paths().mood_state()
+def _read_path(char_id: str = "yexuan") -> Path:
+    return get_paths().mood_state(char_id=char_id)
 
 
-def _read_path() -> Path:
-    return get_paths().mood_state()
+def _write_path(char_id: str = "yexuan") -> Path:
+    return get_paths().mood_state(char_id=char_id)
 
 
-def load() -> dict:
+def load(*, char_id: str = "yexuan") -> dict:
     try:
-        return json.loads(_read_path().read_text(encoding="utf-8"))
+        return json.loads(_read_path(char_id).read_text(encoding="utf-8"))
     except Exception:
         return dict(_DEFAULT)
 
 
-def save(state: dict) -> None:
+def save(state: dict, *, char_id: str = "yexuan") -> None:
     if is_paused("mood_state"):
         logger.warning("[mood_state] 写入已暂停（连续失败过多），跳过本次 save")
         return
@@ -77,19 +77,19 @@ def save(state: dict) -> None:
         record_failure("mood_state", str(state), "")
         return
 
-    safe_write_json(_write_path(), state)
+    safe_write_json(_write_path(char_id), state)
     if _TRANSITION_CHARACTER_INNER:
-        safe_write_json(get_paths()._p("yexuan_inner", "mood_state.json"), state)
+        safe_write_json(get_paths()._p("runtime", "characters", char_id, "inner", "mood_state.json"), state)
     reset("mood_state")
 
 
-def update(new_emotion: str, new_intensity: float | None = None, source: str = "detect") -> dict:
+def update(new_emotion: str, new_intensity: float | None = None, source: str = "detect", *, char_id: str = "yexuan") -> dict:
     """
     根据本轮检测到的情绪，做加权漂移更新情绪状态。
     新情绪占30%，旧情绪占70%。
     返回更新后的状态。
     """
-    state = load()
+    state = load(char_id=char_id)
     current = state.get("current", "neutral")
 
     if new_intensity is None:
@@ -123,32 +123,32 @@ def update(new_emotion: str, new_intensity: float | None = None, source: str = "
 
     state["intensity"] = round(blended_intensity, 3)
     state["updated_at"] = time.time()
-    save(state)
+    save(state, char_id=char_id)
     return state
 
 
-def get_current() -> str:
+def get_current(*, char_id: str = "yexuan") -> str:
     """快速获取当前情绪，不更新状态。"""
-    return load().get("current", "neutral")
+    return load(char_id=char_id).get("current", "neutral")
 
 
-def get_intensity() -> float:
-    return load().get("intensity", 0.0)
+def get_intensity(*, char_id: str = "yexuan") -> float:
+    return load(char_id=char_id).get("intensity", 0.0)
 
 
-def nudge_from_memory(memory_emotion: str, memory_strength: float) -> None:
+def nudge_from_memory(memory_emotion: str, memory_strength: float, *, char_id: str = "yexuan") -> None:
     """
     召回了强烈情绪记忆时，轻微推动当前情绪向该方向漂移。
     只在 memory_strength > 0.7 时生效，幅度最多 +0.1。
     """
     if memory_strength < 0.7:
         return
-    state = load()
+    state = load(char_id=char_id)
     current = state.get("current", "neutral")
     # 只在记忆情绪是当前情绪的邻居时才推动
     neighbors = EMOTION_NEIGHBORS.get(current, [])
     if memory_emotion in neighbors or memory_emotion == current:
         nudge = min(0.1, memory_strength * 0.1)
         state["intensity"] = min(1.0, state.get("intensity", 0.0) + nudge)
-        save(state)
+        save(state, char_id=char_id)
         logger.debug(f"[mood] 记忆推动情绪强度: +{nudge:.3f} (from {memory_emotion})")

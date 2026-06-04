@@ -18,7 +18,7 @@ _NON_REALITY_FRAME = "（模糊的梦境印象，非现实发生的事）"
 _CONFABULATION_GUARD = "不要在现实里复述或编造梦的具体场景，只带那点情绪余味。"
 
 
-def load_impression_text(uid: str) -> str:
+def load_impression_text(uid: str, *, char_id: str = "yexuan") -> str:
     """
     Return formatted impression block for 6g injection.
     Empty string when no active impressions exist.
@@ -26,7 +26,7 @@ def load_impression_text(uid: str) -> str:
     try:
         from core.dream.impression_store import get_active_impressions
 
-        active = get_active_impressions(uid)
+        active = get_active_impressions(uid, char_id=char_id)
         if not active:
             return ""
 

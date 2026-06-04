@@ -51,7 +51,7 @@ HIDDEN_STATE_FILENAME = "hidden_state.json"
 AFTERGLOW_FILENAME = "afterglow_residue.json"
 
 
-def load_hidden_state(uid: str | int) -> UserHiddenState:
+def load_hidden_state(uid: str | int, *, char_id: str = "yexuan") -> UserHiddenState:
     """Load UserHiddenState for uid from disk.
 
     Returns default_hidden_state() if the file does not exist or is
@@ -62,9 +62,9 @@ def load_hidden_state(uid: str | int) -> UserHiddenState:
     state.  This function is read-only and does not emit a
     WriteEnvelope stamp.
 
-    Path: user_memory_root(uid) / hidden_state.json
+    Path: user_memory_root(uid, char_id=char_id) / hidden_state.json
     """
-    path: Path = get_paths().user_memory_root(uid) / HIDDEN_STATE_FILENAME
+    path: Path = get_paths().user_memory_root(uid, char_id=char_id) / HIDDEN_STATE_FILENAME
 
     if not path.exists():
         return default_hidden_state()
@@ -88,7 +88,7 @@ def load_hidden_state(uid: str | int) -> UserHiddenState:
         return default_hidden_state()
 
 
-def load_dream_snapshot(uid: str | int, now: str) -> dict[str, Any]:
+def load_dream_snapshot(uid: str | int, now: str, *, char_id: str = "yexuan") -> dict[str, Any]:
     """Load UserHiddenState and return a read-only Dream-safe bucket snapshot.
 
     This is the single sanctioned read path for Dream context injection.
@@ -106,19 +106,19 @@ def load_dream_snapshot(uid: str | int, now: str) -> dict[str, Any]:
       DREAM_DIRECT_WRITABLE = frozenset() — all mutations must flow through
       the Reality-side integrator with can_write_memory=True.
 
-    Path: user_memory_root(uid) / hidden_state.json  (read-only)
+    Path: user_memory_root(uid, char_id=char_id) / hidden_state.json  (read-only)
     """
-    state = load_hidden_state(uid)
+    state = load_hidden_state(uid, char_id=char_id)
     return to_dream_snapshot(state, now)
 
 
-def _load_afterglow_raw(uid: str | int) -> dict | None:
+def _load_afterglow_raw(uid: str | int, *, char_id: str = "yexuan") -> dict | None:
     """Load raw afterglow residue dict from disk.  Returns None if absent or corrupt.
 
     Internal helper called by read_afterglow_residue() in user_hidden_state.py.
     Read-only.  Does NOT write anything.  Does NOT emit a WriteEnvelope stamp.
     """
-    path: Path = get_paths().user_memory_root(uid) / AFTERGLOW_FILENAME
+    path: Path = get_paths().user_memory_root(uid, char_id=char_id) / AFTERGLOW_FILENAME
     if not path.exists():
         return None
     try:
@@ -134,6 +134,8 @@ def save_afterglow_residue(
     uid: str | int,
     residue: AfterglowResidueInput,
     created_at: str,
+    *,
+    char_id: str = "yexuan",
 ) -> bool:
     """Persist an afterglow residue to disk (called at Dream exit).
 
@@ -150,7 +152,7 @@ def save_afterglow_residue(
         logger.warning("[afterglow] save_afterglow_residue: invalid residue type %r", type(residue).__name__)
         return False
 
-    path: Path = get_paths().user_memory_root(uid) / AFTERGLOW_FILENAME
+    path: Path = get_paths().user_memory_root(uid, char_id=char_id) / AFTERGLOW_FILENAME
     data = {
         "emotional_tags": list(residue.emotional_tags),
         "tone": residue.tone,
@@ -162,7 +164,7 @@ def save_afterglow_residue(
     return ok
 
 
-def save_hidden_state(uid: str | int, state: UserHiddenState) -> bool:
+def save_hidden_state(uid: str | int, state: UserHiddenState, *, char_id: str = "yexuan") -> bool:
     """Persist UserHiddenState for uid using an atomic write.
 
     Returns True on success, False on I/O error.  Never raises.
@@ -172,9 +174,9 @@ def save_hidden_state(uid: str | int, state: UserHiddenState) -> bool:
     does NOT enforce the envelope gate — that responsibility belongs
     to the caller (e.g., the Reality-side integrator).
 
-    Path: user_memory_root(uid) / hidden_state.json
+    Path: user_memory_root(uid, char_id=char_id) / hidden_state.json
     """
-    path: Path = get_paths().user_memory_root(uid) / HIDDEN_STATE_FILENAME
+    path: Path = get_paths().user_memory_root(uid, char_id=char_id) / HIDDEN_STATE_FILENAME
     data = to_dict(state)
     ok = safe_write_json(path, data)
     if not ok:

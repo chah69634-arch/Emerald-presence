@@ -9,6 +9,67 @@
 
 ---
 
+## 多角色记忆隔离（P0 审计 2026-06-04）
+
+### P0 不变量（已验收，所有测试绿）
+
+以下为 P0 Final Gate 通过后的已落地契约：
+
+| 不变量 | 验收来源 |
+|---|---|
+| `pipeline.fetch_context()` 所有读路径均透传 `active_character_id` 作为 `char_id` | T-01 / test_pipeline_read_scope.py |
+| `pipeline.post_process()` → `capture_turn()` 写 short_term + event_log 均使用 active char_id | T-02 / test_pipeline_write_scope.py |
+| `slow_queue` payload 携带入队时的 char_id 快照；handler 透传至各 writer | T-03 / test_slow_queue_char_scope.py |
+| `mood_state.update/get_current` 均通过 active char_id 隔离，path 不含 uid | T-04 / test_mood_state_char_scope.py |
+| `impression_store` / `distill_impression` 读写均按 char_id 路由 | T-05 / test_impression_char_scope.py |
+| `dream_pipeline` 入梦时冻结 `dream_state.char_id`；close/summary/impression/afterglow 均使用 session char_id，不读 active_character | T-05.5 / test_dream_session_char_scope.py |
+| `hidden_state_store` / `afterglow_residue` / `integrate_afterglow_and_save` 均按 char_id 路由 | T-06 / test_hidden_state_char_scope.py |
+| `_refresh_character_if_needed()` fail-loud：active_character 缺失/空/非法 → 抛 ValueError；character 保持原值；不写 short_term/event_log；不入队 slow_queue；不更新 mood | T-07 / test_active_character_fail_loud.py |
+| 内容级隔离 A/B：yexuan 写入内容不出现在 hongcha fetch_context 返回值，反之亦然 | P0 Final / test_memory_isolation_p0_final.py |
+| 内容级隔离 C：yexuan afterglow 不污染 hongcha hidden_state bucket | P0 Final / test_memory_isolation_p0_final.py |
+| 内容级隔离 D：入梦 active=yexuan → 切 active=hongcha → close → summary/impression 仍写 yexuan 桶 | P0 Final / test_memory_isolation_p0_final.py |
+
+### P0 Final 审计调用点分类（2026-06-04）
+
+| 调用点 | 文件 | 类别 | 说明 |
+|---|---|---|---|
+| `data_paths.py` 所有方法签名 `char_id: str = "yexuan"` | `core/data_paths.py` | **legacy/test 兼容层** | 签名默认值供旧代码 / 测试向后兼容；生产主链路调用方均显式传 char_id |
+| `_get_char_id_from_payload` fallback `"yexuan"` | `core/pipeline.py` / `core/memory/fixation_pipeline.py` | **DLQ 兼容层** | 仅在 DLQ 残留任务缺 char_id 时触发，WARN 日志可见，不静默 |
+| `mood.py GET /state` fallback `"yexuan"` | `admin/routers/mood.py:22` | **admin/debug，可接受** | 读取情绪状态的管理接口；失败时 fallback，无写路径 |
+| `hidden_state_debug.py` 读 active_char_id | `admin/routers/hidden_state_debug.py` | **admin/debug，可接受** | fail-loud：active 空则 ValueError，不 fallback |
+| `admin/routers/memory.py` `short_term.load(user_id)` / `short_term.clear(user_id)` | `admin/routers/memory.py` | **admin/debug，可接受** | 管理面板读写；不走主链路；见 P1 TODO |
+| `admin/routers/users.py` `user_profile.load/save(user_id)` | `admin/routers/users.py` | **admin/debug，可接受** | 管理面板读写；不走主链路；见 P1 TODO |
+| `main.py:450-451` `_reply_with_tool_result` 读 short_term + user_profile（无 char_id） | `main.py` | **P1 TODO（reader bypass）** | 工具确认流程合成回复路径；读 yexuan bucket，不写错误数据；不产生新串味存储 |
+| `core/garden/manager.py:205,223` `get_current()` 无 char_id | `core/garden/manager.py` | **P1 TODO** | 花园系统读情绪决定浇水槽位；始终读 yexuan mood；见下方 P1 清单 |
+
+### 已知 P1 TODO（P0 范围外，不阻塞当前上线）
+
+以下问题已知且已隔离，**不属于 P0 blocker**（不产生新串味存储写入）。
+
+1. **MemoryScope dataclass** — 尚未实现 `MemoryScope(char_id, uid)` dataclass；当前靠函数参数传递。
+
+2. **path_resolver / f-string 路径门禁** — 尚未建立禁止在 core/ 中直接用 f-string 拼 data/ 路径的 linter 规则；当前靠 code review 保障。
+
+3. **`main.py._reply_with_tool_result` reader bypass** — 工具确认流程中 `short_term.load_for_prompt(user_id)` / `user_profile.load(user_id)` 未传 char_id，始终读 yexuan bucket。路径：`main.py:450-451`。修复：传入 `_pipeline._active_character_id` 作为 char_id。
+
+4. **`core/garden/manager.py` mood 读取** — `auto_water_tick()` 和 `force_water()` 调用 `get_current()` 无 char_id，始终读 yexuan mood 决定浇水槽位。修复：从 `active_prompt_assets` 读 char_id 后传入。
+
+5. **`admin/routers/memory.py` `short_term.clear(user_id)`** — 管理面板清除短期记忆只清 yexuan bucket。修复：接收 char_id 查询参数。
+
+6. **`admin/routers/users.py` `user_profile.load/save`** — 管理面板画像读写不区分 char_id，始终操作 yexuan bucket。修复：接收 char_id 查询参数。
+
+7. **`hidden_state_decay` 仅处理当前 active 角色** — 调度器 decay tick 只处理当前 active_character 的隐性状态；非 active 角色的 hidden_state 不会被 decay。修复：遍历所有已知角色。
+
+8. **`user_facts` global 拆分** — `user_profile` 当前包含跨角色通用事实（如用户姓名、生日）和角色特定事实；未按 global / per_char 分拆。
+
+9. **旧 uid-only 数据迁移** — P0 只建立新路径，旧 `data/history/{uid}.json`、`data/event_log/{uid}/` 等 legacy 文件不自动迁移至 `data/runtime/memory/{char_id}/{uid}/`。P1 迁移脚本待建。
+
+10. **`dream_state` 物理路径在 v1 已切换** — `_LAYOUT_DREAM="v1"` 时 `dream_state_path` 已走 `runtime/dreams/{char_id}/state/...`，legacy 兼容期完成。
+
+11. **`ShortTermMemory` 类方法 `clear/load`** — `short_term.ShortTermMemory.clear(user_id)` 和 `.load(user_id)` 无 char_id 参数，供旧代码使用；生产主链路不走此类接口，但应补齐参数签名。
+
+---
+
 ## 记忆层一览
 
 | 记忆类型 | 文件（S6 新路径） | 更新时机 | prompt 位置 |
@@ -116,7 +177,7 @@ clamp 单测是弱断言（未验真截顶）；ShortTermMemory.append 类封装
 
 **写入顺序**（注意有先后）：
 1. `post_process` 先做 `detect_emotion()`，并更新 `mood_state`
-2. 随后调用 `fixation_pipeline.capture_turn()`，一次性写入 short_term 的 user/assistant 两行，并写 event_log 的 user/assistant 两行（assistant 行含 emotion，所有行含 turn_id）
+2. 随后调用 `fixation_pipeline.capture_turn(uid, ..., char_id=_active_character_id)`，一次性写入 short_term 的 user/assistant 两行，并写 event_log 的 user/assistant 两行（assistant 行含 emotion，所有行含 turn_id）。`char_id` 由 `post_process` 通过 `_refresh_character_if_needed()` 确认后显式传入，决定写入哪个角色桶。
 
 **搜索**：`event_log.search(user_id, content, llm_client)` 异步执行，返回拼接字符串。当前实现会把 query 切成 2/3/4 字符片段做关键词集合，扫描最近 30 天日志块。
 
@@ -329,7 +390,9 @@ episodic_result = format_for_prompt(
 
 ### 写入
 
-`post_process` 将 `summarize_to_midterm` 入慢队列，handler 内调 `llm_client.summarize_turn()` 压缩本轮对话并写入血缘字段。
+`post_process` 将 `summarize_to_midterm` 入慢队列，payload 中携带 `char_id`（入队时的角色快照），
+handler 内调 `llm_client.summarize_turn()` 压缩本轮对话并写入对应角色桶。
+payload 缺 `char_id` 时（DLQ 旧任务兼容）WARN fallback yexuan，不静默。
 LLM 异常时降级 warning，不阻塞主流程。
 
 `summarize_turn` 内部：当 `len(user_msg) + len(reply) < 8`（合计字数）才走 `_rule_fallback`，
@@ -390,6 +453,8 @@ prompt 层位于 `6c_episodic` 和 `6d_diary` 之间，参数名 `mid_term_conte
 ```
 capture_turn → summarize_to_midterm → reflect_to_episodic → consolidate_to_identity
 ```
+
+整条 slow_queue 链路均携带 `char_id`（入队时的角色快照），确保即使用户在任务执行前切换角色，写入也只落入对应角色桶。每个 handler 读取 payload 中的 `char_id`；缺失时 WARN fallback yexuan（DLQ 兼容层）。
 
 `consolidate_to_identity` 会读取旧 identity、未固化 episodic、user_profile，让 LLM 只固化跨多条
 episode 反复出现的模式。它写入 YAML 前会备份旧文件为 `.yaml.bak`，写完后标记对应 episodic 的
@@ -551,9 +616,9 @@ run_llm()  →  reply 生成
 post_process()
     ├─ 检查 profile 更新条件（读 short_term 估算长度）
     ├─ detect_emotion(reply) → 写 mood_state  ← 本轮情绪写入
-    ├─ capture_turn(uid, content, reply, emotion)
-    │    → 写 short_term（user + assistant，含 _turn_id）
-    │    → 写 event_log（user + assistant，含 turn_id）
+    ├─ capture_turn(uid, content, reply, emotion, char_id=_active_character_id)
+    │    → 写 short_term（user + assistant，含 _turn_id，写 char_id 对应角色桶）
+    │    → 写 event_log（user + assistant，含 turn_id，写 char_id 对应角色桶）
     └─ 慢队列：summarize_to_midterm / consistency_check / user_profile_update（条件）
          └─ summarize_to_midterm handler
               → 写 mid_term（含 mid_id, source_turn_id）

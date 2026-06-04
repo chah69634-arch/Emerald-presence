@@ -56,22 +56,24 @@ _DISTILL_SYSTEM = """\
 }"""
 
 
-async def distill_impression(uid: str, dream_id: str, exit_type: str) -> None:
+async def distill_impression(
+    uid: str, dream_id: str, exit_type: str, *, char_id: str = "yexuan"
+) -> None:
     """Top-level entry — failure is silently downgraded to a warning."""
     try:
-        await _distill(uid, dream_id, exit_type)
+        await _distill(uid, dream_id, exit_type, char_id=char_id)
     except Exception as e:
         logger.warning(
             f"[distill_impression] failed uid={uid} dream_id={dream_id}: {e}"
         )
 
 
-async def _distill(uid: str, dream_id: str, exit_type: str) -> None:
+async def _distill(uid: str, dream_id: str, exit_type: str, *, char_id: str = "yexuan") -> None:
     from core.sandbox import get_paths
     from core import llm_client
     from core.dream.impression_store import append_impression
 
-    archive_path = get_paths().dreams_archive_dir() / f"dream_{dream_id}.jsonl"
+    archive_path = get_paths().dreams_archive_dir(char_id=char_id) / f"dream_{dream_id}.jsonl"
     turns = _load_archive(archive_path)
     if not turns:
         logger.info(f"[distill_impression] empty archive uid={uid}, skip")
@@ -117,7 +119,7 @@ async def _distill(uid: str, dream_id: str, exit_type: str) -> None:
         "marked": True,
     }
 
-    append_impression(uid, entry)
+    append_impression(uid, entry, char_id=char_id)
     logger.info(f"[distill_impression] written uid={uid} dream_id={dream_id}")
 
 

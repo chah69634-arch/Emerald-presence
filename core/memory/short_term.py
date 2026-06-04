@@ -239,14 +239,14 @@ def _history_write_path(user_id: str, *, char_id: str = "yexuan") -> Path:
     return p
 
 
-def load(user_id: str) -> list[dict]:
+def load(user_id: str, *, char_id: str = "yexuan") -> list[dict]:
     """
     读取用户的短期对话历史（完整历史，不做截断）
 
     返回格式：[{"role": "user"/"assistant", "content": "..."}, ...]
     文件不存在时返回空列表
     """
-    path = _history_path(user_id)
+    path = _history_path(user_id, char_id=char_id)
     try:
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -290,9 +290,9 @@ def get_history(user_id: str, max_turns: int | None = None) -> list[dict]:
     return history[-max_msgs:] if len(history) > max_msgs else history
 
 
-def load_for_prompt(user_id, *, budget_rounds=None, near_k=NEAR_K) -> list[dict]:
+def load_for_prompt(user_id, *, budget_rounds=None, near_k=NEAR_K, char_id: str = "yexuan") -> list[dict]:
     """读取已 sanitize 的 short_term，并按 turn-group 加权选择 prompt 子集。"""
-    raw = load(user_id)
+    raw = load(user_id, char_id=char_id)
     groups = _group_turns(raw)
     if budget_rounds is None:
         cfg = get_config()
@@ -336,19 +336,20 @@ def load_for_prompt(user_id, *, budget_rounds=None, near_k=NEAR_K) -> list[dict]
     return selected
 
 
-def append(user_id: str, role: str, content: str, turn_id: str | None = None) -> bool:
+def append(user_id: str, role: str, content: str, turn_id: str | None = None, *, char_id: str = "yexuan") -> bool:
     """
     追加一条消息到历史记录，并裁剪到最大轮数
 
     role: "user" 或 "assistant"
     每两条（一问一答）算一轮，实际保留 short_term_rounds * 2 条消息
     turn_id 来自 fixation_pipeline.capture_turn，写入 _turn_id 字段供血缘追踪
+    char_id 决定写入哪个角色桶（默认 "yexuan"）
     """
     cfg = get_config()
     max_rounds = cfg.get("memory", {}).get("short_term_disk_rounds", cfg.get("memory", {}).get("short_term_rounds", 20))
     max_msgs = max_rounds * 2  # 每轮 = user + assistant
 
-    history = load(user_id)
+    history = load(user_id, char_id=char_id)
     if turn_id and any(
         item.get("_turn_id") == turn_id and item.get("role") == role
         for item in history
@@ -364,12 +365,12 @@ def append(user_id: str, role: str, content: str, turn_id: str | None = None) ->
     if len(history) > max_msgs:
         history = history[-max_msgs:]
 
-    return _save(user_id, history)
+    return _save(user_id, history, char_id=char_id)
 
 
-def _save(user_id: str, history: list[dict]) -> bool:
+def _save(user_id: str, history: list[dict], *, char_id: str = "yexuan") -> bool:
     """把历史记录写回磁盘"""
-    path = _history_write_path(user_id)
+    path = _history_write_path(user_id, char_id=char_id)
     try:
         return safe_write_json(path, history)
     except Exception as e:
@@ -391,8 +392,8 @@ class ShortTermMemory:
     def get_history(self, user_id: str, max_turns: int | None = None) -> list[dict]:
         return get_history(user_id, max_turns)
 
-    def append(self, user_id: str, role: str, content: str, turn_id: str | None = None):
-        append(user_id, role, content, turn_id=turn_id)
+    def append(self, user_id: str, role: str, content: str, turn_id: str | None = None, *, char_id: str = "yexuan"):
+        append(user_id, role, content, turn_id=turn_id, char_id=char_id)
 
     def clear(self, user_id: str):
         clear(user_id)

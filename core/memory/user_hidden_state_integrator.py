@@ -299,6 +299,8 @@ def integrate_event_and_save(
     event_type: RealityEventType,
     write_envelope: WriteEnvelope,
     now: str,
+    *,
+    char_id: str = "yexuan",
 ) -> tuple[UserHiddenState, IntegratorResult]:
     """Load hidden state, apply a Reality event, and persist if permitted.
 
@@ -319,10 +321,10 @@ def integrate_event_and_save(
     """
     if not isinstance(uid, (str, int)):
         raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
-    state = load_hidden_state(uid)
+    state = load_hidden_state(uid, char_id=char_id)
     state, result = integrate_event(event_type, state, write_envelope, now)
     if write_envelope.can_write_memory and result.accepted:
-        ok = save_hidden_state(uid, state)
+        ok = save_hidden_state(uid, state, char_id=char_id)
         if not ok:
             logger.error(
                 "integrate_event_and_save: save failed [uid=%s event=%s]",
@@ -336,6 +338,8 @@ def integrate_impression_and_save(
     impression: ImpressionInput,
     write_envelope: WriteEnvelope,
     now: str,
+    *,
+    char_id: str = "yexuan",
 ) -> tuple[UserHiddenState, IntegratorResult]:
     """Load hidden state, apply a Dream-derived impression, and persist if permitted.
 
@@ -357,10 +361,10 @@ def integrate_impression_and_save(
     """
     if not isinstance(uid, (str, int)):
         raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
-    state = load_hidden_state(uid)
+    state = load_hidden_state(uid, char_id=char_id)
     state, result = integrate_impression(impression, state, write_envelope, now)
     if write_envelope.can_write_memory and result.accepted:
-        ok = save_hidden_state(uid, state)
+        ok = save_hidden_state(uid, state, char_id=char_id)
         if not ok:
             logger.error(
                 "integrate_impression_and_save: save failed [uid=%s]", uid,
@@ -585,6 +589,8 @@ def integrate_afterglow_and_save(
     afterglow: AfterglowResidueInput,
     write_envelope: WriteEnvelope,
     now: str,
+    *,
+    char_id: str = "yexuan",
 ) -> tuple[UserHiddenState, IntegratorResult]:
     """Load hidden state, apply afterglow residue, and persist if permitted.
 
@@ -604,10 +610,10 @@ def integrate_afterglow_and_save(
     """
     if not isinstance(uid, (str, int)):
         raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
-    state = load_hidden_state(uid)
+    state = load_hidden_state(uid, char_id=char_id)
     state, result = integrate_afterglow(afterglow, state, write_envelope, now)
     if write_envelope.can_write_memory and result.accepted:
-        ok = save_hidden_state(uid, state)
+        ok = save_hidden_state(uid, state, char_id=char_id)
         if not ok:
             logger.error(
                 "integrate_afterglow_and_save: save failed [uid=%s tone=%s]",
@@ -623,6 +629,8 @@ def integrate_body_cue_and_save(
     strength: float,
     write_envelope: WriteEnvelope,
     now: str,
+    *,
+    char_id: str = "yexuan",
 ) -> tuple[UserHiddenState, IntegratorResult]:
     """Load hidden state, reinforce a body-memory cue, and persist if permitted.
 
@@ -639,10 +647,10 @@ def integrate_body_cue_and_save(
     """
     if not isinstance(uid, (str, int)):
         raise TypeError(f"uid must be str or int, got {type(uid).__name__}")
-    state = load_hidden_state(uid)
+    state = load_hidden_state(uid, char_id=char_id)
     state, result = integrate_body_cue(cue, response_tag, strength, state, write_envelope, now)
     if write_envelope.can_write_memory and result.accepted:
-        ok = save_hidden_state(uid, state)
+        ok = save_hidden_state(uid, state, char_id=char_id)
         if not ok:
             logger.error(
                 "integrate_body_cue_and_save: save failed [uid=%s cue=%s]", uid, cue

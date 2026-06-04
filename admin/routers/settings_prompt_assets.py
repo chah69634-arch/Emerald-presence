@@ -11,6 +11,7 @@ Asset identity contract:
 """
 
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,7 @@ from core.asset_registry import get_registry, reload_registry
 from core.sandbox import get_paths
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _validate_id(value: str, kind: str, field: str):
@@ -144,5 +146,24 @@ async def patch_prompt_assets(body: PromptAssetsUpdate, auth=Depends(verify_toke
         _reload_lore_engine()
     if body.active_character is not None:
         reload_registry()
+        # Hot-swap character on the running pipeline
+        try:
+            from core import character_loader as _cl
+            from core.pipeline_registry import get as _get_pipeline
+            pipeline = _get_pipeline()
+            if pipeline is not None:
+                new_char = _cl.load(body.active_character)
+                pipeline.character = new_char
+                pipeline._active_character_id = body.active_character
+                if pipeline.lore_engine is not None:
+                    pipeline.lore_engine.load()
+                    if new_char.world_book:
+                        pipeline.lore_engine.load_entries(new_char.world_book)
+                logger.info(
+                    f"[settings/prompt-assets] character hot-swapped to "
+                    f"{body.active_character!r} ({new_char.name})"
+                )
+        except Exception as _exc:
+            logger.warning(f"[settings/prompt-assets] pipeline character update failed: {_exc}")
 
     return {"message": "已更新", "active": active}

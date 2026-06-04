@@ -42,19 +42,19 @@ _PROHIBIT_DREAM_RP = (
 )
 
 
-def load_afterglow(uid: str) -> str:
+def load_afterglow(uid: str, *, char_id: str = "yexuan") -> str:
     """
     Return active afterglow text for injection into reality prompt layer 6f.
     Returns empty string if no active afterglow within TTL.
     """
-    best = _find_best_summary(uid)
+    best = _find_best_summary(uid, char_id=char_id)
     if best is None:
         return ""
     return _format_afterglow(best)
 
 
-def _find_best_summary(uid: str) -> dict[str, Any] | None:
-    summaries_dir = _get_summaries_dir()
+def _find_best_summary(uid: str, *, char_id: str = "yexuan") -> dict[str, Any] | None:
+    summaries_dir = _get_summaries_dir(char_id=char_id)
     if not summaries_dir.exists():
         return None
 
@@ -114,6 +114,6 @@ def _format_afterglow(summary: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def _get_summaries_dir() -> Path:
+def _get_summaries_dir(*, char_id: str = "yexuan") -> Path:
     from core.sandbox import get_paths
-    return get_paths().dreams_summaries_dir()
+    return get_paths().dreams_summaries_dir(char_id=char_id)

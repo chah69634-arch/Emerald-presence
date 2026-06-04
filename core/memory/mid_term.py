@@ -31,9 +31,9 @@ def _write_file(uid: str, *, char_id: str = "yexuan") -> Path:
     return p
 
 
-def load(uid: str) -> list[dict]:
+def load(uid: str, *, char_id: str = "yexuan") -> list[dict]:
     """读取所有未过期事件，按 ts 升序返回。文件不存在返回 []。"""
-    path = _read_file(uid)
+    path = _read_file(uid, char_id=char_id)
     if not path.exists():
         return []
     try:
@@ -52,6 +52,8 @@ def append(
     tags: list[str] | None = None,
     mid_id: str | None = None,
     source_turn_id: str | None = None,
+    *,
+    char_id: str = "yexuan",
 ) -> None:
     """追加事件；追加前先清理过期 + 截断到 MAX_EVENTS-1。
 
@@ -60,8 +62,8 @@ def append(
     summary = summary.strip()
     if not summary:
         return
-    read_path = _read_file(uid)
-    write_path = _write_file(uid)
+    read_path = _read_file(uid, char_id=char_id)
+    write_path = _write_file(uid, char_id=char_id)
     try:
         if read_path.exists():
             data = json.loads(read_path.read_text(encoding="utf-8"))
@@ -86,10 +88,10 @@ def append(
         log_error("mid_term.append", e)
 
 
-def mark_promoted(uid: str, mid_id: str, ep_id: str) -> None:
+def mark_promoted(uid: str, mid_id: str, ep_id: str, *, char_id: str = "yexuan") -> None:
     """将 mid_term 里某条 entry 的 promoted_to_episodic_id 字段置为 ep_id。幂等。"""
-    read_path = _read_file(uid)
-    write_path = _write_file(uid)
+    read_path = _read_file(uid, char_id=char_id)
+    write_path = _write_file(uid, char_id=char_id)
     try:
         if not read_path.exists():
             return
@@ -107,9 +109,9 @@ def mark_promoted(uid: str, mid_id: str, ep_id: str) -> None:
         log_error("mid_term.mark_promoted", e)
 
 
-def format_for_prompt(uid: str) -> str:
+def format_for_prompt(uid: str, *, char_id: str = "yexuan") -> str:
     """读取 + 时间桶分组 + 渲染成 prompt 段落。空返空串。"""
-    events = load(uid)
+    events = load(uid, char_id=char_id)
     if not events:
         return ""
     now = time.time()

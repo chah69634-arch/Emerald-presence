@@ -35,13 +35,15 @@ _STRIP_SCENE_SYSTEM = """你是梦境情感分析器。
 }"""
 
 
-async def generate_summary(uid: str, dream_id: str, exit_type: str) -> None:
+async def generate_summary(
+    uid: str, dream_id: str, exit_type: str, *, char_id: str = "yexuan"
+) -> None:
     """Generate and persist afterglow summary for a completed dream."""
     from core.sandbox import get_paths
     from core.safe_write import safe_write_json
     from core import llm_client
 
-    archive_path = get_paths().dreams_archive_dir() / f"dream_{dream_id}.jsonl"
+    archive_path = get_paths().dreams_archive_dir(char_id=char_id) / f"dream_{dream_id}.jsonl"
     turns = _load_archive(archive_path)
     if not turns:
         logger.info(f"[dream_summary] empty archive uid={uid} dream_id={dream_id}, skip")
@@ -62,6 +64,7 @@ async def generate_summary(uid: str, dream_id: str, exit_type: str) -> None:
         # Identification
         "dream_id": dream_id,
         "uid": uid,
+        "char_id": char_id,   # T-06 seam: afterglow integrator can scope by char
         "created_at": time.time(),
         "exit_type": exit_type,
         "world_id": _frozen_world,
@@ -83,11 +86,11 @@ async def generate_summary(uid: str, dream_id: str, exit_type: str) -> None:
         "emotional_trace_weight": None,
     }
 
-    summaries_dir = get_paths().dreams_summaries_dir()
+    summaries_dir = get_paths().dreams_summaries_dir(char_id=char_id)
     summaries_dir.mkdir(parents=True, exist_ok=True)
     dest = summaries_dir / f"dream_{dream_id}.summary.json"
     safe_write_json(dest, summary_record)
-    logger.info(f"[dream_summary] saved uid={uid} -> {dest.name}")
+    logger.info(f"[dream_summary] saved uid={uid} char_id={char_id} -> {dest.name}")
 
 
 def _load_archive(archive_path: Path) -> list[dict[str, Any]]:

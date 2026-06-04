@@ -25,6 +25,19 @@ HARD_EXIT_KEYWORD = "/stop"
 _SOFT_EXIT_ACCEPT_MARKER = "[[EXIT_DREAM_ACCEPT]]"
 
 
+def _state_char_id(state: dict, handler: str, uid: str = "", dream_id: str = "") -> str:
+    """Read char_id from dream_state dict. WARN + fallback on missing (legacy sessions)."""
+    char_id = state.get("char_id")
+    if char_id:
+        return str(char_id)
+    logger.warning(
+        "[dream_pipeline] legacy dream_state missing char_id — "
+        "uid=%s dream_id=%s handler=%s fallback=yexuan",
+        uid, dream_id, handler,
+    )
+    return "yexuan"
+
+
 async def dream_turn(
     uid: str,
     user_msg: str,
@@ -62,13 +75,14 @@ async def dream_turn(
         }
 
     dream_id = state.get("dream_id") or _ensure_dream_id(uid, state)
+    char_id = _state_char_id(state, "dream_turn", uid, dream_id)
 
     from core.dream.dream_state import get_local_state
     local_state = get_local_state(state)
     context_snapshot = state.get("context_snapshot", {})
 
     from core.dream.dream_log import append_turn, read_current
-    dream_history = read_current(uid)
+    dream_history = read_current(uid, char_id=char_id)
 
     # Load settings (lorebook + boundary_level)
     from core.dream.dream_settings import load as _load_settings
@@ -160,8 +174,8 @@ async def dream_turn(
     new_projection = project_body_for_yexuan(new_body, boundary_level, current_yexuan_tension)
 
     # ── Write to dream log (never to any reality store) ──────────────────────
-    append_turn(uid, dream_id, "user", user_msg)
-    append_turn(uid, dream_id, "assistant", reply)
+    append_turn(uid, dream_id, "user", user_msg, char_id=char_id)
+    append_turn(uid, dream_id, "assistant", reply, char_id=char_id)
 
     # ── Persist updated dream-local state ────────────────────────────────────
     from core.dream.dream_state import patch_local_state
@@ -179,6 +193,7 @@ async def dream_turn(
         state["status"] = DreamStatus.DREAM_CLOSING.value
         write_state(uid, state)
         await _do_close_dream(uid, dream_id, exit_type="soft")
+        # char_id is stored in dream_state; _do_close_dream reads it from there
 
     from core.narrative_parser import parse_narrative_segments as _parse_segs
     _parsed = _parse_segs(reply)
@@ -213,12 +228,18 @@ async def force_exit_dream(uid: str) -> None:
     await _do_close_dream(uid, dream_id, exit_type="hard_exit")
 
 
-async def enter_dream(uid: str, entry_reason: str = "") -> dict[str, Any]:
+async def enter_dream(
+    uid: str, entry_reason: str = "", *, char_id: str = "yexuan"
+) -> dict[str, Any]:
     """
     Transition uid into DREAM_ACTIVE.
 
     Builds the frozen context snapshot, assigns a dream_id,
     and writes the new state. Called by the /dream/enter endpoint.
+
+    char_id must be passed explicitly by the production caller (admin router reads
+    it from pipeline._active_character_id). The default "yexuan" is a legacy/test
+    compatibility shim — production paths must not rely on it.
     """
     from core.dream.dream_state import read_state, write_state, DreamStatus
     from core.dream.dream_context import build_snapshot
@@ -233,7 +254,7 @@ async def enter_dream(uid: str, entry_reason: str = "") -> dict[str, Any]:
         return {"ok": False, "error": f"cannot enter dream from status={state.get('status')}"}
 
     dream_id = f"dream_{uid}_{int(time.time())}"
-    snapshot = await build_snapshot(uid, entry_reason=entry_reason)
+    snapshot = await build_snapshot(uid, entry_reason=entry_reason, char_id=char_id)
 
     # Freeze world_layer and lucid_mode from settings for this dream session
     from core.dream.dream_settings import load as _load_settings_enter
@@ -243,6 +264,7 @@ async def enter_dream(uid: str, entry_reason: str = "") -> dict[str, Any]:
 
     state["status"] = DreamStatus.DREAM_ACTIVE.value
     state["dream_id"] = dream_id
+    state["char_id"] = char_id   # frozen at enter; close/summary/afterglow read from here
     state["context_snapshot"] = snapshot
     state["frozen_world"] = frozen_world
     state["lucid_mode"] = lucid_mode_entry
@@ -257,7 +279,7 @@ async def enter_dream(uid: str, entry_reason: str = "") -> dict[str, Any]:
     from core.dream.dream_hud import delete_hud_state
     delete_hud_state(uid)
 
-    logger.info(f"[dream_pipeline] entered dream uid={uid} dream_id={dream_id}")
+    logger.info(f"[dream_pipeline] entered dream uid={uid} dream_id={dream_id} char_id={char_id}")
     return {"ok": True, "dream_id": dream_id}
 
 
@@ -267,12 +289,16 @@ async def _do_close_dream(uid: str, dream_id: str, exit_type: str) -> None:
     from core.dream.dream_log import archive_current
     from core.dream.dream_hud import delete_hud_state
 
-    if dream_id:
-        archive_current(uid, dream_id)
-
-    asyncio.create_task(_generate_summary_bg(uid, dream_id, exit_type))
-
+    # Read char_id from dream_state before clearing volatile fields.
+    # char_id is NOT in clear_local_state's key list, so it survives into REALITY_AFTERGLOW.
     state = read_state(uid)
+    char_id = _state_char_id(state, "_do_close_dream", uid, dream_id)
+
+    if dream_id:
+        archive_current(uid, dream_id, char_id=char_id)
+
+    asyncio.create_task(_generate_summary_bg(uid, dream_id, exit_type, char_id=char_id))
+
     state = clear_local_state(state)  # clears body_state + emotional_tension + scene etc.
     state["status"] = DreamStatus.REALITY_AFTERGLOW.value
     state["last_dream_id"] = dream_id
@@ -280,27 +306,29 @@ async def _do_close_dream(uid: str, dream_id: str, exit_type: str) -> None:
     write_state(uid, state)
 
     delete_hud_state(uid)
-    logger.info(f"[dream_pipeline] closed dream uid={uid} exit_type={exit_type}")
+    logger.info(f"[dream_pipeline] closed dream uid={uid} exit_type={exit_type} char_id={char_id}")
 
 
-async def _generate_summary_bg(uid: str, dream_id: str, exit_type: str) -> None:
+async def _generate_summary_bg(
+    uid: str, dream_id: str, exit_type: str, *, char_id: str
+) -> None:
     try:
         from core.dream.dream_summary import generate_summary
-        await generate_summary(uid, dream_id, exit_type)
+        await generate_summary(uid, dream_id, exit_type, char_id=char_id)
     except Exception as e:
         logger.error(f"[dream_pipeline] summary failed uid={uid}: {e}")
 
     # Phase 6: Wire afterglow residue at Dream exit (Reality-side integrator, fail-closed)
     try:
         from core.dream.dream_exit_afterglow import wire_afterglow_from_summary
-        wire_afterglow_from_summary(uid, dream_id, exit_type)
+        wire_afterglow_from_summary(uid, dream_id, exit_type, char_id=char_id)
     except Exception as e:
         logger.warning(f"[dream_pipeline] afterglow wiring failed uid={uid}: {e}")
 
     # Distill impression after summary (failure is warning-only per C7)
     try:
         from core.dream.distill_impression import distill_impression
-        await distill_impression(uid, dream_id, exit_type)
+        await distill_impression(uid, dream_id, exit_type, char_id=char_id)
     except Exception as e:
         logger.warning(f"[dream_pipeline] distill_impression failed uid={uid}: {e}")
 

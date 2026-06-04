@@ -188,6 +188,8 @@ def append(
     intensity: int = 0,
     turn_id: str | None = None,
     trigger_name: str = "",
+    *,
+    char_id: str = "yexuan",
 ) -> bool:
     """
     追加一条对话记录到当天日志和 full_log.md。
@@ -201,6 +203,7 @@ def append(
         intensity    - 情绪强度覆盖（0-2），传入时不再自动计算
         turn_id      - 来自 fixation_pipeline.capture_turn 的血缘 ID（可选）
         trigger_name - scheduler 触发源名（非空时追加 trigger: 字段到 meta，仅 assistant 有效）
+        char_id      - 决定写入哪个角色桶（默认 "yexuan"）
     """
     from core.config_loader import _char_name
     char_name = _char_name()
@@ -226,14 +229,14 @@ def append(
     chunk = header + line + footer
 
     try:
-        _ensure_dir(user_id)
+        _ensure_dir(user_id, char_id=char_id)
 
-        day_path = _day_file_write(user_id, now)
+        day_path = _day_file_write(user_id, now, char_id=char_id)
         if not _already_appended(day_path, line, turn_id):
             with open(day_path, "a", encoding="utf-8") as f:
                 f.write(chunk)
 
-        full_path = _full_log_file_write(user_id)
+        full_path = _full_log_file_write(user_id, char_id=char_id)
         if not _already_appended(full_path, line, turn_id):
             with open(full_path, "a", encoding="utf-8") as f:
                 f.write(chunk)
@@ -289,8 +292,8 @@ def get_recent_days(user_id: str, days: int = 3, *, char_id: str = "yexuan") -> 
     return "\n\n".join(parts)
 
 
-async def search(user_id: str, query: str, llm_client=None) -> str:
-    recent_text = get_recent_days(user_id, days=30)
+async def search(user_id: str, query: str, llm_client=None, *, char_id: str = "yexuan") -> str:
+    recent_text = get_recent_days(user_id, days=30, char_id=char_id)
     if not recent_text:
         return ""
 
@@ -419,8 +422,8 @@ class EventLog:
     所有方法都代理到模块级函数。
     """
 
-    def append(self, user_id: str, role: str, content: str, emotion: str = "neutral", intensity: int = 0):
-        append(user_id, role, content, emotion=emotion, intensity=intensity)
+    def append(self, user_id: str, role: str, content: str, emotion: str = "neutral", intensity: int = 0, *, char_id: str = "yexuan"):
+        append(user_id, role, content, emotion=emotion, intensity=intensity, char_id=char_id)
 
     def get_recent_days(self, user_id: str, days: int = 3) -> str:
         return get_recent_days(user_id, days)
