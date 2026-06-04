@@ -378,16 +378,16 @@ def _save(user_id: str, history: list[dict], *, char_id: str = "yexuan") -> bool
         return False
 
 
-def clear(user_id: str):
+def clear(user_id: str, *, char_id: str = "yexuan"):
     """清空指定用户的短期历史（admin 用）"""
-    _save(user_id, [])
+    _save(user_id, [], char_id=char_id)
 
 
 class ShortTermMemory:
     """短期记忆类，封装模块级函数，供外部按类方式导入使用"""
 
-    def load(self, user_id: str) -> list[dict]:
-        return load(user_id)
+    def load(self, user_id: str, *, char_id: str = "yexuan") -> list[dict]:
+        return load(user_id, char_id=char_id)
 
     def get_history(self, user_id: str, max_turns: int | None = None) -> list[dict]:
         return get_history(user_id, max_turns)
@@ -395,5 +395,5 @@ class ShortTermMemory:
     def append(self, user_id: str, role: str, content: str, turn_id: str | None = None, *, char_id: str = "yexuan"):
         append(user_id, role, content, turn_id=turn_id, char_id=char_id)
 
-    def clear(self, user_id: str):
-        clear(user_id)
+    def clear(self, user_id: str, *, char_id: str = "yexuan"):
+        clear(user_id, char_id=char_id)
