@@ -59,13 +59,28 @@ def _init_modules():
 
     logger.info("正在加载角色卡...")
     from core import character_loader
-    char_ref = cfg.get("character", {}).get("default", "")
+    from core.sandbox import get_paths as _get_paths
+    import json as _json
+
+    # Priority: active_prompt_assets.json > config.yaml character.default
+    _active_char_id: str = ""
+    try:
+        _active_data = _json.loads(_get_paths().active_prompt_assets().read_text(encoding="utf-8"))
+        _active_char_id = _active_data.get("active_character", "")
+    except Exception as _e:
+        logger.warning(f"[startup] 读取 active_prompt_assets.json 失败，将使用 config.yaml 默认值: {_e}")
+
+    char_ref = _active_char_id or cfg.get("character", {}).get("default", "")
     if not char_ref:
         logger.critical(
-            "[startup] config.yaml 缺少 character.default 字段，无法启动。"
-            " 请在 config.yaml 中设置 character.default: <角色id>"
+            "[startup] 无法确定角色：active_prompt_assets.json 无 active_character，"
+            "且 config.yaml 缺少 character.default 字段，无法启动。"
         )
         sys.exit(1)
+    if _active_char_id:
+        logger.info(f"[startup] 使用 active_prompt_assets.json 中的角色: {char_ref!r}")
+    else:
+        logger.info(f"[startup] active_prompt_assets.json 无 active_character，回退到 config.yaml: {char_ref!r}")
     try:
         character = character_loader.load(char_ref)
     except Exception as e:
@@ -82,7 +97,7 @@ def _init_modules():
 
     logger.info("正在初始化 Pipeline...")
     from core.pipeline import Pipeline, register_slow_handlers
-    _pipeline = Pipeline(character, lore_engine)
+    _pipeline = Pipeline(character, lore_engine, active_character_id=char_ref)
     from core.pipeline_registry import register as _reg
     _reg(_pipeline)
 
@@ -325,7 +340,7 @@ async def handle_message(message: dict):
     if tool_calls:
         try:
             from core.memory.mood_state import update as _update_mood_probe
-            _update_mood_probe("thinking", source="trigger")
+            _update_mood_probe("thinking", source="trigger", char_id=_pipeline._active_character_id)
         except Exception:
             pass
         for tc in tool_calls:
