@@ -305,8 +305,15 @@ async def handle_message(message: dict):
     from datetime import datetime
     _now = datetime.now()
     _time_str = _now.strftime("%Y年%m月%d日 %H:%M 星期") + ["一", "二", "三", "四", "五", "六", "日"][_now.weekday()]
+    from core.error_handler import log_error as _log_error_probe
+    try:
+        _pipeline._refresh_character_if_needed()
+    except (ValueError, RuntimeError) as _char_err:
+        _log_error_probe("main.probe.char_refresh", _char_err)
+        return
+    _char_id = _pipeline._active_character_id
     from core.memory import user_profile as _up
-    _profile = _up.load(user_id)
+    _profile = _up.load(user_id, char_id=_char_id)
     _location = _profile.get("location", "杭州")
     # 快速路径：关键词命中直接走，不调 LLM；只匹配 trusted_user_text，不含 media span
     def _fast_path_match(user_msg: str) -> str | None:
@@ -446,9 +453,19 @@ async def _reply_with_tool_result(
     from core.write_envelope import stamp_qq
 
     group_id = target_id if is_group else None
+
+    # P1-0A: resolve active character before reading any scoped memory;
+    # fail-loud if active_character is missing or unknown — no fallback to yexuan.
+    try:
+        _pipeline._refresh_character_if_needed()
+    except (ValueError, RuntimeError) as _char_err:
+        log_error("main._reply_with_tool_result.char_refresh", _char_err)
+        return
+    _char_id = _pipeline._active_character_id
+
     context = {
-        "history":             short_term.load_for_prompt(user_id),
-        "profile":             user_profile.load(user_id),
+        "history":             short_term.load_for_prompt(user_id, char_id=_char_id),
+        "profile":             user_profile.load(user_id, char_id=_char_id),
         "relation":            user_relation.get_relation(user_id),
         "group_context":       group_context.get_recent(group_id),
         "user_identity_text":  "",

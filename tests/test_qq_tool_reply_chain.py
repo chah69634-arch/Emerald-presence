@@ -37,8 +37,8 @@ def _patch_memory(monkeypatch):
     import core.memory.user_profile as _up
     import core.memory.group_context as _gc
     import core.user_relation as _ur
-    monkeypatch.setattr(_st, "load_for_prompt", lambda uid: [])
-    monkeypatch.setattr(_up, "load", lambda uid: {})
+    monkeypatch.setattr(_st, "load_for_prompt", lambda uid, **kw: [])
+    monkeypatch.setattr(_up, "load", lambda uid, **kw: {})
     monkeypatch.setattr(_gc, "get_recent", lambda gid: [])
     monkeypatch.setattr(_ur, "get_relation", lambda uid: {})
 
@@ -245,7 +245,7 @@ async def test_handle_message_main_path_intact(sandbox, monkeypatch):
     monkeypatch.setattr(_sm, "notify_owner_turn", lambda uid: None)
 
     import core.memory.user_profile as _up
-    monkeypatch.setattr(_up, "load", lambda uid: {"location": "杭州"})
+    monkeypatch.setattr(_up, "load", lambda uid, **kw: {"location": "杭州"})
     import core.memory.group_context as _gc
     monkeypatch.setattr(_gc, "append", lambda *a, **kw: None)
 
