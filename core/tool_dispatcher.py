@@ -663,7 +663,7 @@ async def execute(
     is_group: bool,
     session_state,
     *,
-    origin: str = "",
+    origin: str,
 ) -> tuple[str | None, str | None]:
     """
     执行工具，返回 (tool_result, ask_confirm_text)
@@ -671,8 +671,9 @@ async def execute(
     tool_result:      工具执行结果字符串，None 表示无结果
     ask_confirm_text: 高危工具等待确认时的询问文字，None 表示无需确认
 
-    origin 必须显式传入并在白名单内，否则 fail-closed：返回 (None, None) + 记 warning。
+    origin 必填，不在白名单则 fail-closed：返回 (None, None) + 记 warning。
     白名单：user_live（Path A 用户发起）/ assistant_intent（Path B 意图执行，附加门控）。
+    漏传 → TypeError，杜绝静默绕过。
     """
     if origin not in _EXECUTE_ALLOWED_ORIGINS:
         logger.warning(
@@ -744,7 +745,7 @@ class ToolDispatcher:
     def get_tools_schema(self, categories: list[str] | None = None) -> list:
         return get_tools_schema(categories=categories)
 
-    async def execute(self, tool_name, tool_args, user_id, target_id, is_group, session_state, *, origin: str = ""):
+    async def execute(self, tool_name, tool_args, user_id, target_id, is_group, session_state, *, origin: str):
         return await execute(
             tool_name=tool_name,
             tool_args=tool_args,

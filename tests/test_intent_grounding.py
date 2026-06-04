@@ -237,7 +237,8 @@ async def test_sensor_turn_skips_intent(sandbox, monkeypatch):
 
 async def test_execute_unknown_origins_rejected(sandbox, monkeypatch):
     """
-    origin 缺失 / 非法 → execute() 返回 (None, None)，无任何工具副作用，记 warning。
+    非法 origin → execute() 返回 (None, None)，无工具副作用，记 warning。
+    漏传 origin（必填参数）→ TypeError，杜绝静默绕过。
     """
     from core.tool_dispatcher import execute, _EXECUTE_ALLOWED_ORIGINS
     import logging
@@ -259,6 +260,7 @@ async def test_execute_unknown_origins_rejected(sandbox, monkeypatch):
     td_logger.addHandler(handler)
 
     try:
+        # Non-whitelist origins → (None, None) + warning
         for bad_origin in ("", None, "memory", "dream", "scheduler", "assistant"):
             captured_warnings.clear()
             result = await execute(
@@ -276,6 +278,18 @@ async def test_execute_unknown_origins_rejected(sandbox, monkeypatch):
                 f"origin={bad_origin!r} 应记录 warning"
     finally:
         td_logger.removeHandler(handler)
+
+    # Missing origin → TypeError (required keyword-only arg, no default)
+    with pytest.raises(TypeError):
+        await execute(
+            tool_name="get_time",
+            tool_args={},
+            user_id="u1",
+            target_id="u1",
+            is_group=False,
+            session_state=state,
+            # origin intentionally omitted
+        )
 
     # Verify the whitelist is exactly what we expect
     assert _EXECUTE_ALLOWED_ORIGINS == frozenset({"user_live", "assistant_intent"})
