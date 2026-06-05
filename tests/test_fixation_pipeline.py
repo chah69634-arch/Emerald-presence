@@ -11,7 +11,6 @@ tests/test_fixation_pipeline.py — fixation pipeline 四 job 单元测试
 
 import asyncio
 import json
-import sys
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -46,10 +45,24 @@ def fake_llm():
 @pytest.fixture(autouse=True)
 def patch_llm_client(fake_llm):
     """把 core.llm_client 模块替换成 fake_llm，避免真实 HTTP。
-    用 sys.modules 注入，兼容 fixation_pipeline.py 内部的 'from core import llm_client' 惰性导入。
+
+    patch("core.llm_client", ...) 替换 core 模块对象上的属性，兼容
+    fixation_pipeline.py 内部的 'from core import llm_client' 惰性导入。
+    当其他测试文件（如 test_dream_v1/v2）已预先导入 core.llm_client 并将其
+    缓存为 core 模块属性时，单纯 patch.dict(sys.modules) 无法拦截该属性查找，
+    必须直接替换模块属性。
     """
-    with patch.dict(sys.modules, {"core.llm_client": fake_llm}):
+    with patch("core.llm_client", fake_llm, create=True):
         yield fake_llm
+
+
+@pytest.fixture(autouse=True)
+def reset_llm_validator_counter():
+    """在每个测试前后清空 llm_output_validator 失败计数器，防止跨测试污染。"""
+    import core.llm_output_validator as _v
+    _v._counter._state.clear()
+    yield
+    _v._counter._state.clear()
 
 
 def _episode_for_cap(
@@ -330,7 +343,7 @@ async def test_summarize_to_midterm_no_eager_for_neutral(sandbox):
 def uid_with_midterm(sandbox):
     """预置一个有 mid_term 条目的 uid。"""
     from core.memory import mid_term as _mt
-    uid = "u_reflect"
+    uid = "u_reflect_fp"  # _fp suffix: unique to test_fixation_pipeline.py
     mid_id = f"mt_{uid}_{int(time.time() * 1000)}"
     _mt.append(uid, "用户最近有些焦虑", tags=["焦虑"],
                mid_id=mid_id, source_turn_id=f"{uid}_111")
