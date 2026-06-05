@@ -10,7 +10,9 @@ import math
 import time
 from pathlib import Path
 
-from core.sandbox import get_paths, safe_user_id
+from core.memory.scope import MemoryScope
+from core.memory.path_resolver import resolve_path
+from core.sandbox import safe_user_id
 from core.safe_write import safe_write_json
 from core.llm_output_validator import record_failure
 
@@ -19,26 +21,28 @@ logger = logging.getLogger(__name__)
 
 def _mem_read_file(user_id: str, *, char_id: str = "yexuan") -> Path:
     uid = safe_user_id(user_id)
-    return get_paths().user_memory_root(uid, char_id=char_id) / "episodic.json"
+    scope = MemoryScope.reality_scope(uid, char_id)
+    return resolve_path(scope, "episodic")
 
 
 def _mem_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
-    """写路径：始终写新布局。"""
     uid = safe_user_id(user_id)
-    p = get_paths().user_memory_root(uid, char_id=char_id) / "episodic.json"
+    scope = MemoryScope.reality_scope(uid, char_id)
+    p = resolve_path(scope, "episodic")
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def _index_read_file(user_id: str, *, char_id: str = "yexuan") -> Path:
     uid = safe_user_id(user_id)
-    return get_paths().user_memory_root(uid, char_id=char_id) / "memory_index.json"
+    scope = MemoryScope.reality_scope(uid, char_id)
+    return resolve_path(scope, "memory_index")
 
 
 def _index_write_file(user_id: str, *, char_id: str = "yexuan") -> Path:
-    """写路径：始终写新布局。"""
     uid = safe_user_id(user_id)
-    p = get_paths().user_memory_root(uid, char_id=char_id) / "memory_index.json"
+    scope = MemoryScope.reality_scope(uid, char_id)
+    p = resolve_path(scope, "memory_index")
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

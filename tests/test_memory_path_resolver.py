@@ -333,3 +333,34 @@ def test_observations_contains_char_not_uid(sandbox):
     p = _s(resolve_path(REALITY, "observations"))
     assert CHAR in p
     assert UID not in p
+
+
+# ---------------------------------------------------------------------------
+# P1-2F: episodic / memory_index path layout consistency
+# Both must live under runtime/memory/{char_id}/{uid}/ — same root as mid_term
+# ---------------------------------------------------------------------------
+
+def test_episodic_exact_layout(sandbox):
+    """episodic → runtime/memory/{char_id}/{uid}/episodic.json"""
+    p = _s(resolve_path(REALITY, "episodic"))
+    assert f"runtime/memory/{CHAR}/{UID}/episodic.json" in p
+
+
+def test_memory_index_exact_layout(sandbox):
+    """memory_index → runtime/memory/{char_id}/{uid}/memory_index.json"""
+    p = _s(resolve_path(REALITY, "memory_index"))
+    assert f"runtime/memory/{CHAR}/{UID}/memory_index.json" in p
+
+
+def test_episodic_same_root_as_mid_term(sandbox):
+    """episodic and mid_term must share the same parent directory (user_memory_root)."""
+    ep = resolve_path(REALITY, "episodic")
+    mt = resolve_path(REALITY, "mid_term")
+    assert ep.parent == mt.parent
+
+
+def test_memory_index_same_root_as_mid_term(sandbox):
+    """memory_index and mid_term must share the same parent directory."""
+    idx = resolve_path(REALITY, "memory_index")
+    mt = resolve_path(REALITY, "mid_term")
+    assert idx.parent == mt.parent

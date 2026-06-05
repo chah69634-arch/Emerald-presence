@@ -77,10 +77,10 @@ def resolve_path(scope: MemoryScope, artifact: str) -> Path:
         return paths.user_memory_root(uid, char_id=char_id) / "mid_term.json"
 
     if artifact == "episodic":
-        return paths.episodic_memory(char_id=char_id) / f"{uid}.json"
+        return paths.user_memory_root(uid, char_id=char_id) / "episodic.json"
 
     if artifact == "memory_index":
-        return paths.memory_index(char_id=char_id) / f"{uid}.json"
+        return paths.user_memory_root(uid, char_id=char_id) / "memory_index.json"
 
     if artifact == "fixation_state":
         return paths.fixation_state_dir(char_id=char_id) / f"{uid}.json"
