@@ -9,7 +9,7 @@ Covers:
 5.  Dream afterglow 回流写入 session char_id（wire_afterglow_from_summary）
 6.  切换 active 后旧 dream afterglow 仍写回入梦角色（不读 active_character）
 7.  legacy dream_state 缺 char_id：WARN + fallback yexuan，不崩溃
-8.  hidden_state_decay 读取 active char_id 并传给 load/save
+8.  hidden_state_decay P1: 遍历注册角色，对每个 char_id 调用 load/save（不依赖 active_character）
 9.  隔离验收：yexuan afterglow 不写入 hongcha 桶
 10. legacy 默认兼容：不传 char_id 默认 yexuan
 """
@@ -249,16 +249,20 @@ def test_legacy_dream_state_missing_char_id_warns_and_fallbacks(caplog):
     ), f"WARN must mention legacy/fallback/yexuan, got: {caplog.text!r}"
 
 
-# ── 8. hidden_state_decay 读取 active char_id 并传给 load/save ─────────────────
+# ── 8. hidden_state_decay P1: 遍历注册角色而非读 active char ──────────────────
 
-def test_hidden_state_decay_passes_active_char_id():
-    """_check_hidden_state_decay 读 active_prompt_assets → char_id='hongcha' 传给 load/save。"""
+def test_hidden_state_decay_iterates_registered_chars(sandbox):
+    """P1: _check_hidden_state_decay 遍历注册角色，对每个 char_id 调用 load/save，不依赖 active_character。"""
     from core.scheduler.triggers import hidden_state_decay as _hsd
+    from core.memory.user_hidden_state import default_hidden_state
+
+    uid_dir = sandbox.memory_char_root(char_id="hongcha") / "test_uid"
+    uid_dir.mkdir(parents=True, exist_ok=True)
+    (uid_dir / "hidden_state.json").write_text("{}", encoding="utf-8")
 
     load_calls: list[dict] = []
     save_calls: list[dict] = []
 
-    from core.memory.user_hidden_state import default_hidden_state, apply_time_decay
     def _mock_load(uid, *, char_id="yexuan"):
         load_calls.append({"uid": uid, "char_id": char_id})
         return default_hidden_state()
@@ -267,30 +271,34 @@ def test_hidden_state_decay_passes_active_char_id():
         save_calls.append({"uid": uid, "char_id": char_id})
         return True
 
-    # _is_ready / _mark / _owner_id are lazy-imported from core.scheduler.loop inside the fn
-    # load/save/apply_time_decay are lazy-imported from their respective modules
+    mock_reg = MagicMock()
+    mock_reg.list_all.return_value = [MagicMock(id="hongcha")]
+
     with patch("core.scheduler.loop._is_ready", return_value=True), \
          patch("core.scheduler.loop._mark"), \
-         patch("core.scheduler.loop._owner_id", return_value="test_owner"), \
-         patch.object(_hsd, "_active_char_id", return_value="hongcha"), \
+         patch("core.asset_registry.get_registry", return_value=mock_reg), \
          patch("core.memory.user_hidden_state_store.load_hidden_state", _mock_load), \
          patch("core.memory.user_hidden_state_store.save_hidden_state", _mock_save), \
          patch("core.memory.user_hidden_state.apply_time_decay",
                side_effect=lambda s, _n: s):
         asyncio.run(_hsd._check_hidden_state_decay())
 
-    assert load_calls, "load_hidden_state must be called"
+    assert load_calls, "load_hidden_state must be called for registered char"
     assert load_calls[0]["char_id"] == "hongcha", \
         f"decay load expected char_id='hongcha', got {load_calls[0]['char_id']!r}"
-
     assert save_calls, "save_hidden_state must be called"
     assert save_calls[0]["char_id"] == "hongcha", \
         f"decay save expected char_id='hongcha', got {save_calls[0]['char_id']!r}"
 
 
-def test_hidden_state_decay_skips_when_char_id_unknown(caplog):
-    """_active_char_id() 返回 None 时调度器 WARN + skip，不静默写 yexuan。"""
+def test_hidden_state_decay_not_blocked_by_missing_active(sandbox):
+    """P1: active_prompt_assets 缺失不影响 decay，仍对所有注册角色运行。"""
     from core.scheduler.triggers import hidden_state_decay as _hsd
+    from core.memory.user_hidden_state import default_hidden_state
+
+    uid_dir = sandbox.memory_char_root(char_id="yexuan") / "owner1"
+    uid_dir.mkdir(parents=True, exist_ok=True)
+    (uid_dir / "hidden_state.json").write_text("{}", encoding="utf-8")
 
     save_called = []
 
@@ -298,17 +306,21 @@ def test_hidden_state_decay_skips_when_char_id_unknown(caplog):
         save_called.append(char_id)
         return True
 
+    mock_reg = MagicMock()
+    mock_reg.list_all.return_value = [MagicMock(id="yexuan")]
+
     with patch("core.scheduler.loop._is_ready", return_value=True), \
          patch("core.scheduler.loop._mark"), \
-         patch("core.scheduler.loop._owner_id", return_value="test_owner"), \
-         patch.object(_hsd, "_active_char_id", return_value=None), \
+         patch("core.asset_registry.get_registry", return_value=mock_reg), \
+         patch("core.memory.user_hidden_state_store.load_hidden_state",
+               return_value=default_hidden_state()), \
          patch("core.memory.user_hidden_state_store.save_hidden_state", _spy_save), \
-         caplog.at_level(logging.WARNING, logger="core.scheduler.triggers.hidden_state_decay"):
+         patch("core.memory.user_hidden_state.apply_time_decay",
+               side_effect=lambda s, _n: s):
         asyncio.run(_hsd._check_hidden_state_decay())
 
-    assert not save_called, "save_hidden_state must NOT be called when char_id is unknown"
-    assert "char_id" in caplog.text.lower() or "skipping" in caplog.text.lower(), \
-        f"WARN message should mention char_id or skipping: {caplog.text!r}"
+    assert save_called, "save MUST be called — missing active must NOT block decay"
+    assert save_called[0] == "yexuan"
 
 
 # ── 9. 隔离验收：yexuan afterglow 不写入 hongcha 桶 ────────────────────────────
