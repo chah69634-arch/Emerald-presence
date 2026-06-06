@@ -29,6 +29,15 @@ def sandbox(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def reset_perceive_event_registry():
+    """Reset perceive_event dedup registry before each test (prevents cross-test leakage)."""
+    from core.perceive_event import clear_dedup_registry_for_test
+    clear_dedup_registry_for_test()
+    yield
+    clear_dedup_registry_for_test()
+
+
+@pytest.fixture(autouse=True)
 async def reset_slow_queue():
     """每个测试前重置 slow_queue 模块状态（队列/handler/worker），测试后清理 worker。"""
     import core.post_process.slow_queue as sq

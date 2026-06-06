@@ -425,49 +425,83 @@ async def desktop_wake(body: dict = Body(default={})):
         except Exception:
             logger.exception("[desktop_wake] Path A 失败，降级到 Path B")
 
-    # ── Dream guard: fail-closed before live Path B generation ────────────
+    # ── Path B gate: perceive_event dedup + Dream Guard ───────────────────
+    # receive_perceive_event is the single choke point: it rejects duplicate
+    # wakes (rapid reconnects, concurrent HTTP calls) and blocks during dream.
+    # Dream Guard is now delegated to receive_perceive_event (fail-closed).
     try:
-        from core.dream.dream_state import get_reality_guard_status as _grgs, DreamGuardStatus as _DGS
-        _wake_guard = _grgs(uid)
+        from core.perceive_event import PerceiveEvent, PerceiveStatus, receive_perceive_event as _rpe
+        _pe = PerceiveEvent(
+            source="desktop_wake",
+            uid=uid,
+            channel="desktop",
+            kind="wake",
+            payload=body if isinstance(body, dict) else {},
+        )
+        _pe_result = await _rpe(_pe)
     except Exception:
-        logger.error("[desktop_wake] dream guard check failed uid=%s — blocking Path B", uid, exc_info=True)
-        return {"reply": None, "source": "dream_guard_error"}
-    if _wake_guard != _DGS.ALLOW:
-        logger.info("[desktop_wake] Path B blocked by dream guard uid=%s guard=%s", uid, _wake_guard)
-        return {"reply": None, "source": "dream_guard_blocked"}
+        logger.error("[desktop_wake] perceive_event gate 异常 — fail-closed uid=%s", uid, exc_info=True)
+        return {"reply": None, "source": "perceive_error"}
+
+    if _pe_result.status != PerceiveStatus.ACCEPTED:
+        logger.info(
+            "[desktop_wake] Path B not accepted: status=%s reason=%s event_id=%s",
+            _pe_result.status, _pe_result.reason, _pe_result.event_id,
+        )
+        source_tag = {
+            PerceiveStatus.DUPLICATE: "duplicate_wake",
+            PerceiveStatus.BLOCKED_DREAM: "dream_guard_blocked",
+        }.get(_pe_result.status, f"perceive_{_pe_result.status.value}")
+        return {"reply": None, "source": source_tag}
 
     # ── Path B: 现场生成 wake trigger ──────────────────────────────────────
+    # conversation_lock wraps fetch_context + LLM + record_assistant_turn so
+    # concurrent user_chat or a duplicate wake call cannot race into the same
+    # turn.  bypass_gate=True tells record_assistant_turn to skip the inner
+    # lock re-acquisition (we already hold it here).
     try:
         from core.pipeline_registry import get as _get_pipeline
         pipeline = _get_pipeline()
         if pipeline is None:
             return {"reply": None, "source": "no_pipeline"}
 
+        from core.conversation_gate import conversation_lock as _conv_lock
         prompt = "（用户重新打开了桌宠，请结合真实记忆自然接续）"
-        context = await pipeline.fetch_context(uid, prompt)
-        messages, _ = pipeline.build_prompt(uid, prompt, context)
-        reply = await pipeline.run_llm(messages)
-        if reply:
-            # Shared reality guard before record_assistant_turn.
-            from core.reality_output_guard import clean_reality_reply_text as _clean_wake_reply
-            reply = _clean_wake_reply(reply, pipeline.character.name) or reply
-        if reply:
-            from core.turn_sink import TurnSource, record_assistant_turn
-            from core.write_envelope import stamp_trigger
-            await record_assistant_turn(
-                assistant_text=reply,
-                uid=uid,
-                source=TurnSource.TRIGGER,
-                trigger_name="desktop_wake",
-                fanout=[],  # 客户端直接展示，不通过 channel 二次推送
-                pipeline=pipeline,
-                envelope=stamp_trigger(),
+
+        async with _conv_lock(uid):
+            logger.info(
+                "[desktop_wake] Path B LLM start uid=%s event_id=%s",
+                uid, _pe_result.event_id,
             )
-            # Visible reply: strip render/NMP tags only; memory already scrubbed
-            # inside record_assistant_turn (memory_text path).
-            from core.response_processor import strip_render_tags as _strip_tags
-            return {"reply": _strip_tags(reply) or reply, "source": "live_wake"}
-        return {"reply": None, "source": "live_wake_empty"}
+            context = await pipeline.fetch_context(uid, prompt)
+            messages, _ = pipeline.build_prompt(uid, prompt, context)
+            reply = await pipeline.run_llm(messages)
+            if reply:
+                # Shared reality guard before record_assistant_turn.
+                from core.reality_output_guard import clean_reality_reply_text as _clean_wake_reply
+                reply = _clean_wake_reply(reply, pipeline.character.name) or reply
+            if reply:
+                logger.info(
+                    "[desktop_wake] Path B LLM done uid=%s event_id=%s reply_len=%d",
+                    uid, _pe_result.event_id, len(reply),
+                )
+                from core.turn_sink import TurnSource, record_assistant_turn
+                from core.write_envelope import stamp_trigger
+                await record_assistant_turn(
+                    assistant_text=reply,
+                    uid=uid,
+                    source=TurnSource.TRIGGER,
+                    trigger_name="desktop_wake",
+                    fanout=[],      # 客户端直接展示，不通过 channel 二次推送
+                    bypass_gate=True,  # already inside conversation_lock
+                    pipeline=pipeline,
+                    envelope=stamp_trigger(),
+                )
+                # Visible reply: strip render/NMP tags only; memory already scrubbed
+                # inside record_assistant_turn (memory_text path).
+                from core.response_processor import strip_render_tags as _strip_tags
+                return {"reply": _strip_tags(reply) or reply, "source": "live_wake"}
+            return {"reply": None, "source": "live_wake_empty"}
     except Exception:
         logger.exception("[desktop_wake] Path B 失败")
         return {"reply": None, "source": "error"}
