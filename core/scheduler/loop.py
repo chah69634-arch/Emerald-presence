@@ -225,6 +225,10 @@ async def _pipeline_send(
     trigger_name 用于优先级判断：高优先级触发器不受活跃窗口限制。
     output_mode="return"：post_process 写记忆，但不调 _send，返回 reply 文本。
     output_mode="speak"（默认）：发送后返回 reply 文本；被策略拦截或失败时返回 None。
+
+    P1 gate：perceive_event 统一入口（Dream Guard + TTL dedup），通过后用 conversation_lock
+    覆盖 fetch_context → build_prompt → run_llm → record_assistant_turn，与 desktop_wake
+    Path B 和 owner chat 串行，避免同 uid 并发 LLM。perceive_event=true 日志标识已通过 gate。
     """
     if trigger_name not in _HIGH_PRIORITY_TRIGGERS and _user_active_recently():
         logger.info(f"[scheduler] 用户活跃中，跳过低优先级触发: {trigger_name}")
@@ -241,48 +245,86 @@ async def _pipeline_send(
                 return prompt
             return None
 
+        # ── perceive_event gate ───────────────────────────────────────────────
+        # Dream Guard (fail-closed) + TTL dedup: same trigger within 60s → DUPLICATE.
+        # Payload uses only trigger_name so the hash is stable across calls in the
+        # same time bucket.  correlation_id is logged for tracing but not hashed.
+        import uuid as _uuid
+        correlation_id = str(_uuid.uuid4())
+        char_id = _active_char_id_or_none()
+
+        from core.perceive_event import PerceiveEvent, receive_perceive_event, PerceiveStatus
+        pe_event = PerceiveEvent(
+            source="scheduler",
+            uid=oid,
+            channel="system",
+            kind="scheduled",
+            char_id=char_id,
+            payload={"trigger_name": trigger_name},
+        )
+        pe_result = await receive_perceive_event(pe_event)
+        if pe_result.status != PerceiveStatus.ACCEPTED:
+            logger.info(
+                "[scheduler._pipeline_send] gate=%s trigger=%s uid=%s char_id=%s "
+                "correlation_id=%s dedupe_key=%s",
+                pe_result.status, trigger_name, oid, char_id,
+                correlation_id, pe_result.dedupe_key,
+            )
+            return None
+
+        logger.info(
+            "[scheduler._pipeline_send] perceive_event=true trigger=%s uid=%s char_id=%s "
+            "correlation_id=%s event_id=%s",
+            trigger_name, oid, char_id, correlation_id, pe_result.event_id,
+        )
+
         from core.scheduler.triggers.birthday import _is_birthday_period
         if _is_birthday_period():
             prompt = prompt + "\n（今天是她的生日，4月24日）"
         _states = ["在思考", "在翻阅她的日记", "在想她说过的话", "在看窗外", "在灵体出游", "在家里"]
         prompt = prompt + f"\n（{_char_name()}此刻{random.choice(_states)}）"
-        context = await _pipeline.fetch_context(oid, search_query or prompt)
-        messages, _ = _pipeline.build_prompt(oid, prompt, context)
-        reply    = await _pipeline.run_llm(messages)
-        if reply:
-            turn_result = None
-            if record_turn:
-                from core.turn_sink import TurnSource, record_assistant_turn
-                from core.write_envelope import stamp_sensor, stamp_trigger
-                if trigger_name == "sensor_aware":
-                    source = TurnSource.SENSOR
-                    _envelope = stamp_sensor()
-                elif trigger_name in ("hr_high", "hr_critical", "sleep_end"):
-                    source = TurnSource.WATCH
-                    _envelope = stamp_sensor()
-                else:
-                    source = TurnSource.TRIGGER
-                    _envelope = stamp_trigger()
-                turn_result = await record_assistant_turn(
-                    assistant_text=reply,
-                    uid=oid,
-                    source=source,
-                    trigger_name=trigger_name or "scheduler",
-                    fanout=[] if output_mode == "return" else "all",
-                    bypass_gate=(trigger_name == "hr_critical"),
-                    pipeline=_pipeline,
-                    envelope=_envelope,
-                )
-            if output_mode == "return":
+
+        # ── conversation_lock: fetch_context → build_prompt → run_llm → record ──
+        # bypass_gate=True because we already hold conversation_lock here.
+        from core.conversation_gate import conversation_lock as _conv_lock
+        async with _conv_lock(oid):
+            context = await _pipeline.fetch_context(oid, search_query or prompt)
+            messages, _ = _pipeline.build_prompt(oid, prompt, context)
+            reply = await _pipeline.run_llm(messages)
+            if reply:
+                turn_result = None
+                if record_turn:
+                    from core.turn_sink import TurnSource, record_assistant_turn
+                    from core.write_envelope import stamp_sensor, stamp_trigger
+                    if trigger_name == "sensor_aware":
+                        source = TurnSource.SENSOR
+                        _envelope = stamp_sensor()
+                    elif trigger_name in ("hr_high", "hr_critical", "sleep_end"):
+                        source = TurnSource.WATCH
+                        _envelope = stamp_sensor()
+                    else:
+                        source = TurnSource.TRIGGER
+                        _envelope = stamp_trigger()
+                    turn_result = await record_assistant_turn(
+                        assistant_text=reply,
+                        uid=oid,
+                        source=source,
+                        trigger_name=trigger_name or "scheduler",
+                        fanout=[] if output_mode == "return" else "all",
+                        bypass_gate=True,  # already inside conversation_lock
+                        pipeline=_pipeline,
+                        envelope=_envelope,
+                    )
+                if output_mode == "return":
+                    return reply
+                if turn_result and turn_result.fanout_failures:
+                    logger.warning(
+                        "[scheduler._pipeline_send] fanout 部分失败: %s",
+                        turn_result.fanout_failures,
+                    )
                 return reply
-            if turn_result and turn_result.fanout_failures:
-                logger.warning(
-                    "[scheduler._pipeline_send] fanout 部分失败: %s",
-                    turn_result.fanout_failures,
-                )
-            return reply
-        else:
-            logger.warning("[scheduler._pipeline_send] LLM 返回空内容")
+            else:
+                logger.warning("[scheduler._pipeline_send] LLM 返回空内容")
     except Exception as e:
         log_error("scheduler._pipeline_send", e)
     return None

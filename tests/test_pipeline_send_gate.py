@@ -379,3 +379,36 @@ async def test_duplicate_scheduler_event_no_llm_no_post_process(monkeypatch):
     assert pp_called[0] == 1, (
         f"post_process must be called exactly once; got {pp_called[0]}"
     )
+
+
+# ── Test 8: ACCEPTED path logs perceive_event=true, not legacy_path=true ─────
+
+async def test_pipeline_send_logs_perceive_event_true(monkeypatch, caplog):
+    """
+    After perceive_event gate accepts, _pipeline_send must log perceive_event=true
+    (not legacy_path=true) to avoid misleading operators into thinking the old path
+    is still active.
+    """
+    import logging
+
+    fp = _make_fake_pipeline()
+    _allow_dream_guard(monkeypatch)
+    _setup_pipeline_send(monkeypatch, owner_id="owner8", char_id="yexuan", pipeline=fp)
+
+    import core.scheduler.loop as _loop
+
+    with caplog.at_level(logging.INFO, logger="core.scheduler.loop"):
+        result = await _loop._pipeline_send("test", trigger_name="morning_greeting")
+
+    assert result is not None, "gate-accepted call should return a reply"
+
+    accepted_logs = [r.message for r in caplog.records if "perceive_event=true" in r.message]
+    assert accepted_logs, (
+        "Expected a log record containing 'perceive_event=true' after gate acceptance; "
+        f"found none. All records: {[r.message for r in caplog.records]}"
+    )
+
+    misleading_logs = [r.message for r in caplog.records if "legacy_path=true" in r.message]
+    assert not misleading_logs, (
+        f"Found misleading 'legacy_path=true' log — must not appear after P1 gate migration: {misleading_logs}"
+    )
