@@ -83,7 +83,7 @@ def resolve_path(scope: MemoryScope, artifact: str) -> Path:
         return paths.user_memory_root(uid, char_id=char_id) / "memory_index.json"
 
     if artifact == "fixation_state":
-        return paths.fixation_state_dir(char_id=char_id) / f"{uid}.json"
+        return paths.user_memory_root(uid, char_id=char_id) / "fixation_state.json"
 
     if artifact == "profile":
         return paths.user_memory_root(uid, char_id=char_id) / "profile.json"
