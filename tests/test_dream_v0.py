@@ -175,7 +175,8 @@ def test_pronoun_correctness_in_d8_director():
 
 def test_dream_turn_with_body_does_not_touch_mood_state(sandbox, active_dream):
     """dream_turn (含 body 系统) 后现实 mood_state.json 不变。"""
-    mood_path = sandbox.mood_state()
+    # Dream pipeline runs as yexuan; check reality mood_state is untouched.
+    mood_path = sandbox.mood_state(char_id="yexuan")
     mood_initial = mood_path.read_text() if mood_path.exists() else "ABSENT"
 
     with patch("core.llm_client.chat", _make_fake_llm("（靠近她）心跳")), \
@@ -215,7 +216,8 @@ def test_body_state_not_in_reality_mood_state_json(sandbox, active_dream):
         from core.dream import dream_pipeline
         asyncio.run(dream_pipeline.dream_turn(_UID, "靠近我，抱住"))
 
-    mood_path = sandbox.mood_state()
+    # Dream pipeline runs as yexuan; check reality mood_state is untouched.
+    mood_path = sandbox.mood_state(char_id="yexuan")
     # 无条件读：文件不存在 → content="", 断言仍执行（不空过）
     mood_content = mood_path.read_text(encoding="utf-8") if mood_path.exists() else ""
     assert "heat" not in mood_content, "body axis 'heat' leaked into mood_state"

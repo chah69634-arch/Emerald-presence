@@ -92,7 +92,8 @@ async def main():
     # 写入 observations.jsonl
     from datetime import datetime as _dt
     _ts = _dt.now().isoformat(timespec="seconds")
-    obs_path = get_paths().observations()
+    # Legacy standalone tool; no routing context — writes to yexuan's observations file.
+    obs_path = get_paths().observations(char_id="yexuan")
     obs_path.parent.mkdir(parents=True, exist_ok=True)
     with open(obs_path, "w", encoding="utf-8") as f:
         for obs in unique:

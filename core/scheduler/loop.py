@@ -341,6 +341,36 @@ def _active_char_id_or_none() -> str | None:
         return None
 
 
+def _all_observation_paths() -> list:
+    """Return observation file Paths for every known character (v1 layout: scan runtime/characters/).
+
+    In legacy layout returns the single yexuan file (legacy has one char).
+    In v1 layout, returns one path per char directory that has an observations file.
+    Returns [] on scan error rather than falling back to a hardcoded char.
+    """
+    from core.data_paths import _LAYOUT_CHARACTER_INNER
+    paths = get_paths()
+    if _LAYOUT_CHARACTER_INNER == "legacy":
+        # Legacy layout has only one character (yexuan); no per-char dirs exist.
+        p = paths.observations(char_id="yexuan")
+        return [p] if p.exists() else []
+    try:
+        chars_dir = paths._p("runtime", "characters")
+        if not chars_dir.exists():
+            return []
+        result = []
+        for char_dir in chars_dir.iterdir():
+            if not char_dir.is_dir():
+                continue
+            obs = char_dir / "inner" / "observations.jsonl"
+            if obs.exists():
+                result.append(obs)
+        return result
+    except Exception as e:
+        logger.warning("[scheduler._all_observation_paths] scan failed, returning []: %s", e)
+        return []
+
+
 def _user_talked_today(user_id: str, *, char_id: str | None = None) -> bool:
     """检查用户今天在事件日志中是否有记录。
 
@@ -438,11 +468,12 @@ async def _check_log_maintenance():
         log_error("scheduler.log_maintenance.media", e)
     try:
         from core.memory.observation_compaction import compact_observations
-        _obs_path = get_paths().observations()
-        compact_observations(
-            _obs_path,
-            max_raw=int(ret.get("observations", {}).get("max_raw", 100)),
-        )
+        _obs_max_raw = int(ret.get("observations", {}).get("max_raw", 100))
+        for _obs_path in _all_observation_paths():
+            try:
+                compact_observations(_obs_path, max_raw=_obs_max_raw)
+            except Exception as _e:
+                log_error(f"scheduler.log_maintenance.observations[{_obs_path}]", _e)
     except Exception as e:
         log_error("scheduler.log_maintenance.observations", e)
     _mark("log_maintenance")  # 无论各步是否失败，都标记以免 24h 内重复触发

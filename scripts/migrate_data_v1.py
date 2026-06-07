@@ -137,14 +137,14 @@ def build_plan(char_id: str = _DEFAULT_CHAR) -> list[Entry]:
     with _layout("legacy", "v1", "v1"):
         dp_ci_old = _dp()
         ci_old: dict[str, tuple[Path, bool]] = {
-            "mood_state":         (_abs(dp_ci_old.mood_state()),                       False),
+            "mood_state":         (_abs(dp_ci_old.mood_state(char_id=char_id)),                       False),
             "activity_state":     (_abs(dp_ci_old.activity_state()),                   False),
             "trait_state":        (_abs(dp_ci_old.trait_state()),                      False),
             "author_note_state":  (_abs(dp_ci_old.author_note_state()),                False),
             "presence":           (_abs(dp_ci_old.presence()),                         False),
-            "observations":       (_abs(dp_ci_old.observations()),                     False),
+            "observations":       (_abs(dp_ci_old.observations(char_id=char_id)),                     False),
             "pet_file":           (_abs(dp_ci_old.pet_file()),                         False),
-            "activity_snapshot":  (_abs(dp_ci_old.activity_snapshot()),                False),
+            "activity_snapshot":  (_abs(dp_ci_old.activity_snapshot(char_id=char_id)),                False),
             "garden":             (_abs(dp_ci_old.garden(char_id=char_id)),            True),
             "character_growth":   (_abs(dp_ci_old.character_growth(char_id=char_id)), True),
             "yexuan_inner_diary": (_abs(dp_ci_old.yexuan_inner_diary(char_id=char_id)), True),
@@ -152,14 +152,14 @@ def build_plan(char_id: str = _DEFAULT_CHAR) -> list[Entry]:
 
     dp_ci_new = _dp()
     ci_new: dict[str, tuple[Path, bool]] = {
-        "mood_state":         (_abs(dp_ci_new.mood_state()),                       False),
+        "mood_state":         (_abs(dp_ci_new.mood_state(char_id=char_id)),                       False),
         "activity_state":     (_abs(dp_ci_new.activity_state()),                   False),
         "trait_state":        (_abs(dp_ci_new.trait_state()),                      False),
         "author_note_state":  (_abs(dp_ci_new.author_note_state()),                False),
         "presence":           (_abs(dp_ci_new.presence()),                         False),
-        "observations":       (_abs(dp_ci_new.observations()),                     False),
+        "observations":       (_abs(dp_ci_new.observations(char_id=char_id)),                     False),
         "pet_file":           (_abs(dp_ci_new.pet_file()),                         False),
-        "activity_snapshot":  (_abs(dp_ci_new.activity_snapshot()),                False),
+        "activity_snapshot":  (_abs(dp_ci_new.activity_snapshot(char_id=char_id)),                False),
         "garden":             (_abs(dp_ci_new.garden(char_id=char_id)),            True),
         "character_growth":   (_abs(dp_ci_new.character_growth(char_id=char_id)), True),
         "yexuan_inner_diary": (_abs(dp_ci_new.yexuan_inner_diary(char_id=char_id)), True),

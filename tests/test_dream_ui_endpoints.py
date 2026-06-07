@@ -71,7 +71,8 @@ def test_state_get_mood_state_unchanged(sandbox):
     """
     from admin.routers.dream import dream_state_get
 
-    mood_path = sandbox.mood_state()
+    # Dream endpoints test yexuan reality isolation.
+    mood_path = sandbox.mood_state(char_id="yexuan")
     assert not mood_path.exists(), "Precondition: mood_state.json should not exist"
 
     with patch("admin.routers.dream._owner_uid", return_value=_UID):

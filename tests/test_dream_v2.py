@@ -384,7 +384,8 @@ def test_full_matrix_mood_state_not_touched(sandbox):
     uid = _UID + "_mood"
     _setup_full_matrix_dream(uid)
 
-    mood_path = sandbox.mood_state()
+    # Dream pipeline runs as yexuan; check reality mood_state is not written.
+    mood_path = sandbox.mood_state(char_id="yexuan")
     assert not mood_path.exists(), "mood_state.json should not exist before test"
 
     async def run_dream():

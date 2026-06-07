@@ -133,7 +133,8 @@ def test_mood_write_new_path_and_reload(sandbox):
     payload = {"current": "sad", "intensity": 0.5, "previous": "neutral", "updated_at": time.time()}
     mood_state.save(payload)
 
-    assert sandbox.mood_state().exists(), "save() 应写入新路径"
+    # mood_state.save/load default to yexuan; roundtrip test checks yexuan path.
+    assert sandbox.mood_state(char_id="yexuan").exists(), "save() 应写入新路径"
 
     loaded = mood_state.load()
     assert loaded["current"] == "sad"

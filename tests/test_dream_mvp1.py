@@ -76,7 +76,8 @@ def active_dream(sandbox):
 
 def test_dream_turn_does_not_touch_mood_state(sandbox, active_dream):
     """mood_state.json must not change after a dream turn."""
-    mood_path = sandbox.mood_state()
+    # Dream pipeline runs as yexuan; check reality mood_state is untouched.
+    mood_path = sandbox.mood_state(char_id="yexuan")
     mood_initial = mood_path.read_text() if mood_path.exists() else "ABSENT"
 
     with patch("core.llm_client.chat", _make_fake_llm()), \

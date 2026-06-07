@@ -163,7 +163,7 @@ class DataPaths:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def activity_snapshot(self, *, char_id: str = "yexuan") -> Path:
+    def activity_snapshot(self, *, char_id: str) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("activity_snapshot.json")
         return self._p("runtime", "characters", char_id, "inner", "activity_snapshot.json")
@@ -183,7 +183,7 @@ class DataPaths:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def mood_state(self, *, char_id: str = "yexuan") -> Path:
+    def mood_state(self, *, char_id: str) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "mood_state.json")
         return self._p("runtime", "characters", char_id, "inner", "mood_state.json")
@@ -200,7 +200,7 @@ class DataPaths:
             return self._p("yexuan_inner", "activity_state.json")
         return self._p("runtime", "characters", char_id, "inner", "activity_state.json")
 
-    def observations(self, *, char_id: str = "yexuan") -> Path:
+    def observations(self, *, char_id: str) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "observations.jsonl")
         return self._p("runtime", "characters", char_id, "inner", "observations.jsonl")
