@@ -455,6 +455,22 @@ class DataPaths:
             char_id, safe_user_id(uid), safe_user_id(session_id),
         )
 
+    # ── Activity: generic session (char_id-first layout) ─────────────────────
+    def activity_char_root(self, *, char_id: str) -> Path:
+        """data/runtime/activity/{char_id}/  — enumerate uid subdirs."""
+        return self._p("runtime", "activity", char_id)
+
+    def activity_sessions_root(self, *, char_id: str, uid: str, activity_type: str) -> Path:
+        """data/runtime/activity/{char_id}/{uid}/{activity_type}/"""
+        return self._p("runtime", "activity", char_id, safe_user_id(uid), activity_type)
+
+    def activity_session_dir(self, *, char_id: str, uid: str, activity_type: str, session_id: str) -> Path:
+        """data/runtime/activity/{char_id}/{uid}/{activity_type}/{session_id}/"""
+        return self._p(
+            "runtime", "activity",
+            char_id, safe_user_id(uid), activity_type, safe_user_id(session_id),
+        )
+
     def cleanup(self):
         if self.mode != "test":
             raise RuntimeError("只有 test 模式才能执行 cleanup()")
