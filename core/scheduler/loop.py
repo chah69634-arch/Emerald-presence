@@ -136,6 +136,37 @@ _last_user_message_time: float = 0.0
 # 调度器 task 句柄
 _scheduler_task: Optional[asyncio.Task] = None
 
+# ── Trigger-only reality reply outlet: allowed / rejected kind values ─────────
+#
+# _pipeline_send is the LOW-TRUST STIMULUS / TRIGGER-ONLY REALITY REPLY outlet.
+# It is NOT a general event bus.  Only the four stimulus kinds listed below are
+# permitted to enter the run_llm → record_assistant_turn → fanout path through
+# this function.  Kinds from other subsystems (tool, activity, plugin, dream)
+# must NOT be routed here; they have their own pipelines.
+
+_TRIGGER_OUTLET_ALLOWED_KINDS: frozenset[str] = frozenset(
+    {"trigger", "sensor", "scheduled", "wake"}
+)
+_TRIGGER_OUTLET_REJECTED_KINDS: frozenset[str] = frozenset(
+    {"tool", "activity", "plugin", "dream"}
+)
+
+
+def _assert_trigger_outlet_kind(kind: str) -> None:
+    """Raise ValueError if kind is not permitted through the trigger-only outlet."""
+    if kind in _TRIGGER_OUTLET_REJECTED_KINDS:
+        raise ValueError(
+            f"[_pipeline_send] kind={kind!r} is explicitly rejected in the "
+            f"trigger-only reality reply outlet. "
+            f"Allowed: {_TRIGGER_OUTLET_ALLOWED_KINDS}"
+        )
+    if kind not in _TRIGGER_OUTLET_ALLOWED_KINDS:
+        raise ValueError(
+            f"[_pipeline_send] unknown kind={kind!r} rejected (not in allowed set). "
+            f"Allowed: {_TRIGGER_OUTLET_ALLOWED_KINDS}"
+        )
+
+
 # 高优先级触发器：用户活跃时也强制发送
 _HIGH_PRIORITY_TRIGGERS: frozenset[str] = frozenset({
     "birthday_midnight",
@@ -218,8 +249,15 @@ async def _pipeline_send(
     behavior: dict | None = None,
     output_mode: str = "speak",   # "speak" | "return"
     record_turn: bool = True,
+    kind: str = "scheduled",   # stimulus kind — must be in _TRIGGER_OUTLET_ALLOWED_KINDS
 ) -> Optional[str]:
-    """通过 Pipeline 生成角色回复，再向 owner 发送。
+    """LOW-TRUST STIMULUS / TRIGGER-ONLY REALITY REPLY outlet.
+
+    This function is the single exit point for scheduler/sensor/wake triggers entering
+    the run_llm → record_assistant_turn → fanout path.  It is NOT a general event bus.
+    Only kinds in _TRIGGER_OUTLET_ALLOWED_KINDS ("trigger", "sensor", "scheduled", "wake")
+    are accepted; any other kind raises ValueError before touching the LLM pipeline.
+
     Pipeline 未注入时降级直接发送 prompt 原文并打 warning。
     search_query 指定时用于 fetch_context，否则用 prompt。
     trigger_name 用于优先级判断：高优先级触发器不受活跃窗口限制。
@@ -230,6 +268,8 @@ async def _pipeline_send(
     覆盖 fetch_context → build_prompt → run_llm → record_assistant_turn，与 desktop_wake
     Path B 和 owner chat 串行，避免同 uid 并发 LLM。perceive_event=true 日志标识已通过 gate。
     """
+    # Kind guard: reject disallowed / unknown kinds before any work is done.
+    _assert_trigger_outlet_kind(kind)
     if trigger_name not in _HIGH_PRIORITY_TRIGGERS and _user_active_recently():
         logger.info(f"[scheduler] 用户活跃中，跳过低优先级触发: {trigger_name}")
         return None
@@ -258,7 +298,7 @@ async def _pipeline_send(
             source="scheduler",
             uid=oid,
             channel="system",
-            kind="scheduled",
+            kind=kind,
             char_id=char_id,
             payload={"trigger_name": trigger_name},
         )
@@ -277,6 +317,18 @@ async def _pipeline_send(
             "correlation_id=%s event_id=%s",
             trigger_name, oid, char_id, correlation_id, pe_result.event_id,
         )
+
+        # Audit extras: threaded into record_assistant_turn → post_process → capture_turn
+        # → _write_trigger_audit_log so the audit record carries tracing provenance.
+        _audit_extras: dict = {
+            "event_id": pe_result.event_id,
+            "dedupe_key": pe_result.dedupe_key,
+            "gate_result": pe_result.status,
+            "dream_guard_status": "ALLOW",
+            "source": "scheduler",
+            "kind": kind,
+            "did_generate_reply": True,
+        }
 
         from core.scheduler.triggers.birthday import _is_birthday_period
         if _is_birthday_period():
@@ -314,6 +366,7 @@ async def _pipeline_send(
                         bypass_gate=True,  # already inside conversation_lock
                         pipeline=_pipeline,
                         envelope=_envelope,
+                        audit_extras=_audit_extras,
                     )
                 if output_mode == "return":
                     return reply

@@ -152,6 +152,7 @@ async def record_assistant_turn(
     exclude_origin_channel: Optional[str] = None,
     pipeline=None,
     envelope=None,
+    audit_extras: Optional[dict] = None,
 ) -> TurnResult:
     """
     Record one completed assistant turn and deliver it to the requested channels.
@@ -188,6 +189,7 @@ async def record_assistant_turn(
                 memory_text,
                 trigger_name=capture_trigger,
                 envelope=envelope,
+                audit_extras=audit_extras,
             )
         else:
             asyncio.create_task(
@@ -197,6 +199,7 @@ async def record_assistant_turn(
                     memory_text,
                     trigger_name=capture_trigger,
                     envelope=envelope,
+                    audit_extras=audit_extras,
                 )
             )
 

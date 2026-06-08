@@ -214,10 +214,21 @@ async def receive_perceive_event(event: PerceiveEvent) -> PerceiveResult:
                 reason="dream guard check raised exception (fail-closed)",
             )
         if guard != DreamGuardStatus.ALLOW:
-            logger.info(
-                "[perceive_event] BLOCKED_DREAM guard=%s uid=%s event_id=%s",
-                guard, event.uid, event_id,
-            )
+            # BLOCK_UNCERTAIN means the dream state file is unreadable/corrupt/unknown.
+            # This is fail-closed: trigger/wake/scheduler turns must NOT proceed.
+            # Log at WARNING so ops can distinguish corrupt state from normal dream blocking.
+            if guard == DreamGuardStatus.BLOCK_UNCERTAIN:
+                logger.warning(
+                    "[perceive_event] BLOCK_UNCERTAIN — dream state unreadable/corrupt, "
+                    "reality turn rejected (fail-closed) "
+                    "uid=%s char_id=%s source=%s kind=%s event_id=%s reason=dream_state_uncertain",
+                    event.uid, resolved_char, event.source, event.kind, event_id,
+                )
+            else:
+                logger.info(
+                    "[perceive_event] BLOCKED_DREAM guard=%s uid=%s event_id=%s",
+                    guard, event.uid, event_id,
+                )
             async with _dedup_lock:
                 _dedup_registry.pop(dedupe_key, None)
             return PerceiveResult(

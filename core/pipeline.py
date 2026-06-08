@@ -395,6 +395,7 @@ class Pipeline:
         pending_paths: list[str] | None = None,
         trigger_name: str = "",
         envelope=None,
+        audit_extras: dict | None = None,
     ):
         """
         关键写入在 uid_lock 内同步完成，慢任务（LLM调用）入 slow_queue 异步执行。
@@ -477,7 +478,7 @@ class Pipeline:
             # ── capture_turn：写 short_term + event_log（含 turn_id 血缘）───
             try:
                 from core.memory.fixation_pipeline import capture_turn as _capture_turn
-                _turn_id = _capture_turn(user_id, content, reply, _emotion, turn_id=_turn_id, trigger_name=trigger_name, envelope=envelope, char_id=char_id)
+                _turn_id = _capture_turn(user_id, content, reply, _emotion, turn_id=_turn_id, trigger_name=trigger_name, envelope=envelope, char_id=char_id, audit_extras=audit_extras)
                 _critical_written = True
                 logger.debug(f"[pipeline.post_process] capture_turn: {_turn_id}")
             except Exception as e:

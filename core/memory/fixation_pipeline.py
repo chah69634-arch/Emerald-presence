@@ -226,17 +226,29 @@ def _write_trigger_audit_log(
     reply: str | None,
     emotion: str,
     char_id: str,
+    *,
+    event_id: str = "",
+    dedupe_key: str = "",
+    source: str = "",
+    kind: str = "",
+    dream_guard_status: str = "",
+    gate_result: str = "",
+    did_generate_reply: bool = True,
 ) -> None:
-    """
-    Write trigger turn metadata to trigger_audit.jsonl (per-uid, under event_log dir).
-    Only stores metadata + content hash — never the full generated reply text.
+    """Write trigger turn metadata to trigger_audit.jsonl (per-uid, under event_log dir).
+
+    Only stores metadata + content hash — never the full generated reply text or prompt.
     Called in place of short_term.append for trigger turns (P0 boundary rule).
+
+    Structured provenance fields (event_id, dedupe_key, gate_result, dream_guard_status,
+    source, kind) are populated when threaded from _pipeline_send via audit_extras; they
+    default to empty strings for paths that don't thread them (e.g. slow_queue retry).
     """
     import hashlib
     try:
         from core.sandbox import get_paths, safe_user_id as _suid
         content_hash = hashlib.sha256((reply or "").encode()).hexdigest()[:16] if reply else "empty"
-        record = {
+        record: dict = {
             "ts": time.time(),
             "uid": uid,
             "char_id": char_id,
@@ -245,7 +257,21 @@ def _write_trigger_audit_log(
             "emotion": emotion,
             "reply_hash": content_hash,
             "reply_len": len(reply) if reply else 0,
+            "did_generate_reply": did_generate_reply,
         }
+        # Provenance fields: include only when populated so legacy records stay compact.
+        if event_id:
+            record["event_id"] = event_id
+        if dedupe_key:
+            record["dedupe_key"] = dedupe_key
+        if source:
+            record["source"] = source
+        if kind:
+            record["kind"] = kind
+        if dream_guard_status:
+            record["dream_guard_status"] = dream_guard_status
+        if gate_result:
+            record["gate_result"] = gate_result
         audit_path = get_paths()._p("event_log") / _suid(uid) / "trigger_audit.jsonl"
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         safe_append_jsonl(audit_path, record)
@@ -263,6 +289,7 @@ def capture_turn(
     envelope=None,
     *,
     char_id: str = "yexuan",
+    audit_extras: dict | None = None,
 ) -> str:
     """
     生成 turn_id，写 short_term + event_log。
@@ -295,7 +322,10 @@ def capture_turn(
     if trigger_name:
         # P0 trigger boundary: triggers must NOT enter short_term/history.
         # Write forensic audit log + metadata-only trigger_audit_log.
-        _write_trigger_audit_log(uid, turn_id, trigger_name, _scrubbed_reply, emotion, char_id)
+        _write_trigger_audit_log(
+            uid, turn_id, trigger_name, _scrubbed_reply, emotion, char_id,
+            **(audit_extras or {}),
+        )
         writes = [
             event_log.append(uid, "assistant", _scrubbed_reply, emotion=emotion, turn_id=turn_id, trigger_name=trigger_name, char_id=char_id)
             if _scrubbed_reply is not None else True,
