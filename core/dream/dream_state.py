@@ -185,6 +185,7 @@ def clear_local_state(state: dict[str, Any]) -> dict[str, Any]:
         "lucid_mode",  # session-local, cleared at dream close
         "dream_mode",  # session-local, cleared at dream close
         "scenario_core",  # scenario kernel — session-local, cleared at dream close
+        "mirror_core",  # mirror kernel — session-local, cleared at dream close
     ):
         out.pop(key, None)
     return out

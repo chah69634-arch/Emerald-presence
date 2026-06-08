@@ -68,6 +68,53 @@
 - `non_lucid`：叶瑄在虚构内不点破"这是梦"，但系统层 + dream_state 仍标记 dream
 - 全开档污染矩阵测试
 
+**Mirror 模式（v0.1）**
+- `dream_mode=mirror`：三种模式之一（sandbox / scenario / mirror），入梦时冻结，整场不可切
+- **Mirror 是只读镜子（v0.1）**：Mirror Mode 读取 User Hidden State 的粗粒度 snapshot，
+  转化为隐喻倾向材料注入 DM 层；本版本绝不写回任何现实存储。
+  User Hidden State 是底层状态层，不等于 Mirror Mode。
+- **MirrorCore 入梦冻结**：`enter_dream(dream_mode="mirror")` 时，从
+  `context_snapshot["user_hidden_state_snapshot"]` 构建 `MirrorCore`，
+  写入 `dream_state["mirror_core"]`，整场不可更新；梦关（`clear_local_state()`）即清。
+  后续隐性状态文件的任何变化（如 decay tick）都不影响当前会话的 mirror_core。
+- **MirrorCore 字段**（`core/dream/mirror_core.py`）：
+  ```python
+  @dataclass
+  class MirrorCore:
+      snapshot_buckets: dict[str, str]  # 粗粒度桶，见下表
+      symbolic_hints:   list[str]       # 轻量倾向提示，注入 DM 层
+      source:           str = "user_hidden_state_snapshot"
+      version:          str = "v0.1"
+  ```
+- **snapshot_buckets 字段映射**：
+
+  | 桶键 | 来源 hidden state 字段 | 允许值 |
+  |---|---|---|
+  | `sensitivity_bucket` | `sensitivity.current` (`low/mid/high`) | `low / medium / high / unknown` |
+  | `closeness_need_bucket` | `touch_need.deficit` (`low/mid/high`) | `low / medium / high / unknown` |
+  | `embodied_ease_bucket` | `embodied_ease` (`guarded/neutral/easy`) | `low / medium / high / unknown` |
+  | `association_presence` | `body_memory.entries` 条目数 | `none / light / present` |
+
+  桶语义：`mid` → `medium`；`guarded` → `low`；`neutral` → `medium`；`easy` → `high`；
+  `memory_cues` 空 → `none`；1–2 条 → `light`；3+ 条 → `present`。
+  **禁止向任何下游（包括 prompt）暴露原始 float 值或百分比。**
+
+- **DM 层（Dream Mirror Context）**：`build_dream_prompt()` 中 `dream_mode == "mirror"` 且
+  `mirror_core` 非空时，在 DS_scenario 之后注入 `# DM·Mirror 梦境倾向材料` 层。
+  层内容：粗粒度桶标签（中文化）+ symbolic_hints（轻量倾向文字）。
+  三条禁令写死在 prompt 开头：不是诊断结论 / 不直接分析用户心理 / 不明说数值。
+  sandbox 和 scenario 均不注入此层。
+
+- **Mirror v0.1 写回保护**：`_generate_summary_bg()` 在 `dream_mode in ("scenario", "mirror")` 时
+  同时跳过：
+  - `wire_afterglow_from_summary()` — 不写 afterglow_residue.json，不调用 integrate_afterglow_and_save
+  - `distill_impression()` — 不写 impression_store
+  - `generate_summary()` 仍正常运行（梦境日志保留，不进入 Reality 流）
+
+  未来 Mirror afterglow 必须：①在 impression entry 上增加独立 `mode/source` 标记，
+  ②在 `impression_loader` 侧增加 Reality integrator gate，③通过显式 WriteEnvelope，
+  不得复用 Sandbox 的无标记写入路径。
+
 **Scenario 模式（v0–v0.8）**
 - `dream_mode=scenario`：三种模式之一（sandbox / scenario / mirror），入梦时冻结，整场不可切
 - `ScenarioCore`：隔离内核，存 `script_id / current_stage_id / stage_turns / ending_state`
@@ -165,6 +212,7 @@
 | `D7_dream_tension` | 梦内情绪张力（粗粒度分桶，dream-local；prompt 不暴露精确数值） | — |
 | `D8_dream_director` | 梦境导演注记（允许动作/环境）+ 逃生协议提醒 | boundary_level |
 | `DS_scenario` | 剧本当前阶段（仅 scenario 模式；script title / stage name / dramatic_task / entry_pressure / not_yet_allowed / drift_pressure） | dream_mode=scenario |
+| `DM_mirror` | Mirror 梦境倾向材料（仅 mirror 模式；粗粒度桶标签 + 轻量 symbolic_hints；只读，不诊断，不暴露数值） | dream_mode=mirror |
 | `D9_dream_history` | 梦内滚动短上下文（不过现实 sanitizer） | — |
 | `D10_user_message` | 她当前梦内输入 | — |
 
@@ -352,7 +400,7 @@ REALITY_CHAT → DREAM_ENTRANCE_AVAILABLE → DREAM_ACTIVE → DREAM_CLOSING →
 - non_lucid 只改叶瑄虚构内自知；系统层仍标记 dream，墙 + 逃生不变
 
 ### CURRENT（当前实现）
-见第二节功能清单。三轴 + 四档 + 六世界 + 软硬双出口已落地；三层产物均会生成，
+见第二节功能清单。三轴 + 四档 + 六世界 + 软硬双出口已落地；Mirror v0.1 已落地（只读镜子，MirrorCore 入梦冻结，DM 层注入，无写回）；三层产物均会生成，
 Phase 7 起，现实 prompt 同时接 `dream_afterglow_soft_hint`（只读软提示，层 6f 位置）和 `6g_dream_impression`。测试数量以
 `tests/test_dream_*.py` 当前收集结果为准，不在合同文档里固定计数。
 

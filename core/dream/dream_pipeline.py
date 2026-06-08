@@ -210,6 +210,7 @@ async def dream_turn(
         lucid_mode=lucid_mode,
         dream_mode=state.get("dream_mode", "sandbox"),
         scenario_core=state.get("scenario_core"),
+        mirror_core=state.get("mirror_core"),
     )
 
     # Call LLM — zero reality side-effects
@@ -411,6 +412,17 @@ async def enter_dream(
 
     # Build scenario_core if entering scenario mode
     scenario_core_dict: dict | None = None
+    # Build mirror_core for mirror mode: read-only snapshot, frozen at entry
+    mirror_core_dict: dict | None = None
+    if dream_mode == "mirror":
+        try:
+            from core.dream.mirror_core import build_mirror_core as _build_mc
+            _hs_snapshot = snapshot.get("user_hidden_state_snapshot", {})
+            mirror_core_dict = _build_mc(_hs_snapshot).to_dict()
+        except Exception as _mc_exc:
+            logger.warning("[dream_pipeline] mirror_core build failed uid=%s: %s", uid, _mc_exc)
+            mirror_core_dict = None
+
     if dream_mode == "sandbox" or dream_mode == "mirror":
         pass  # no scenario kernel for sandbox/mirror
     elif dream_mode == "scenario":
@@ -435,6 +447,10 @@ async def enter_dream(
         state["scenario_core"] = scenario_core_dict
     else:
         state.pop("scenario_core", None)
+    if mirror_core_dict is not None:
+        state["mirror_core"] = mirror_core_dict
+    else:
+        state.pop("mirror_core", None)
     # Clear all volatile local fields at dream start
     state.pop("emotional_tension", None)
     state.pop("scene_state", None)
@@ -493,8 +509,10 @@ async def _generate_summary_bg(
         logger.error(f"[dream_pipeline] summary failed uid={uid}: {e}")
 
     # Phase 6: Wire afterglow residue at Dream exit (Reality-side integrator, fail-closed).
-    # Scenario mode is a scripted-story space that must never write to User Hidden State.
-    if dream_mode != "scenario":
+    # Scenario mode: scripted-story space must never write to User Hidden State.
+    # Mirror v0.1: read-only mirror — no hidden_state write-back this phase.
+    #   Future mirror afterglow must use an explicit mode/source gate.
+    if dream_mode not in ("scenario", "mirror"):
         try:
             from core.dream.dream_exit_afterglow import wire_afterglow_from_summary
             wire_afterglow_from_summary(uid, dream_id, exit_type, char_id=char_id)
@@ -502,15 +520,16 @@ async def _generate_summary_bg(
             logger.warning(f"[dream_pipeline] afterglow wiring failed uid={uid}: {e}")
     else:
         logger.info(
-            "[dream_pipeline] scenario mode — afterglow wiring skipped uid=%s dream_id=%s",
-            uid, dream_id,
+            "[dream_pipeline] %s mode — afterglow wiring skipped uid=%s dream_id=%s",
+            dream_mode, uid, dream_id,
         )
 
     # Distill impression after summary (failure is warning-only per C7)
-    # Scenario mode: scripted story space must not write impression_store — that store
-    # feeds Reality prompt layer 6g_dream_impression, so Scenario content would otherwise
-    # pollute the Reality chat context.  Sandbox / Mirror keep the original behaviour.
-    if dream_mode != "scenario":
+    # Scenario mode: must not write impression_store (feeds Reality 6g layer).
+    # Mirror v0.1: impression writes also skipped — no mode/source gate exists yet.
+    #   Future mirror impression must add an independent mode/source tag and a
+    #   Reality integrator gate in impression_loader before writing here.
+    if dream_mode not in ("scenario", "mirror"):
         try:
             from core.dream.distill_impression import distill_impression
             await distill_impression(uid, dream_id, exit_type, char_id=char_id)
@@ -518,8 +537,8 @@ async def _generate_summary_bg(
             logger.warning(f"[dream_pipeline] distill_impression failed uid={uid}: {e}")
     else:
         logger.info(
-            "[dream_pipeline] scenario mode — distill_impression skipped uid=%s dream_id=%s",
-            uid, dream_id,
+            "[dream_pipeline] %s mode — distill_impression skipped uid=%s dream_id=%s",
+            dream_mode, uid, dream_id,
         )
 
 

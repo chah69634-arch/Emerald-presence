@@ -235,6 +235,7 @@ def build_dream_prompt(
     debug: bool = False,
     dream_mode: str = "sandbox",
     scenario_core: dict[str, Any] | None = None,
+    mirror_core: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """
     Assemble the complete dream prompt as a D0-D10 layer stack.
@@ -391,6 +392,25 @@ def build_dream_prompt(
     if not _ds_injected:
         _ds_note = "non-scenario" if dream_mode != "scenario" else "no_core"
         _records.append(_LayerRec("DS_scenario", flags=["DISABLED"], note=_ds_note))
+
+    # ── DM: mirror context layer (only when dream_mode == "mirror") ───────────
+    # Injects: coarse bucket labels + lightweight symbolic hints.
+    # Never injects: float values, percentages, uid, timestamps, weights.
+    # Never injects: psychological diagnosis or direct user-psychology analysis.
+    _dm_injected = False
+    if dream_mode == "mirror" and mirror_core:
+        try:
+            _dm_text = _format_mirror_layer(mirror_core)
+            if _dm_text:
+                _dm = f"# DM·Mirror 梦境倾向材料\n{_dm_text}"
+                system_layers.append(_dm)
+                _records.append(_LayerRec("DM_mirror", len(_dm), _est_tokens(_dm)))
+                _dm_injected = True
+        except Exception as _dm_exc:
+            logger.warning("[dream_prompt] DM mirror layer failed: %s", _dm_exc)
+    if not _dm_injected:
+        _dm_note = "non-mirror" if dream_mode != "mirror" else "no_core"
+        _records.append(_LayerRec("DM_mirror", flags=["DISABLED"], note=_dm_note))
 
     # ── Dream lorebook (injected between D4 and D5 conceptually) ─────────────
     if lore_entries:
@@ -606,6 +626,67 @@ def _format_scenario_layer(scenario_core: dict[str, Any]) -> str:
         return "\n\n".join(parts)
     except Exception as exc:
         logger.warning("[dream_prompt] _format_scenario_layer error: %s", exc)
+        return ""
+
+
+def _format_mirror_layer(mirror_core: dict[str, Any]) -> str:
+    """Render mirror_core as a DM prompt block.
+
+    Contract:
+      - No float values emitted.
+      - No exact numeric percentages.
+      - No uid, timestamp, weight, baseline, update_source.
+      - No psychological diagnosis.
+      - No "你潜意识里..." / "用户心理" language.
+      - Returns '' on any error (fail-closed).
+    """
+    try:
+        buckets = mirror_core.get("snapshot_buckets") or {}
+        hints = mirror_core.get("symbolic_hints") or []
+
+        if not buckets:
+            return ""
+
+        _BUCKET_LABELS: dict[str, str] = {
+            "low": "低",
+            "medium": "中",
+            "high": "高",
+            "unknown": "未知",
+        }
+        _PRESENCE_LABELS: dict[str, str] = {
+            "none": "无",
+            "light": "淡",
+            "present": "有",
+        }
+
+        lines: list[str] = [
+            "这是梦境的隐喻材料，不是诊断结论。",
+            "请把这些倾向转化为环境、距离、重复意象、靠近/退后节奏。",
+            "不要直接分析用户心理。不要明说数值。",
+            "",
+            "当前倾向：",
+        ]
+
+        _BUCKET_NAMES: list[tuple[str, str]] = [
+            ("sensitivity_bucket", "感知敏锐度"),
+            ("closeness_need_bucket", "靠近需求"),
+            ("embodied_ease_bucket", "身体放松度"),
+        ]
+        for key, label in _BUCKET_NAMES:
+            val = buckets.get(key, "unknown")
+            lines.append(f"  {label}：{_BUCKET_LABELS.get(val, val)}")
+
+        presence = buckets.get("association_presence", "")
+        if presence in _PRESENCE_LABELS:
+            lines.append(f"  重复意象倾向：{_PRESENCE_LABELS[presence]}")
+
+        if hints:
+            lines.append("")
+            for hint in hints:
+                lines.append(f"· {hint}")
+
+        return "\n".join(lines)
+    except Exception:
         return ""
 
 
