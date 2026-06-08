@@ -177,7 +177,11 @@ clamp 单测是弱断言（未验真截顶）；ShortTermMemory.append 类封装
 
 **写入顺序**（注意有先后）：
 1. `post_process` 先做 `detect_emotion()`，并更新 `mood_state`
-2. 随后调用 `fixation_pipeline.capture_turn(uid, ..., char_id=_active_character_id)`，一次性写入 short_term 的 user/assistant 两行，并写 event_log 的 user/assistant 两行（assistant 行含 emotion，所有行含 turn_id）。`char_id` 由 `post_process` 通过 `_refresh_character_if_needed()` 确认后显式传入，决定写入哪个角色桶。
+2. 随后调用 `fixation_pipeline.capture_turn(uid, ..., char_id=_active_character_id)`。写入规则按 envelope 区分：
+   - **用户对话**（`stamp_user_chat()`）：写 short_term user + assistant 两行，写 event_log user + assistant 两行（assistant 行含 emotion，所有行含 turn_id）。
+   - **调度器触发器**（`stamp_trigger()`）：**不写 short_term**（trigger 不是用户说过的话，不得进入 history/prompt 上下文）；写 event_log assistant 行；另外追加 `trigger_audit_log` 一条（metadata + SHA256[:16] reply hash，不含完整回复文本）至 `data/event_log/{uid}/trigger_audit.jsonl`。
+   - `envelope.can_write_memory=False`（默认 WriteEnvelope）：所有写入均跳过，用于无副作用 dry-run。
+   - `char_id` 由 `post_process` 显式传入，决定写入哪个角色桶。
 
 **搜索**：`event_log.search(user_id, content, llm_client)` 异步执行，返回拼接字符串。当前实现会把 query 切成 2/3/4 字符片段做关键词集合，扫描最近 30 天日志块。
 
@@ -617,8 +621,10 @@ post_process()
     ├─ 检查 profile 更新条件（读 short_term 估算长度）
     ├─ detect_emotion(reply) → 写 mood_state  ← 本轮情绪写入
     ├─ capture_turn(uid, content, reply, emotion, char_id=_active_character_id)
-    │    → 写 short_term（user + assistant，含 _turn_id，写 char_id 对应角色桶）
-    │    → 写 event_log（user + assistant，含 turn_id，写 char_id 对应角色桶）
+    │    [用户对话] → 写 short_term（user + assistant，含 turn_id）
+    │    [用户对话] → 写 event_log（user + assistant，含 turn_id）
+    │    [触发器]  → 跳过 short_term（trigger 不入 history）
+    │    [触发器]  → 写 event_log（assistant 行）+ trigger_audit.jsonl（metadata+hash）
     └─ 慢队列：summarize_to_midterm / consistency_check / user_profile_update（条件）
          └─ summarize_to_midterm handler
               → 写 mid_term（含 mid_id, source_turn_id）

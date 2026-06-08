@@ -219,6 +219,40 @@ def _validate_growth_content(observer: str) -> bool:
 # Job 1 — capture_turn（同步，在 uid_lock 内、detect_emotion 后调用）
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _write_trigger_audit_log(
+    uid: str,
+    turn_id: str,
+    trigger_name: str,
+    reply: str | None,
+    emotion: str,
+    char_id: str,
+) -> None:
+    """
+    Write trigger turn metadata to trigger_audit.jsonl (per-uid, under event_log dir).
+    Only stores metadata + content hash — never the full generated reply text.
+    Called in place of short_term.append for trigger turns (P0 boundary rule).
+    """
+    import hashlib
+    try:
+        from core.sandbox import get_paths, safe_user_id as _suid
+        content_hash = hashlib.sha256((reply or "").encode()).hexdigest()[:16] if reply else "empty"
+        record = {
+            "ts": time.time(),
+            "uid": uid,
+            "char_id": char_id,
+            "trigger_name": trigger_name,
+            "turn_id": turn_id,
+            "emotion": emotion,
+            "reply_hash": content_hash,
+            "reply_len": len(reply) if reply else 0,
+        }
+        audit_path = get_paths()._p("event_log") / _suid(uid) / "trigger_audit.jsonl"
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_append_jsonl(audit_path, record)
+    except Exception as _e:
+        log_error("trigger_audit_log.write", _e)
+
+
 def capture_turn(
     uid: str,
     user_msg: str,
@@ -232,8 +266,10 @@ def capture_turn(
 ) -> str:
     """
     生成 turn_id，写 short_term + event_log。
-    trigger_name 非空时为 scheduler 触发路径：跳过 user 行写入，assistant meta 附加 trigger: 字段。
-    幂等：若 short_term 近 4 条已含相同 turn_id，直接返回。
+    trigger_name 非空时为 scheduler/sensor/watch 触发路径：
+      - 不写 short_term（trigger 不是 user message，不进入 LLM 历史上下文）。
+      - 只写 event_log（forensic audit）+ trigger_audit_log（仅 metadata/hash，无正文）。
+    P0 trigger boundary rule: trigger 永远不是 assistant history。
 
     调用约束：必须在 uid_lock 内、detect_emotion 完成后调用。
     envelope 未传时默认零值（fail-closed）。
@@ -257,12 +293,10 @@ def capture_turn(
     _scrubbed_reply = _scrub(reply)
 
     if trigger_name:
-        # scheduler 触发：只写 assistant，跳过 user 行（prompt 是系统注入的情景描述）
+        # P0 trigger boundary: triggers must NOT enter short_term/history.
+        # Write forensic audit log + metadata-only trigger_audit_log.
+        _write_trigger_audit_log(uid, turn_id, trigger_name, _scrubbed_reply, emotion, char_id)
         writes = [
-            # Skip short_term when scrubber returned nothing (all non-dialogue)
-            short_term.append(uid, "assistant", _scrubbed_reply, turn_id=turn_id, char_id=char_id)
-            if _scrubbed_reply is not None else True,
-            # event_log also stores scrubbed text — no raw action descriptions persist
             event_log.append(uid, "assistant", _scrubbed_reply, emotion=emotion, turn_id=turn_id, trigger_name=trigger_name, char_id=char_id)
             if _scrubbed_reply is not None else True,
         ]
