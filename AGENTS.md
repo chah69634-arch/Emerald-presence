@@ -29,6 +29,7 @@ D:\ai\qq-st-bot\
 | 改调度器（定时触发、主动消息） | `docs/scheduler.md` |
 | 改 QQ / 桌宠通道、广播、WebSocket、跨通道接续 | `docs/channels.md` |
 | 改花园系统（情绪花槽、自动/被动浇水、采后处理、管理面板状态） | `docs/garden.md` |
+| 理解事件/交互三维 envelope（realm/kind/lifecycle）、stimulus 边界、v0.1 约束 | `docs/interaction-event-model.md` |
 | 修已知 bug / 查技术债 | `docs/known-issues.md` |
 | 不确定设计意图、准入标准、禁止行为 | `DESIGN.md` |
 | 改并发/锁/数据安全 | `docs/memory.md` → 七、并发保护 |
