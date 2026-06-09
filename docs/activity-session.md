@@ -66,13 +66,88 @@ LLM **可以讨论**当前进行的 activity（例如棋局、阅读进度），
 
 ```
 core/activity/
-  types.py          — ActivityType / ActivityStatus / ALLOWED_ACTIVITY_TYPES
-  session.py        — ActivitySession dataclass + new_session_id() + now_iso()
-  store.py          — create / load / find_active / update_state / close
-  activity_store.py — reading 专用存储（旧，维持兼容）
-  reading_session.py — ReadingSession 模型（旧，维持兼容）
-  pdf_reader.py     — PDF 文本提取（reading 专用）
+  registry.py        — Activity Registry P0-Lite（静态元信息表，见下）
+  types.py           — ActivityType / ActivityStatus / ALLOWED_ACTIVITY_TYPES
+  session.py         — ActivitySession dataclass + new_session_id() + now_iso()
+  store.py           — create / load / find_active / update_state / close（gomoku/chess）
+  activity_store.py  — reading 专用存储
+  reading_session.py — ReadingSession 模型
+  pdf_reader.py      — PDF 文本提取（reading 专用）
+  gomoku.py          — 五子棋规则引擎 + AI
+  chess.py           — 国际象棋规则引擎
+  gomoku_ai.py       — Gomoku AI 评分
+  gomoku_companion.py— Gomoku 活动内对话
+  transcript.py      — 活动内对话记录（activity_local）
 ```
+
+## Activity Registry P0-Lite
+
+`core/activity/registry.py` 是所有 reality-side activity 的**唯一权威声明点**。
+
+### 定位
+
+- **静态元信息表**，不做 router 自动注册，不做插件系统
+- 用于：活动发现（`/activity/list`）、contract smoke tests、memory policy 声明
+- 不用于：dynamic import、MCP、前端 component schema、热加载、LLM tool dispatch
+
+### 关键类型
+
+```python
+@dataclass(frozen=True)
+class MemoryPolicy:
+    writes_short_term: bool = False      # 所有 activity 默认 False
+    writes_hidden_state: bool = False    # 所有 activity 默认 False
+    writes_event_log: bool = False       # 所有 activity 默认 False
+    transcript: "activity_local" | "none"
+    summary_threshold: int | None        # None = 不生成摘要；gomoku = 12
+    main_memory: "deferred" | "none"
+
+@dataclass(frozen=True)
+class ActivityMeta:
+    id: str                   # "reading" | "gomoku" | "chess"
+    label: str                # 中文显示名
+    route_prefix: str         # 完整路径前缀，含 /activity，例如 "/activity/gomoku"
+    session_store: str        # "reading_store" | "activity_store"
+    session_dir_layout: str   # 相对于 data/runtime/activity/ 的路径模板
+    frontend_key: str         # 与 ActivityRibbon.tsx ActivityTab 对齐
+    tauri_command_prefix: str # 例如 "activity_gomoku_"
+    tauri_commands: tuple     # 与 lib.rs async fn 名称一一对应
+    memory_policy: MemoryPolicy
+    has_companion_chat: bool
+    docs_path: str
+```
+
+### 存储架构差异（由 session_store 字段声明）
+
+| activity | session_store | store 模块 | 路径布局 |
+|---|---|---|---|
+| reading | `reading_store` | `core/activity/activity_store.py` | `reading/{char_id}/{uid}/{session_id}/` |
+| gomoku | `activity_store` | `core/activity/store.py` | `{char_id}/{uid}/gomoku/{session_id}/` |
+| chess | `activity_store` | `core/activity/store.py` | `{char_id}/{uid}/chess/{session_id}/` |
+
+两套 store 架构均通过 sandbox 路径，不允许路径逃逸，相互独立不共享数据。
+
+### Router 注册（手工维护）
+
+Registry **不负责** router 注册。`admin/admin_server.py` 手工维护：
+
+```python
+app.include_router(activity.router, prefix="/activity", ...)  # /activity/list 等
+app.include_router(reading.router,  prefix="/activity", ...)
+app.include_router(gomoku.router,   prefix="/activity", ...)
+app.include_router(chess.router,    prefix="/activity", ...)
+```
+
+新增 activity 时须同步更新：`registry.py`、`types.py`、`admin_server.py`、前端 CARDS 数组、`activity-api.ts`、`lib.rs`。
+
+### Contract Smoke Tests
+
+`tests/test_activity_contract.py` 验证：
+- 每个 activity 的 `start` / `state` / `close` 路由在对应 router 对象中存在
+- `has_companion_chat=True` 的 activity 有 `/chat` 路由
+- `GET /activity/list` 返回与 registry 一致的 id / frontend_key / route_prefix
+- registry 声明的每个 tauri command 名称在 `lib.rs` 中有 `async fn` 声明
+- 每个 tauri command 名称在 `activity-api.ts` 中以字符串字面量出现
 
 ## P0 范围
 
