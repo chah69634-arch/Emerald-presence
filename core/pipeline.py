@@ -555,6 +555,12 @@ class Pipeline:
                 "scope": scope_payload,
             })
             logger.info(f"[pipeline.post_process] 用户画像更新已入队: {user_id}")
+        if envelope.can_write_memory:
+            slow_queue.enqueue("trait_tracker_update", {
+                "uid": user_id,
+                "char_id": char_id,
+                "scope": scope_payload,
+            })
 
         # ── side effects：保持 asyncio.create_task ────────────────────────────
         if target_id and _emotion != "neutral":
@@ -937,6 +943,39 @@ async def _handler_user_profile_update(payload: dict) -> None:
     logger.info(f"[pipeline.user_profile] 画像更新完成: {uid}")
 
 
+async def _handler_trait_tracker_update(payload: dict) -> None:
+    # R8-B: independent trait refresh — detached from character_growth.update()
+    import yaml
+    from core.memory import locks as _locks, short_term as _st
+    from core.memory.trait_tracker import count_traits_in_history, update_trait_state
+    from core.sandbox import get_paths
+
+    scope = _get_scope_from_payload(payload, "_handler_trait_tracker_update")
+    uid = scope.uid
+    char_id = scope.character_id
+
+    traits_path = get_paths().yexuan_traits(char_id=char_id)
+    try:
+        with open(traits_path, encoding="utf-8") as _f:
+            data = yaml.safe_load(_f)
+        trait_key = f"{char_id}_traits"
+        traits: list = data.get(trait_key) or data.get("yexuan_traits") or []
+    except Exception as _e:
+        logger.warning("[pipeline.trait_tracker] traits 定义加载失败，跳过: %s", _e)
+        return
+    if not traits:
+        logger.debug("[pipeline.trait_tracker] traits 为空，跳过: char_id=%s", char_id)
+        return
+
+    async with _locks.uid_lock(uid):
+        recent = _st.load(uid, char_id=char_id)[-40:]
+        history_lines = [msg["content"] for msg in recent]
+        counts = count_traits_in_history(history_lines, traits)
+        trait_path = get_paths().trait_state(char_id=char_id)
+        update_trait_state(counts, trait_path, write_path=trait_path)
+    logger.info("[pipeline.trait_tracker] 更新完成: uid=%s char_id=%s", uid, char_id)
+
+
 def register_slow_handlers() -> None:
     """main.py 启动时调用一次，注册所有慢任务 handler。"""
     from core.post_process import slow_queue
@@ -955,3 +994,4 @@ def register_slow_handlers() -> None:
     slow_queue.register_handler("episodic_compress",       _handler_episodic_compress)
     slow_queue.register_handler("consistency_check",       _handler_consistency_check)
     slow_queue.register_handler("user_profile_update",     _handler_user_profile_update)
+    slow_queue.register_handler("trait_tracker_update",    _handler_trait_tracker_update)
