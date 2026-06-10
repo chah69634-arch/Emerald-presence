@@ -1,9 +1,9 @@
 """
 tests/test_gomoku_companion.py
 
-Gomoku Activity Companion Chat P0 验收测试（17 用例）
+Gomoku Activity Companion Chat 验收测试（17 原有 + 7 新增 grounding 用例）
 
-覆盖：
+原有覆盖（T1–T17）：
 T1.  active session 可以 chat，返回非空 reply
 T2.  chat 后 transcript.jsonl 写入磁盘
 T3.  transcript 包含 user_chat 和 assistant_chat
@@ -21,6 +21,15 @@ T14. 合法 control 值保存到 transcript
 T15. 非法 control 值被丢弃
 T16. LLM 异常时有 fallback reply 且 transcript 仍写入
 T17. opponent=human 模式正常生成 reply（不同 system prompt 分支）
+
+新增 grounding 覆盖（T18–T24）：
+T18. _build_messages 含 <game_facts>（当 facts 不为 None 时）
+T19. prompt 不包含 "short_term" / "hidden_state" / "Dream" 等关键词
+T20. system prompt 包含放水限制规则
+T21. _filter_holdback_claims: gentle 模式不过滤"我让你了"
+T22. _filter_holdback_claims: 非 gentle 过滤"我让你了"
+T23. generate_reply 返回 3-tuple (reply, control, grounding)
+T24. grounding 包含 last_user_move_facts 和 last_ai_move_facts 字段
 """
 from __future__ import annotations
 
@@ -35,6 +44,7 @@ from core.activity import gomoku as G
 from core.activity import store as activity_store
 from core.activity import transcript as TR
 from core.activity import gomoku_companion as GC
+from core.activity.gomoku_grounding import build_gomoku_grounding_facts
 
 
 # ── 工具 ──────────────────────────────────────────────────────────────────────
@@ -76,7 +86,7 @@ async def test_chat_returns_reply(sandbox, monkeypatch):
     monkeypatch.setattr(lc, "chat", _fake_llm("你走得不错。"))
 
     session = _start_ai(sandbox)
-    reply, control = await GC.generate_reply(
+    reply, control, grounding = await GC.generate_reply(
         char_id=session.char_id,
         uid=session.uid,
         session_id=session.session_id,
@@ -319,7 +329,8 @@ def test_load_recent_respects_limit(sandbox):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# T13. build_messages 不含完整棋谱（坐标列表长度不超过 RECENT_MOVES_LIMIT）
+# T13. build_messages 不含完整棋谱（坐标列表长度不超过 RECENT_MOVES_LIMIT 手）
+#      Note: called WITHOUT facts (facts=None) so no <game_facts> injection.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_build_messages_no_full_move_history(sandbox):
@@ -369,7 +380,7 @@ async def test_valid_control_saved_to_transcript(sandbox, monkeypatch):
     monkeypatch.setattr(lc, "chat", _fake_llm(reply_with_control))
 
     session = _start_ai(sandbox)
-    reply, control = await GC.generate_reply(
+    reply, control, grounding = await GC.generate_reply(
         char_id=session.char_id,
         uid=session.uid,
         session_id=session.session_id,
@@ -430,7 +441,7 @@ async def test_llm_failure_uses_fallback(sandbox, monkeypatch):
     monkeypatch.setattr(lc, "chat", _raising_llm())
 
     session = _start_ai(sandbox)
-    reply, control = await GC.generate_reply(
+    reply, control, grounding = await GC.generate_reply(
         char_id=session.char_id,
         uid=session.uid,
         session_id=session.session_id,
@@ -459,7 +470,7 @@ async def test_human_opponent_chat_works(sandbox, monkeypatch):
     monkeypatch.setattr(lc, "chat", _fake_llm("这局黑棋优势明显。"))
 
     session = _start_human(sandbox)
-    reply, control = await GC.generate_reply(
+    reply, control, grounding = await GC.generate_reply(
         char_id=session.char_id,
         uid=session.uid,
         session_id=session.session_id,
@@ -473,3 +484,181 @@ async def test_human_opponent_chat_works(sandbox, monkeypatch):
     entries = TR.load_recent(session.char_id, session.uid, "gomoku", session.session_id, limit=10)
     assert any(e["type"] == "user_chat" for e in entries)
     assert any(e["type"] == "assistant_chat" for e in entries)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T18. _build_messages 含 <game_facts> 当 facts 不为 None
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_build_messages_contains_game_facts():
+    state = {
+        "board_size": 15,
+        "board": [[None] * 15 for _ in range(15)],
+        "current_turn": "black",
+        "move_history": [],
+        "status": "active",
+        "winner": None,
+        "last_move": None,
+        "opponent": "yexuan_ai",
+        "ai_player": "white",
+        "ai_style": "balanced",
+    }
+    facts = build_gomoku_grounding_facts(state)
+    msgs = GC._build_messages(state, [], "你好", facts)
+    user_content = msgs[-1]["content"]
+
+    assert "<game_facts>" in user_content
+    assert "</game_facts>" in user_content
+
+
+def test_build_messages_no_game_facts_when_none():
+    """When facts=None (not provided), no <game_facts> block should appear."""
+    state = {
+        "board_size": 15,
+        "board": [[None] * 15 for _ in range(15)],
+        "current_turn": "black",
+        "move_history": [],
+        "status": "active",
+        "winner": None,
+        "last_move": None,
+        "opponent": "yexuan_ai",
+        "ai_player": "white",
+        "ai_style": "balanced",
+    }
+    msgs = GC._build_messages(state, [], "你好")
+    user_content = msgs[-1]["content"]
+    assert "<game_facts>" not in user_content
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T19. prompt 不包含 short_term / hidden_state / Dream / 主记忆 关键词
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_prompt_has_no_main_memory_references():
+    state = {
+        "board_size": 15,
+        "board": [[None] * 15 for _ in range(15)],
+        "current_turn": "black",
+        "move_history": [{"x": 7, "y": 7, "player": "black", "move_no": 1}],
+        "status": "active",
+        "winner": None,
+        "last_move": {"x": 7, "y": 7, "player": "black", "move_no": 1},
+        "opponent": "yexuan_ai",
+        "ai_player": "white",
+        "ai_style": "balanced",
+    }
+    state["board"][7][7] = "black"
+    facts = build_gomoku_grounding_facts(state)
+    msgs = GC._build_messages(state, [], "怎么看", facts)
+
+    all_content = " ".join(m["content"] for m in msgs)
+    forbidden = ["short_term", "hidden_state", "user_hidden_state", "Dream", "episodic_memory",
+                 "event_log", "mid_term", "character_growth"]
+    for kw in forbidden:
+        assert kw not in all_content, f"prompt must not contain internal memory keyword: {kw!r}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T20. system prompt 包含放水限制规则
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_system_prompt_contains_holdback_constraint():
+    # Both AI and human system prompts should include the holdback rule
+    assert "did_hold_back" in GC._SYSTEM_YEXUAN_AI
+    assert "让你了" in GC._SYSTEM_YEXUAN_AI or "放水" in GC._SYSTEM_YEXUAN_AI
+    assert "did_hold_back" in GC._SYSTEM_HUMAN
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T21. _filter_holdback_claims: gentle 模式不过滤
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_filter_holdback_gentle_mode_passthrough():
+    facts = {"did_hold_back": True}
+    reply = "这局我让你了，你下得挺好。"
+    result = GC._filter_holdback_claims(reply, facts)
+    assert result == reply, "gentle mode should not filter holdback claims"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T22. _filter_holdback_claims: 非 gentle 过滤"我让你了"
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_filter_holdback_non_gentle_filters_claim():
+    facts = {"did_hold_back": False}
+    reply = "这局我让你了，你下得挺好。"
+    result = GC._filter_holdback_claims(reply, facts)
+    assert "我让你了" not in result, "non-gentle mode must filter '我让你了' claims"
+
+
+@pytest.mark.asyncio
+async def test_generate_reply_filters_holdback_claim(sandbox, monkeypatch):
+    """End-to-end: LLM outputs holdback claim → filtered in non-gentle session."""
+    import core.llm_client as lc
+    monkeypatch.setattr(lc, "chat", _fake_llm("这局我让你了，你下得不错。"))
+
+    # balanced session → did_hold_back=False
+    session = _start_ai(sandbox)  # ai_style="balanced"
+    reply, control, grounding = await GC.generate_reply(
+        char_id=session.char_id,
+        uid=session.uid,
+        session_id=session.session_id,
+        state=session.state,
+        user_message="你是不是在让我",
+    )
+    assert "我让你了" not in reply, "holdback claim must be filtered in non-gentle mode"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T23. generate_reply 返回 3-tuple (reply, control, grounding)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_generate_reply_returns_three_tuple(sandbox, monkeypatch):
+    import core.llm_client as lc
+    monkeypatch.setattr(lc, "chat", _fake_llm("下得不错。"))
+
+    session = _start_ai(sandbox)
+    result = await GC.generate_reply(
+        char_id=session.char_id,
+        uid=session.uid,
+        session_id=session.session_id,
+        state=session.state,
+        user_message="如何",
+    )
+    assert len(result) == 3, "generate_reply must return a 3-tuple (reply, control, grounding)"
+    reply, control, grounding = result
+    assert isinstance(reply, str)
+    assert isinstance(control, dict)
+    assert isinstance(grounding, dict)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T24. grounding 包含 last_user_move_facts 和 last_ai_move_facts
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_generate_reply_grounding_has_move_facts(sandbox, monkeypatch):
+    import core.llm_client as lc
+    monkeypatch.setattr(lc, "chat", _fake_llm("还好。"))
+
+    session = _start_ai(sandbox)
+    # Make a move first so there's something to analyze
+    G.make_move(session.uid, session.char_id, session.session_id, 7, 7)
+    reloaded = activity_store.load_session(session.char_id, session.uid, "gomoku", session.session_id)
+
+    reply, control, grounding = await GC.generate_reply(
+        char_id=session.char_id,
+        uid=session.uid,
+        session_id=session.session_id,
+        state=reloaded.state,
+        user_message="怎么看",
+    )
+
+    assert "last_user_move_facts" in grounding
+    assert "last_ai_move_facts" in grounding
+    uf = grounding["last_user_move_facts"]
+    assert "created_chain" in uf
+    assert "is_center_area" in uf
+    assert "adjacent_stones" in uf
+    assert "summary" in uf

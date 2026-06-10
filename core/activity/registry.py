@@ -96,6 +96,7 @@ ACTIVITY_REGISTRY: tuple[ActivityMeta, ...] = (
             "activity_gomoku_move",
             "activity_gomoku_close",
             "activity_gomoku_chat",
+            "activity_gomoku_ai_move",
         ),
         memory_policy=MemoryPolicy(
             transcript="activity_local",

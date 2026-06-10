@@ -177,4 +177,7 @@ python -c "from admin.routers.xxx import router; print('ok')"
 - 只读取和修改任务明确指定的文件
 - 不扫描整个项目目录
 - 每次修改后只跑指定的验证命令，不跑 main.py 除非明确要求
-- `core/pipeline.py` 是核心，轻易不动
+
+### fable 5亲笔：
+
+新子系统只允许两种存在形态——Session（有生命周期、own transcript、经声明式 policy 回流记忆）或 Stimulus/Actuator（经 perceive_event 进、经 embodiment/channel 出）。永远不准成为 pipeline/main.py 里的新分支。 群聊是 Session（Stage），computer use 是 Session（Operation），硬件是 Stimulus+Actuator，新工具是 Session 和 Stimulus 都能调用的纯能力。

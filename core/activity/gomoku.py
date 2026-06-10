@@ -1,5 +1,5 @@
 """
-Gomoku Activity — 五子棋规则引擎 (P1 + P2-memory-boundary)
+Gomoku Activity — 五子棋规则引擎 (P1 + P2-memory-boundary + P3-pending)
 
 P0：纯代码判棋，双人裁判。
 P1 新增：
@@ -12,6 +12,12 @@ P2 新增（记忆边界）：
 - close_game 按步数阈值决定是否生成/写入对局摘要（见 SUMMARY_THRESHOLD）
 - move_count > SUMMARY_THRESHOLD：生成轻量摘要写入 session/summary.json
 - move_count <= SUMMARY_THRESHOLD：视为噪声/误触，跳过，仅记日志
+
+P3 新增（pending AI turn）：
+- ai_response_mode: "auto"（旧行为）| "pending"（新行为）
+- pending 模式：用户落子后不自动 AI 落子，state.pending_ai_turn = True
+- apply_ai_move() 由 /ai_move 接口调用，执行待处理 AI 落子
+- 可接受 style_tilt（来自 transcript control）轻微影响本次风格，不覆盖 ai_style
 
 禁止：不接 LLM / trigger / Dream / scheduler / short_term / user_hidden_state。
 """
@@ -43,6 +49,7 @@ _DIRS = [(1, 0), (0, 1), (1, 1), (1, -1)]
 
 _VALID_OPPONENTS = frozenset({"human", "yexuan_ai"})
 _VALID_STYLES = frozenset({"balanced", "gentle", "serious", "teaching"})
+_VALID_RESPONSE_MODES = frozenset({"auto", "pending"})
 
 
 # ── 棋盘工具 ──────────────────────────────────────────────────────────────────
@@ -90,6 +97,7 @@ def _initial_state(
     board_size: int,
     opponent: str = "human",
     ai_style: str = "balanced",
+    ai_response_mode: str = "auto",
 ) -> dict:
     return {
         "board_size": board_size,
@@ -102,6 +110,8 @@ def _initial_state(
         "opponent": opponent,
         "ai_player": "white",
         "ai_style": ai_style,
+        "ai_response_mode": ai_response_mode,
+        "pending_ai_turn": False,
     }
 
 
@@ -113,6 +123,7 @@ def start_game(
     board_size: int = BOARD_SIZE,
     opponent: str = "human",
     ai_style: str = "balanced",
+    ai_response_mode: str = "auto",
 ) -> ActivitySession:
     """开局，创建 gomoku session（同类型旧 session 自动关闭）。"""
     if board_size != 15:
@@ -121,7 +132,9 @@ def start_game(
         raise ValueError(f"opponent 必须是 {sorted(_VALID_OPPONENTS)}，收到 {opponent!r}")
     if ai_style not in _VALID_STYLES:
         raise ValueError(f"ai_style 必须是 {sorted(_VALID_STYLES)}，收到 {ai_style!r}")
-    state = _initial_state(board_size, opponent, ai_style)
+    if ai_response_mode not in _VALID_RESPONSE_MODES:
+        raise ValueError(f"ai_response_mode 必须是 {sorted(_VALID_RESPONSE_MODES)}，收到 {ai_response_mode!r}")
+    state = _initial_state(board_size, opponent, ai_style, ai_response_mode)
     return create_session(uid, char_id, "gomoku", state)
 
 
@@ -188,30 +201,35 @@ def make_move(
             state.get("opponent") == "yexuan_ai"
             and state["current_turn"] == state.get("ai_player", "white")
         ):
-            ai_color: str = state["ai_player"]
-            ai_style: str = state.get("ai_style", "balanced")
-
-            ax, ay = choose_gomoku_ai_move(board, ai_color, ai_style, size)
-            board[ay][ax] = ai_color
-
-            ai_move_no = len(state["move_history"]) + 1
-            ai_move = {
-                "x": ax,
-                "y": ay,
-                "player": ai_color,
-                "move_no": ai_move_no,
-                "source": "ai",
-                "style": ai_style,
-            }
-            state["move_history"].append(ai_move)
-            state["last_move"] = ai_move
-
-            ai_win_line = check_win(board, ax, ay, ai_color, size)
-            if ai_win_line is not None:
-                state["status"] = "completed"
-                state["winner"] = ai_color
+            if state.get("ai_response_mode", "auto") == "pending":
+                # Pending mode: wait for explicit /ai_move call
+                state["pending_ai_turn"] = True
             else:
-                state["current_turn"] = "white" if ai_color == "black" else "black"
+                # Auto mode: immediate AI response (legacy behavior)
+                ai_color: str = state["ai_player"]
+                ai_style: str = state.get("ai_style", "balanced")
+
+                ax, ay = choose_gomoku_ai_move(board, ai_color, ai_style, size)
+                board[ay][ax] = ai_color
+
+                ai_move_no = len(state["move_history"]) + 1
+                ai_move = {
+                    "x": ax,
+                    "y": ay,
+                    "player": ai_color,
+                    "move_no": ai_move_no,
+                    "source": "ai",
+                    "style": ai_style,
+                }
+                state["move_history"].append(ai_move)
+                state["last_move"] = ai_move
+
+                ai_win_line = check_win(board, ax, ay, ai_color, size)
+                if ai_win_line is not None:
+                    state["status"] = "completed"
+                    state["winner"] = ai_color
+                else:
+                    state["current_turn"] = "white" if ai_color == "black" else "black"
 
     update_state(char_id, uid, "gomoku", session_id, state)
 
@@ -222,10 +240,103 @@ def make_move(
         "current_turn": state["current_turn"],
         "status": state["status"],
         "winner": state["winner"],
+        "pending_ai_turn": state.get("pending_ai_turn", False),
     }
     final_win_line = ai_win_line if ai_win_line is not None else win_line
     if final_win_line is not None:
         result["win_line"] = [{"x": c[0], "y": c[1]} for c in final_win_line]
+    return result
+
+
+def apply_ai_move(
+    uid: str,
+    char_id: str,
+    session_id: str,
+    style_tilt: Optional[str] = None,
+) -> dict:
+    """
+    Execute the pending AI move in pending mode.
+
+    Called via POST /gomoku/ai_move after the user has made a move and
+    pending_ai_turn=True. Reads optional style_tilt (from transcript control)
+    to temporarily override the AI style for this single move without changing
+    the session's base ai_style.
+
+    Raises ValueError for all invalid-state conditions (mapped to 409 by router).
+    """
+    session = load_session(char_id, uid, "gomoku", session_id)
+    if session is None:
+        raise ValueError(f"session {session_id!r} 不存在")
+    if session.status != "active":
+        raise ValueError(f"session {session_id!r} 已关闭，不能追加 AI 落子")
+
+    state = session.state
+    if state.get("status") != "active":
+        raise ValueError("棋局已结束，不能追加 AI 落子")
+    if state.get("opponent") != "yexuan_ai":
+        raise ValueError("非 AI 对手模式，不支持 ai_move")
+    if not state.get("pending_ai_turn"):
+        raise ValueError("当前没有待处理的 AI 落子（pending_ai_turn=False）")
+    if state.get("current_turn") != state.get("ai_player"):
+        raise ValueError("当前不是 AI 轮次")
+
+    ai_color: str = state["ai_player"]
+    base_style: str = state.get("ai_style", "balanced")
+    board = state["board"]
+    size = state["board_size"]
+
+    # Determine effective style from optional tilt (only for this move)
+    effective_style = base_style
+    style_source = "base_style"
+    if style_tilt and style_tilt in _VALID_STYLES:
+        effective_style = style_tilt
+        style_source = "activity_chat_control"
+
+    ax, ay = choose_gomoku_ai_move(board, ai_color, effective_style, size)
+    board[ay][ax] = ai_color
+
+    ai_move_no = len(state["move_history"]) + 1
+    ai_move: dict = {
+        "x": ax,
+        "y": ay,
+        "player": ai_color,
+        "move_no": ai_move_no,
+        "source": "ai",
+        "style": effective_style,
+        "base_style": base_style,
+        "style_source": style_source,
+    }
+    if effective_style == "gentle":
+        ai_move["did_hold_back"] = True
+
+    state["move_history"].append(ai_move)
+    state["last_move"] = ai_move
+    state["pending_ai_turn"] = False
+
+    ai_win_line = check_win(board, ax, ay, ai_color, size)
+    if ai_win_line is not None:
+        state["status"] = "completed"
+        state["winner"] = ai_color
+    else:
+        state["current_turn"] = "white" if ai_color == "black" else "black"
+
+    update_state(char_id, uid, "gomoku", session_id, state)
+
+    result: dict = {
+        "board": board,
+        "last_move": ai_move,
+        "move_history": state["move_history"],
+        "current_turn": state["current_turn"],
+        "status": state["status"],
+        "winner": state["winner"],
+        "pending_ai_turn": False,
+        "ai_player": ai_color,
+        "opponent": state["opponent"],
+        "ai_style": base_style,
+        "ai_response_mode": state.get("ai_response_mode", "pending"),
+    }
+    if ai_win_line is not None:
+        result["win_line"] = [{"x": c[0], "y": c[1]} for c in sorted(ai_win_line)]
     return result
 
 
