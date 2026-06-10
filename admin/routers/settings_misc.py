@@ -73,9 +73,11 @@ class ContextConfigUpdate(BaseModel):
 @router.get("/context-config", summary="获取上下文轮数配置")
 async def get_context_config(auth=Depends(verify_token)):
     cfg = get_config()
+    # owner: memory.short_term_rounds；context.max_turns 是 deprecated alias
     max_turns = (
-        cfg.get("context", {}).get("max_turns")
-        or cfg.get("memory", {}).get("short_term_rounds", 20)
+        cfg.get("memory", {}).get("short_term_rounds")
+        or cfg.get("context", {}).get("max_turns")  # deprecated alias
+        or 20
     )
     return {"max_turns": max_turns}
 
@@ -91,7 +93,8 @@ async def update_context_config(body: ContextConfigUpdate, auth=Depends(verify_t
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取配置文件失败: {e}")
 
-    full_cfg.setdefault("context", {})["max_turns"] = body.max_turns
+    # 写 memory.short_term_rounds（唯一真值 owner）
+    full_cfg.setdefault("memory", {})["short_term_rounds"] = body.max_turns
 
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:

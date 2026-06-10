@@ -151,7 +151,7 @@ tts:
       speed: 1.1
 
 context:
-  max_turns: 30
+  max_turns: 30  # [deprecated alias] 请改用 memory.short_term_rounds；此字段仅作兼容读取，新写入不再使用
 
 chat:
   mode: chat
