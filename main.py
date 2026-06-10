@@ -127,9 +127,8 @@ async def handle_message(message: dict):
     message 格式：{user_id, group_id, content, sender_name, timestamp}
     本函数由 message_queue 串行调用，同一会话不会并发。
     """
-    from core.scheduler.loop import mark_user_active
-    mark_user_active()
-
+    # mark_user_active() 延迟到 owner 确认后调用（见下方），
+    # 避免群聊路人或陌生私聊重置 owner 的 120s 主动消息窗口。
     user_id: str      = message["user_id"]
 
     # ── Dream guard: reject owner QQ messages when dream is active ──────────
@@ -183,10 +182,12 @@ async def handle_message(message: dict):
     try:
         from core.config_loader import get_config as _get_config
         from core.scheduler.state_machine import notify_owner_turn
+        from core.scheduler.loop import mark_user_active
 
         owner_id = str(_get_config().get("scheduler", {}).get("owner_id", "")).strip()
         if owner_id and str(user_id) == owner_id:
             notify_owner_turn(user_id)
+            mark_user_active()  # 仅 owner 有效输入才重置主动消息窗口
     except Exception:
         logger.exception("[handle_message] trigger state notify_owner_turn 失败")
 

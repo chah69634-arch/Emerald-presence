@@ -480,6 +480,7 @@ async def reflect_to_episodic(
             _last_raw = await llm_client.chat(
                 messages=[{"role": "user", "content": prompt_system + "\n\n" + base_user + suffix}],
                 max_tokens_override=400,
+                call_category="consolidation",
             )
             try:
                 cleaned = re.sub(r"```json|```", "", _last_raw or "").strip()
@@ -624,6 +625,7 @@ async def _synthesize_identity(
                 {"role": "user", "content": user_content + suffix},
             ],
             max_tokens_override=2000,
+            call_category="consolidation",
         )
         _last_raw = (_last_raw or "").strip()
         try:

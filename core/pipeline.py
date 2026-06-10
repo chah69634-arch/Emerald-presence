@@ -636,6 +636,7 @@ class Pipeline:
             raw = await llm_client.chat(
                 messages=[{"role": "user", "content": intent_prompt}],
                 max_tokens_override=120,
+                call_category="intent",
             )
             if not raw or not raw.strip():
                 return

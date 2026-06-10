@@ -651,7 +651,7 @@ async def manual_trigger(name: str) -> str:
         elif name == "diary_share_reminder":
             oid = _owner_id()
             if not oid:
-                return "owner_id 1043484516"
+                return "owner_id not configured"
             await _pipeline_send(
                 f"（{_char_name()}想起来，好像很久没看到你的日记了，故作不经意地提一句）",
                 trigger_name="diary_share_reminder",
@@ -738,7 +738,20 @@ async def _loop():
 
                     await run_shadow_tick(oid)
 
-                await asyncio.gather(
+                _trigger_names = [
+                    "morning", "night", "random_message", "weather",
+                    "reminders", "period", "diary_reminder", "diary_inject",
+                    "daily_journal", "episodic_decay", "spontaneous_recall",
+                    "diary_share_reminder", "topic_followup",
+                    "birthday_midnight", "birthday_eve",
+                    "birthday_afternoon", "birthday_night",
+                    "timenode", "festival", "holiday_boost",
+                    "activity_switch", "dlq_monitor", "log_maintenance",
+                    "episodic_sweep", "garden_water", "garden_daily",
+                    "hidden_state_decay", "hidden_state_consolidate",
+                    "sensor_aware",
+                ]
+                _trigger_results = await asyncio.gather(
                     _check_morning(),
                     _check_night(),
                     _check_random_message(),
@@ -770,6 +783,13 @@ async def _loop():
                     _check_sensor_aware(),
                     return_exceptions=True,
                 )
+                for _tname, _tres in zip(_trigger_names, _trigger_results):
+                    if isinstance(_tres, Exception):
+                        logger.error(
+                            "[scheduler] trigger %r raised %s: %s",
+                            _tname, type(_tres).__name__, _tres,
+                            exc_info=_tres,
+                        )
         except Exception as e:
             log_error("scheduler._loop", e)
         await asyncio.sleep(60)

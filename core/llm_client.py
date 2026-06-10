@@ -21,6 +21,20 @@ _client: AsyncOpenAI | None = None
 _vision_client: AsyncOpenAI | None = None
 
 
+# -- Call-category timeouts (seconds) ----------------------------------------
+# probe/intent/detect_emotion: lightweight, 10 s; summary/consolidation: 30 s
+# chat: main turn 90 s; vision: 30 s
+_CALL_TIMEOUTS: dict[str, float] = {
+    "probe":          10.0,
+    "intent":         10.0,
+    "detect_emotion": 10.0,
+    "summary":        30.0,
+    "consolidation":  30.0,
+    "chat":           90.0,
+    "vision":         30.0,
+}
+_DEFAULT_CALL_TIMEOUT: float = 90.0
+
 def _get_proxy_url() -> str | None:
     """读取代理配置，未启用时返回 None"""
     proxy_cfg = get_config().get("proxy", {})
@@ -29,13 +43,23 @@ def _get_proxy_url() -> str | None:
     return None
 
 
+def _make_http_client(proxy_url: str | None) -> httpx.AsyncClient:
+    """Build httpx client with base connect timeout; per-call read timeout
+    is passed via each completions.create() timeout= kwarg.
+    """
+    base_timeout = httpx.Timeout(timeout=_DEFAULT_CALL_TIMEOUT, connect=10.0)
+    if proxy_url:
+        return httpx.AsyncClient(proxy=proxy_url, timeout=base_timeout)
+    return httpx.AsyncClient(trust_env=False, timeout=base_timeout)
+
+
 def _get_client() -> AsyncOpenAI:
     """获取 OpenAI 客户端（单例，含代理配置）"""
     global _client
     if _client is None:
         cfg = get_config()["llm"]
         proxy_url = _get_proxy_url()
-        http_client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient(trust_env=False)
+        http_client = _make_http_client(proxy_url)
         _client = AsyncOpenAI(
             api_key=cfg["api_key"],
             base_url=cfg["base_url"],
@@ -55,7 +79,7 @@ def _get_vision_client() -> AsyncOpenAI | None:
         return None
     if _vision_client is None:
         proxy_url = _get_proxy_url()
-        http_client = httpx.AsyncClient(proxy=proxy_url) if proxy_url else httpx.AsyncClient(trust_env=False)
+        http_client = _make_http_client(proxy_url)
         _vision_client = AsyncOpenAI(
             api_key=cfg["api_key"],
             base_url=cfg["base_url"],
@@ -81,6 +105,7 @@ async def chat(
     tools: list[dict] | None = None,
     max_tokens_override: int | None = None,
     use_vision: bool = False,
+    call_category: str = "chat",
 ) -> str:
     """
     调用 LLM 生成回复
@@ -94,6 +119,8 @@ async def chat(
         模型生成的文本字符串
         function_calling 模式下如果模型调用了工具，返回序列化后的工具调用 JSON
     """
+    _timeout = _CALL_TIMEOUTS.get(call_category, _DEFAULT_CALL_TIMEOUT)
+
     # vision模式用视觉客户端和模型
     if use_vision:
         vision_client = _get_vision_client()
@@ -104,6 +131,7 @@ async def chat(
                     model=vision_cfg["model"],
                     messages=messages,
                     max_tokens=1000,
+                    timeout=_CALL_TIMEOUTS["vision"],
                 )
                 return response.choices[0].message.content or ""
             except Exception as e:
@@ -127,6 +155,7 @@ async def chat(
         top_p=top_p,
         max_tokens=max_tokens,
         frequency_penalty=frequency_penalty,
+        timeout=_timeout,
     )
 
     try:
@@ -186,7 +215,7 @@ async def chat(
             return response.choices[0].message.content or ""
 
     except Exception as e:
-        log_error("llm_client.chat", e)
+        log_error(f"llm_client.chat[{call_category}]", e)
         raise
 
 
@@ -310,6 +339,7 @@ async def summarize_turn(user_msg: str, reply: str, tags: list[str] | None = Non
             ],
             max_tokens=40,
             temperature=0.3,
+            timeout=_CALL_TIMEOUTS["summary"],
         )
         result = (response.choices[0].message.content or "").strip()
         result = result.strip('"\'"“”‘’')
@@ -342,6 +372,7 @@ async def detect_emotion(text: str) -> str:
             messages=[{"role": "user", "content": prompt}],
             max_tokens=10,
             temperature=0.0,
+            timeout=_CALL_TIMEOUTS["detect_emotion"],
         )
         result = (response.choices[0].message.content or "").strip().lower()
         return result if result in _VALID_EMOTIONS else "neutral"
@@ -353,11 +384,17 @@ async def detect_emotion(text: str) -> str:
 class LLMClient:
     """LLM 客户端类，封装模块级函数，供外部按类方式导入使用"""
 
-    async def chat(self, messages: list, tools: list | None = None) -> str:
-        return await chat(messages, tools)
+    async def chat(
+        self,
+        messages: list,
+        tools: list | None = None,
+        max_tokens_override: int | None = None,
+        call_category: str = "chat",
+    ) -> str:
+        return await chat(messages, tools, max_tokens_override=max_tokens_override, call_category=call_category)
 
     async def chat_vision(self, messages: list) -> str:
-        return await chat(messages, use_vision=True)
+        return await chat(messages, use_vision=True, call_category="vision")
 
     async def detect_emotion(self, text: str) -> str:
         return await detect_emotion(text)
