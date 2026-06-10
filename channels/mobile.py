@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from channels.base import BaseChannel
 from core.sandbox import get_paths
+from core.safe_write import safe_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +92,7 @@ class MobileChannel(BaseChannel):
                 if behavior:
                     item["behavior"] = behavior
                 queue.append(item)
-                q_file.write_text(
-                    json.dumps(queue, ensure_ascii=False),
-                    encoding="utf-8",
-                )
+                safe_write_json(q_file, queue)
                 _queue_condition.notify_all()
         except Exception as e:
             logger.warning(f"[mobile_channel] write queue failed: {e}")
@@ -113,8 +111,5 @@ class MobileChannel(BaseChannel):
 
         messages = queue[:limit]
         remaining = queue[limit:]
-        q_file.write_text(
-            json.dumps(remaining, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        safe_write_json(q_file, remaining)
         return messages

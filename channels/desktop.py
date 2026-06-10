@@ -12,6 +12,7 @@ import logging
 
 from channels.base import BaseChannel
 from core.sandbox import get_paths
+from core.safe_write import safe_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +68,7 @@ class DesktopChannel(BaseChannel):
                     "content": content,
                     "timestamp": time.time(),
                 })
-                q_file.write_text(
-                    json.dumps(queue, ensure_ascii=False), encoding="utf-8"
-                )
+                safe_write_json(q_file, queue)
         except Exception as e:
             logger.warning(f"[desktop_channel] 写入队列失败: {e}")
 
@@ -84,8 +83,6 @@ class DesktopChannel(BaseChannel):
                     if not isinstance(queue, list):
                         queue = []
                 queue.append(behavior)
-                action_file.write_text(
-                    json.dumps(queue, ensure_ascii=False), encoding="utf-8"
-                )
+                safe_write_json(action_file, queue)
         except Exception as e:
             logger.warning(f"[desktop_channel] 写入动作队列失败: {e}")

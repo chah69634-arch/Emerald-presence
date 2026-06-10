@@ -277,12 +277,13 @@ async def desktop_chat(body: dict, _auth=Depends(verify_token)):
     return result
 
 
-@router.post("/upload/ingest", summary="三端统一文件上传入口(无鉴权)")
+@router.post("/upload/ingest", summary="三端统一文件上传入口")
 async def upload_ingest(
     file: UploadFile | None = File(None),
     files: list[UploadFile] | None = File(None),
     message: str = Form(""),
     channel: str = Form("desktop"),
+    _auth=Depends(verify_token),
 ):
     """
     multipart 上传 + 可选用户附言 + channel 标记。
@@ -354,8 +355,8 @@ async def upload_ingest(
     raise HTTPException(status_code=415, detail="不支持的文件格式")
 
 
-@router.post("/desktop/activate", summary="桌宠上线激活desktop通道（无鉴权）")
-async def desktop_activate():
+@router.post("/desktop/activate", summary="桌宠上线激活desktop通道")
+async def desktop_activate(_auth=Depends(verify_token)):
     from channels.registry import get as _get_channel
     channel = _get_channel("desktop")
     if channel and hasattr(channel, "set_active"):
@@ -363,8 +364,8 @@ async def desktop_activate():
     return {"status": "ok"}
 
 
-@router.post("/desktop/deactivate", summary="桌宠下线停用desktop通道（无鉴权）")
-async def desktop_deactivate():
+@router.post("/desktop/deactivate", summary="桌宠下线停用desktop通道")
+async def desktop_deactivate(_auth=Depends(verify_token)):
     from channels.registry import get as _get_channel
     channel = _get_channel("desktop")
     if channel and hasattr(channel, "set_active"):
@@ -373,7 +374,7 @@ async def desktop_deactivate():
 
 
 @router.post("/desktop/wake", summary="桌宠重开问候（仅触发 assistant turn，不写 user 历史）")
-async def desktop_wake(body: dict = Body(default={})):
+async def desktop_wake(body: dict = Body(default={}), _auth=Depends(verify_token)):
     """
     桌宠重开时调用，绝不向 user 历史写入机器合成文本。
 

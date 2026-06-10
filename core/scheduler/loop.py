@@ -75,17 +75,16 @@ def _migrate_scheduler_state_once():
     try:
         import json
         data = json.loads(old_path.read_text(encoding="utf-8"))
+        from core.safe_write import safe_write_json as _swj
         cooldowns_path = get_paths().scheduler_cooldowns()
         if not cooldowns_path.exists():
             cooldowns_path.parent.mkdir(parents=True, exist_ok=True)
-            cooldowns_path.write_text(
-                json.dumps({"triggers": data.get("triggers", {})}), encoding="utf-8"
-            )
+            _swj(cooldowns_path, {"triggers": data.get("triggers", {})})
         user_path = get_paths().scheduler_user_state()
         if not user_path.exists():
             user_path.parent.mkdir(parents=True, exist_ok=True)
             user_data = {k: v for k, v in data.items() if k != "triggers"}
-            user_path.write_text(json.dumps(user_data), encoding="utf-8")
+            _swj(user_path, user_data)
         old_path.unlink()
         logger.info("[scheduler] scheduler_state.json 已拆分迁移 → cooldowns + user_state")
     except Exception as e:
@@ -203,13 +202,14 @@ def _mark(name: str):
     _last_trigger[name] = time.time()
     try:
         import json
+        from core.safe_write import safe_write_json
         p = get_paths().scheduler_cooldowns()
         p.parent.mkdir(parents=True, exist_ok=True)
         existing = {}
         if p.exists():
             existing = json.loads(p.read_text(encoding="utf-8"))
         existing["triggers"] = _last_trigger
-        p.write_text(json.dumps(existing), encoding="utf-8")
+        safe_write_json(p, existing)
     except Exception as e:
         logger.warning(f"[scheduler] 冷却状态写入失败: {e}")
 
@@ -455,7 +455,8 @@ def mark_diary_shared():
         if p.exists():
             existing = json.loads(p.read_text(encoding="utf-8"))
         existing["last_diary_share"] = _last_diary_share
-        p.write_text(json.dumps(existing), encoding="utf-8")
+        from core.safe_write import safe_write_json as _swj
+        _swj(p, existing)
     except Exception as e:
         log_error("scheduler.mark_diary_shared", e)
 
