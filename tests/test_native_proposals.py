@@ -1,6 +1,20 @@
 from datetime import date, datetime
 import inspect
 
+import pytest
+from unittest.mock import MagicMock
+
+
+@pytest.fixture(autouse=True)
+def _mock_pipeline_for_char_name(monkeypatch):
+    """Provide a minimal pipeline so trigger _char_name() doesn't raise in these tests."""
+    import core.pipeline_registry as _pr
+    mock_char = MagicMock()
+    mock_char.name = "test_char"
+    mock_pl = MagicMock()
+    mock_pl.character = mock_char
+    monkeypatch.setattr(_pr, "get", lambda: mock_pl)
+
 
 def _write_event_log(paths, uid: str, date_text: str, body: str) -> None:
     day_dir = paths.user_memory_root(uid) / "event_log"
@@ -181,7 +195,7 @@ def test_topic_followup_propose_uses_event_log_last_mentioned(monkeypatch, sandb
 ## 15:00
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -218,7 +232,7 @@ def test_topic_followup_propose_skips_recently_followed_topic(monkeypatch, sandb
 ## 15:00
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -248,7 +262,7 @@ def test_topic_followup_propose_allows_different_topic_key(monkeypatch, sandbox)
 ## 15:00
 **用户**：我明天要测试桌宠通道
 > turn_id:t1
-**叶瑄**：那我陪你看结果。
+**Companion**：那我陪你看结果。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -277,9 +291,9 @@ def test_no_recent_topic_followup_leaves_spontaneous_recall_available(monkeypatc
         "2026-05-25",
         """
 ## 15:00
-**用户**：嗯。叶瑄。
+**用户**：嗯。Companion。
 > turn_id:t1
-**叶瑄**：我在。
+**Companion**：我在。
 > emotion:neutral intensity:0 turn_id:t1
 ---
 """,

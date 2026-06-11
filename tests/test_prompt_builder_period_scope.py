@@ -8,8 +8,8 @@ Covers:
 2. Signature: get_period_info accepts char_id kwarg (default "yexuan")
 3. Backward compat: get_period_info(uid) without char_id still works
 4. Data isolation: different char_ids read different profile buckets
-5. Build spy: build() with char_id="hongcha" calls get_period_info(char_id="hongcha")
-6. Content isolation: hongcha build() does not inject yexuan period data
+5. Build spy: build() with char_id="character_b" calls get_period_info(char_id="character_b")
+6. Content isolation: character_b build() does not inject yexuan period data
 """
 
 import datetime
@@ -88,9 +88,9 @@ def test_get_period_info_default_char_id(sandbox):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_get_period_info_char_id_isolation(sandbox):
-    """char_id="yexuan" vs "hongcha" で異なる生理期データを読む."""
+    """char_id="yexuan" vs "character_b" で異なる生理期データを読む."""
     uid = "u1"
-    for char, date in [("yexuan", "2026-06-01"), ("hongcha", "2026-06-15")]:
+    for char, date in [("yexuan", "2026-06-01"), ("character_b", "2026-06-15")]:
         path = sandbox.user_memory_root(uid, char_id=char) / "profile.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -99,11 +99,11 @@ def test_get_period_info_char_id_isolation(sandbox):
 
     import core.memory.user_profile as _up
     yexuan_info = _up.get_period_info(uid, char_id="yexuan")
-    hongcha_info = _up.get_period_info(uid, char_id="hongcha")
+    character_b_info = _up.get_period_info(uid, char_id="character_b")
 
     assert yexuan_info == {"last_period_date": "2026-06-01"}
-    assert hongcha_info == {"last_period_date": "2026-06-15"}
-    assert yexuan_info != hongcha_info
+    assert character_b_info == {"last_period_date": "2026-06-15"}
+    assert yexuan_info != character_b_info
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -127,8 +127,8 @@ def _apply_build_stubs(monkeypatch):
 
 
 def test_build_passes_char_id_to_get_period_info(monkeypatch):
-    """build() が period trigger tag と char_id="hongcha" で呼ばれたとき、
-    get_period_info(uid, char_id="hongcha") が呼ばれる."""
+    """build() が period trigger tag と char_id="character_b" で呼ばれたとき、
+    get_period_info(uid, char_id="character_b") が呼ばれる."""
     _apply_build_stubs(monkeypatch)
 
     import core.memory.user_profile as _up
@@ -143,7 +143,7 @@ def test_build_passes_char_id_to_get_period_info(monkeypatch):
 
     monkeypatch.setattr(_up, "get_period_info", _spy)
 
-    char = Character(name="红茶")
+    char = Character(name="DemoUser")
     _pb.build(
         character=char,
         user_id="u1",
@@ -153,12 +153,12 @@ def test_build_passes_char_id_to_get_period_info(monkeypatch):
         profile={},
         group_context=[],
         tags={"topic.body"},
-        char_id="hongcha",
+        char_id="character_b",
     )
 
     assert period_calls, "get_period_info が呼ばれていない"
-    assert period_calls[0]["char_id"] == "hongcha", (
-        f"char_id='hongcha' が渡されるべき, 実際: {period_calls[0]['char_id']!r}"
+    assert period_calls[0]["char_id"] == "character_b", (
+        f"char_id='character_b' が渡されるべき, 実際: {period_calls[0]['char_id']!r}"
     )
 
 
@@ -178,7 +178,7 @@ def test_build_passes_char_id_yexuan(monkeypatch):
 
     monkeypatch.setattr(_up, "get_period_info", _spy)
 
-    char = Character(name="叶瑄")
+    char = Character(name="Companion")
     _pb.build(
         character=char,
         user_id="u2",
@@ -196,15 +196,15 @@ def test_build_passes_char_id_yexuan(monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. Content isolation: hongcha build() must not inject yexuan period text
+# 6. Content isolation: character_b build() must not inject yexuan period text
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_build_hongcha_excludes_yexuan_period_data(sandbox, monkeypatch):
-    """yexuan は生理期データあり, hongcha はなし → hongcha build() に生理期層が入らない."""
+def test_build_character_b_excludes_yexuan_period_data(sandbox, monkeypatch):
+    """yexuan は生理期データあり, character_b はなし → character_b build() に生理期層が入らない."""
     uid = "u1"
     today = datetime.date.today().isoformat()
 
-    for char, date in [("yexuan", today), ("hongcha", None)]:
+    for char, date in [("yexuan", today), ("character_b", None)]:
         path = sandbox.user_memory_root(uid, char_id=char) / "profile.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -216,7 +216,7 @@ def test_build_hongcha_excludes_yexuan_period_data(sandbox, monkeypatch):
 
     _apply_build_stubs(monkeypatch)
 
-    char = Character(name="红茶")
+    char = Character(name="DemoUser")
     messages, _ = _pb.build(
         character=char,
         user_id=uid,
@@ -226,15 +226,15 @@ def test_build_hongcha_excludes_yexuan_period_data(sandbox, monkeypatch):
         profile={},
         group_context=[],
         tags={"topic.body"},
-        char_id="hongcha",
+        char_id="character_b",
     )
 
     layers = [m.get("_layer") for m in messages]
     assert "3.5_period" not in layers, (
-        "hongcha に yexuan の生理期バケットが混入: layers=" + str(layers)
+        "character_b に yexuan の生理期バケットが混入: layers=" + str(layers)
     )
 
     full_text = " ".join(m.get("content", "") for m in messages)
     assert "生理期" not in full_text, (
-        "hongcha build() の出力に '生理期' が含まれている (yexuan データ漏洩)"
+        "character_b build() の出力に '生理期' が含まれている (yexuan データ漏洩)"
     )

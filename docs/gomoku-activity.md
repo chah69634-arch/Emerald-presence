@@ -258,7 +258,7 @@
   "session_id": "...",
   "status": "closed",
   "closed_at": "2026-06-09T...",
-  "activity_summary": "用户和叶瑄进行了一局五子棋。用户执黑，叶瑄执白，对局共 20 手，结果：黑棋获胜。"
+  "activity_summary": "用户和他进行了一局五子棋。用户执黑，他执白，对局共 20 手，结果：黑棋获胜。"
 }
 ```
 
@@ -374,7 +374,7 @@ total = attack_score + defense_score + center_bias * 2 + adjacency_bias * 10
 
 摘要文本仅含"参与方 + 步数 + 结果"，不含棋谱坐标列表。
 
-- `opponent=yexuan_ai`：`"用户和叶瑄进行了一局五子棋。用户执黑，叶瑄执白，对局共 N 手，结果：{黑棋获胜|白棋获胜|未分胜负}。"`
+- `opponent=yexuan_ai`：`"用户和他进行了一局五子棋。用户执黑，他执白，对局共 N 手，结果：{黑棋获胜|白棋获胜|未分胜负}。"`
 - `opponent=human`：`"用户进行了一局本地双人五子棋，对局共 N 手，结果：{黑棋获胜|白棋获胜|未分胜负}。"`
 
 ### 存储路径
@@ -399,7 +399,7 @@ data/runtime/activity/{char_id}/{uid}/gomoku/{session_id}/summary.json
 
 ## 活动内对话（P0）
 
-五子棋 session 内，用户可以和叶瑄自然聊天。后端生成 LLM 回复并写入 transcript，
+五子棋 session 内，用户可以和他自然聊天。后端生成 LLM 回复并写入 transcript，
 **不写主记忆**（不写 short_term / event_log / user_hidden_state）。
 
 ### POST /activity/gomoku/chat

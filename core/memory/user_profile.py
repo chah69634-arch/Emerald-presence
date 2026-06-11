@@ -9,13 +9,13 @@ import logging
 import re
 from pathlib import Path
 
-from core.config_loader import get_config, _char_name
+from core.config_loader import get_config
+from core.character_name_provider import get_active_char_name
 from core.error_handler import log_error
 from core.memory.path_resolver import resolve_path
 from core.memory.scope import MemoryScope, require_character_id
 
 logger = logging.getLogger(__name__)
-_CHAR = _char_name()
 
 # 画像字段的默认结构
 _DEFAULT_PROFILE = {
@@ -221,12 +221,12 @@ def clear(user_id: str, *, char_id: str = "yexuan"):
 # ─── 好感度系统（已冻结） ────────────────────────────────────────────────────────────────
 
 _AFFECTION_LEVELS = [
-    (0,   99,   "陌生人",   f"{_CHAR}对她还不太了解"),
-    (100, 299,  "普通朋友", f"{_CHAR}对她有些印象"),
-    (300, 499,  "好朋友",   f"{_CHAR}很高兴认识她"),
-    (500, 699,  "亲密朋友", f"{_CHAR}很珍惜和她在一起的时光"),
-    (700, 899,  "挚友",     f"{_CHAR}对她有深厚的情感"),
-    (900, 1000, "灵魂伴侣", f"{_CHAR}认为她是最重要的人"),
+    (0,   99,   "陌生人",   "{char}对她还不太了解"),
+    (100, 299,  "普通朋友", "{char}对她有些印象"),
+    (300, 499,  "好朋友",   "{char}很高兴认识她"),
+    (500, 699,  "亲密朋友", "{char}很珍惜和她在一起的时光"),
+    (700, 899,  "挚友",     "{char}对她有深厚的情感"),
+    (900, 1000, "灵魂伴侣", "{char}认为她是最重要的人"),
 ]
 
 
@@ -280,11 +280,12 @@ def set_affection(user_id: str, value: int):
 
 def get_affection_level(user_id: str) -> dict:
     """返回好感度等级信息：{value, label, description}"""
+    char_name = get_active_char_name()
     value = get_affection(user_id)
     for lo, hi, label, desc in _AFFECTION_LEVELS:
         if lo <= value <= hi:
-            return {"value": value, "label": label, "description": desc}
-    return {"value": value, "label": "灵魂伴侣", "description": _AFFECTION_LEVELS[-1][3]}
+            return {"value": value, "label": label, "description": desc.replace("{char}", char_name)}
+    return {"value": value, "label": "灵魂伴侣", "description": _AFFECTION_LEVELS[-1][3].replace("{char}", char_name)}
 
 
 # ─── 生理期 ────────────────────────────────────────────────────────────────────

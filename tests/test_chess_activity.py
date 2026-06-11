@@ -22,7 +22,7 @@ Chess Activity P0 验收测试 (24 tests)
 16. legal_moves 返回合法 UCI 列表
 17. move_history 顺序正确，含 uci/san/player/fen_after
 18. uid + char_id 隔离
-19. yexuan/hongcha 不共用 chess session
+19. yexuan/character_b 不共用 chess session
 20. close 后 state 不再返回 active session
 21. 不写 short_term / history / user_hidden_state
 22. 非法 session_id 不能路径逃逸
@@ -344,20 +344,20 @@ def test_uid_char_id_isolation(sandbox):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 19. yexuan/hongcha 不共用 chess session
+# 19. yexuan/character_b 不共用 chess session
 # ═══════════════════════════════════════════════════════════════════════════
 
 def test_different_chars_not_shared(sandbox):
     sy = _make_chess_session(sandbox, uid="user1", char_id="yexuan")
-    sh = _make_chess_session(sandbox, uid="user1", char_id="hongcha")
+    sh = _make_chess_session(sandbox, uid="user1", char_id="character_b")
 
     assert sy.session_id != sh.session_id
 
     ay = activity_store.find_active_session("yexuan", "user1", "chess")
-    ah = activity_store.find_active_session("hongcha", "user1", "chess")
+    ah = activity_store.find_active_session("character_b", "user1", "chess")
     assert ay is not None and ah is not None
     assert ay.char_id == "yexuan"
-    assert ah.char_id == "hongcha"
+    assert ah.char_id == "character_b"
     assert ay.session_id != ah.session_id
 
     # Paths must not overlap
@@ -365,10 +365,10 @@ def test_different_chars_not_shared(sandbox):
         char_id="yexuan", uid="user1", activity_type="chess", session_id=sy.session_id
     )
     dh = sandbox.activity_session_dir(
-        char_id="hongcha", uid="user1", activity_type="chess", session_id=sh.session_id
+        char_id="character_b", uid="user1", activity_type="chess", session_id=sh.session_id
     )
     assert "yexuan" in str(dy)
-    assert "hongcha" in str(dh)
+    assert "character_b" in str(dh)
     assert dy != dh
 
 

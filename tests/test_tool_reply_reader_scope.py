@@ -9,7 +9,7 @@ Covers:
   2. user_profile.load receives active char_id
   3. Character switch → reader picks up new bucket
   4. Invalid active_character → fail-loud, readers never called
-  5. Content isolation: hongcha active → yexuan content absent from LLM context
+  5. Content isolation: character_b active → yexuan content absent from LLM context
   6. Regression: output governance chain (process/strip/scrub/post_process) intact
 """
 
@@ -83,7 +83,7 @@ def _patch_rp(monkeypatch):
 async def test_short_term_receives_active_char_id(sandbox, monkeypatch):
     import main as _main
 
-    fake = _make_pipeline("hongcha")
+    fake = _make_pipeline("character_b")
     monkeypatch.setattr(_main, "_pipeline", fake)
     st_calls, _ = _patch_memory_capture(monkeypatch)
     _patch_text_output(monkeypatch)
@@ -92,8 +92,8 @@ async def test_short_term_receives_active_char_id(sandbox, monkeypatch):
     await _main._reply_with_tool_result("tool_data", "u1", "u1", False)
 
     assert st_calls, "short_term.load_for_prompt should have been called"
-    assert st_calls[0].get("char_id") == "hongcha", (
-        f"expected char_id='hongcha', got {st_calls[0]}"
+    assert st_calls[0].get("char_id") == "character_b", (
+        f"expected char_id='character_b', got {st_calls[0]}"
     )
 
 
@@ -104,7 +104,7 @@ async def test_short_term_receives_active_char_id(sandbox, monkeypatch):
 async def test_user_profile_receives_active_char_id(sandbox, monkeypatch):
     import main as _main
 
-    fake = _make_pipeline("hongcha")
+    fake = _make_pipeline("character_b")
     monkeypatch.setattr(_main, "_pipeline", fake)
     _, up_calls = _patch_memory_capture(monkeypatch)
     _patch_text_output(monkeypatch)
@@ -113,8 +113,8 @@ async def test_user_profile_receives_active_char_id(sandbox, monkeypatch):
     await _main._reply_with_tool_result("tool_data", "u1", "u1", False)
 
     assert up_calls, "user_profile.load should have been called"
-    assert up_calls[0].get("char_id") == "hongcha", (
-        f"expected char_id='hongcha', got {up_calls[0]}"
+    assert up_calls[0].get("char_id") == "character_b", (
+        f"expected char_id='character_b', got {up_calls[0]}"
     )
 
 
@@ -147,14 +147,14 @@ async def test_character_switch_reader_follows(sandbox, monkeypatch):
     monkeypatch.setattr(_main, "_pipeline", _make_pipeline("yexuan"))
     await _main._reply_with_tool_result("tool_data", "u1", "u1", False)
 
-    # Second call: hongcha
-    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("hongcha"))
+    # Second call: character_b
+    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("character_b"))
     await _main._reply_with_tool_result("tool_data", "u1", "u1", False)
 
     assert len(received_chars) == 2, f"expected 2 reader calls, got {received_chars}"
     assert received_chars[0] == "yexuan", f"first call expected yexuan, got {received_chars[0]}"
-    assert received_chars[1] == "hongcha", (
-        f"second call expected hongcha (not yexuan), got {received_chars[1]}"
+    assert received_chars[1] == "character_b", (
+        f"second call expected character_b (not yexuan), got {received_chars[1]}"
     )
 
 
@@ -193,10 +193,10 @@ async def test_invalid_active_char_no_reader_called(sandbox, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 5. Content isolation: hongcha active → yexuan sentinel absent from LLM context
+# 5. Content isolation: character_b active → yexuan sentinel absent from LLM context
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def test_content_isolation_yexuan_not_in_hongcha_context(sandbox, monkeypatch):
+async def test_content_isolation_yexuan_not_in_character_b_context(sandbox, monkeypatch):
     import main as _main
     import core.memory.short_term as _st
     import core.memory.user_profile as _up
@@ -224,7 +224,7 @@ async def test_content_isolation_yexuan_not_in_hongcha_context(sandbox, monkeypa
         captured_ctx.update(ctx)
         return ([], {"pending_paths": []})
 
-    fake = _make_pipeline("hongcha")
+    fake = _make_pipeline("character_b")
     fake.build_prompt = MagicMock(side_effect=_fake_build_prompt)
     monkeypatch.setattr(_main, "_pipeline", fake)
 
@@ -234,10 +234,10 @@ async def test_content_isolation_yexuan_not_in_hongcha_context(sandbox, monkeypa
     history_str = str(captured_ctx.get("history", []))
     profile_str = str(captured_ctx.get("profile", {}))
     assert SENTINEL not in history_str, (
-        f"yexuan history sentinel leaked into hongcha context: {history_str!r}"
+        f"yexuan history sentinel leaked into character_b context: {history_str!r}"
     )
     assert SENTINEL not in profile_str, (
-        f"yexuan profile sentinel leaked into hongcha context: {profile_str!r}"
+        f"yexuan profile sentinel leaked into character_b context: {profile_str!r}"
     )
 
 
@@ -249,7 +249,7 @@ async def test_output_governance_chain_intact(sandbox, monkeypatch):
     """process → strip_render_tags → scrub → post_process must still fire in order."""
     import main as _main
 
-    fake = _make_pipeline("hongcha", llm_reply="<say>测试内容。</say>")
+    fake = _make_pipeline("character_b", llm_reply="<say>测试内容。</say>")
     monkeypatch.setattr(_main, "_pipeline", fake)
     _patch_memory_capture(monkeypatch)
     sent = _patch_text_output(monkeypatch)

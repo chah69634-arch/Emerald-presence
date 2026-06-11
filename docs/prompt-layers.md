@@ -14,7 +14,7 @@
 | `2_jailbreak` | 破限预设 layer=2 | 文件存在且 enabled | `characters/reality/jailbreak_entries.json` |
 | `2.5_time` | 当前时间（年月日 时:分 星期X） | always | 实时生成 |
 | `2.55_last_seen` | 用户上次说话时间 | 距上次说话 ≥ 6 小时 | `core/presence.py` → `get_last_seen_text()` |
-| `2.6_activity` | 叶瑄此刻的状态 | 对话开头（history 为空）或沉默超10分钟 | `activity_manager.get_prompt_fragment()`，每15-45分钟随机切换，部分活动会从 episodic_memory 按 strength 加权抽一条记忆作为"叶瑄在想什么"注入 |
+| `2.6_activity` | 他此刻的状态 | 对话开头（history 为空）或沉默超10分钟 | `activity_manager.get_prompt_fragment()`，每15-45分钟随机切换，部分活动会从 episodic_memory 按 strength 加权抽一条记忆作为"他在想什么"注入 |
 | `3_relation` | 与该用户的关系 + 称呼 | always | `user_relation` |
 | `4_group_context` | 群聊最近动态 | 群聊时 | `group_context.get_recent()` |
 | `3.5_period` | 生理期感知（第N天） | tagged（见下） | `user_profile.get_period_info()` |
@@ -30,10 +30,10 @@
 | `6c_episodic_fallback` | 近期高强度记忆兜底 | episodic_result 为空且 fallback 非空 | `episodic_memory.retrieve_fallback()`；实际消息 `_layer` 仍写 `6c_episodic`，便于统一裁剪 |
 | `mid_term` | 过去 12 小时对话压缩视图 | mid_term_context 非空 | `mid_term.format_for_prompt()`（12h 过期，最多 20 条，三时间桶渲染） |
 | `6d_diary_context` | 用户近期日记 | 有内容且命中 `emotion.down` / `emotion.indirect` | `diary_context.load()` |
-| `6e_inner_diary_facts` | 叶瑄昨天的记录（事件层，取前200字） | 昨日日记文件存在且含事件层 | `data/runtime/characters/{char_id}/inner/diary/` |
-| `6e_inner_diary_feeling` | 叶瑄昨天的心情（感受层，取前150字） | 昨日日记存在且命中 `emotion.down/indirect/deep` 或 `topic.relation` | `data/runtime/characters/{char_id}/inner/diary/` |
+| `6e_inner_diary_facts` | 他昨天的记录（事件层，取前200字） | 昨日日记文件存在且含事件层 | `data/runtime/characters/{char_id}/inner/diary/` |
+| `6e_inner_diary_feeling` | 他昨天的心情（感受层，取前150字） | 昨日日记存在且命中 `emotion.down/indirect/deep` 或 `topic.relation` | `data/runtime/characters/{char_id}/inner/diary/` |
 | `dream_afterglow_soft_hint` | 梦境余韵软提示（只读，非事实，TTL 8h，`may/可能` 限定语气，`neutral+空tags` 不注入） | afterglow_residue.json 存在且 TTL 未过期且 tone≠neutral 或 tags 非空 | `core/prompt_builder._format_afterglow_soft_hint()` → `core/memory/user_hidden_state.read_afterglow_residue()` → `data/runtime/memory/{char_id}/{uid}/afterglow_residue.json`（S6 路径，详见 docs/memory.md §记忆层一览） |
-| `6g_dream_impression` | 梦境印象回流（ambient，≤3条，非事实框定，叶瑄自述"我好像在梦里……"） | 有未过期印象时注入 | `core/dream/impression_loader.load_impression_text()` → `data/runtime/dreams/{char_id}/impressions/{uid}.json` |
+| `6g_dream_impression` | 梦境印象回流（ambient，≤3条，非事实框定，他自述"我好像在梦里……"） | 有未过期印象时注入 | `core/dream/impression_loader.load_impression_text()` → `data/runtime/dreams/{char_id}/impressions/{uid}.json` |
 | `7_mes_example_item` | 对话示例（few-shot） | always（有内容） | 角色卡 mes_example |
 | `9_history` | 短期对话历史（近场保留 + 远场加权择优） | always | `short_term.load_for_prompt()` |
 | `9.5_episodic_top` | 最相关情景记忆1条（attention sweet spot） | episodic_result 非空 | 从已召回结果取第一条，不重复召回 |
@@ -99,7 +99,7 @@ if any(p in text for p in rule.patterns):
 工具结果走层10的 `tool_result` 参数，唯一出口。
 
 情绪软提示也在层1内完成：`prompt_builder` 会读取 `mood_state.json`，调用
-`get_mood_text()`，并把"叶瑄此刻：..."插到 `## 当前感知（实时，非记忆）`
+`get_mood_text()`，并把"他此刻：..."插到 `## 当前感知（实时，非记忆）`
 之前。它没有独立 `_layer`，所以 debug layers 里不会出现 `2.7_mood_state`。
 
 ```python

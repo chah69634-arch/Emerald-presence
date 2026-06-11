@@ -418,9 +418,9 @@ def test_pipeline_dlq_new_payload_no_fallback():
         __import__("logging").getLogger("core.pipeline"),
         "warning",
     ) as warn_mock:
-        scope = _get_scope_from_payload({"uid": "u1", "char_id": "hongcha"}, "h")
+        scope = _get_scope_from_payload({"uid": "u1", "char_id": "character_b"}, "h")
 
-    assert scope.character_id == "hongcha"
+    assert scope.character_id == "character_b"
     warn_mock.assert_not_called()
 
 

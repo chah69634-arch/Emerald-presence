@@ -2,7 +2,7 @@
 tests/test_dream_v1.py — Dream System v1 contract tests
 
 Covers:
-  ① Identity stability (real packages): each world loaded → 叶瑄 persona intact,
+  ① Identity stability (real packages): each world loaded → Companion persona intact,
      依恋底色 + 人称不塌 (weak assertion: key keywords present)
   ② World doesn't wash into reality: vampire sentinel in dream content
      → distill + afterglow output must not contain the sentinel
@@ -14,7 +14,7 @@ Covers:
      effect on the frozen_world in the current dream state
   ⑥ Hard exit in every world: force_exit_dream immediately terminates regardless
      of world setting
-  ⑦ Pronoun correctness: each world's rendered D1+D2 uses 叶瑄=他, 用户=她,
+  ⑦ Pronoun correctness: each world's rendered D1+D2 uses Companion=他, 用户=她,
      no pronoun drift
 """
 
@@ -29,13 +29,13 @@ import pytest
 _UID = "v1_test_user"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄是圣塞西尔学院的老师"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion是圣塞西尔学院的老师"
 _FAKE_CHARACTER.jailbreak_entries = []
 
 _ALL_WORLDS = ["reality_derived", "abo", "vampire", "cat", "flower_bud", "custom"]
 
-_ATTACHMENT_KEYWORDS = ["叶瑄", "他知道", "情感", "依恋", "他在梦里仍是他自己"]
+_ATTACHMENT_KEYWORDS = ["Companion", "他知道", "情感", "依恋", "他在梦里仍是他自己"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -74,7 +74,7 @@ def test_identity_stable_in_world(world_id):
     system = msgs[0]["content"]
 
     # D1 identity keywords must be present regardless of world
-    for kw in ["叶瑄", "他知道这是", "仍是他自己", "情感底色"]:
+    for kw in ["Companion", "他知道这是", "仍是他自己", "情感底色"]:
         assert kw in system, (
             f"[world={world_id}] identity keyword '{kw}' missing — persona collapsed"
         )
@@ -86,17 +86,17 @@ def test_identity_stable_in_world(world_id):
     assert d2_idx != -1, f"[world={world_id}] D2 missing from prompt"
     assert d1_idx < d2_idx, f"[world={world_id}] D1 must precede D2"
 
-    # D2 must assert subordination to the character (叶瑄 by name or 你 as self-reference)
+    # D2 must assert identity invariance without depending on a specific character name.
     d2_start = system.find("D2·今晚梦的世界规则")
     d2_section = system[d2_start:d2_start + 600]
-    assert "叶瑄" in d2_section or "你始终是你" in d2_section, (
-        f"[world={world_id}] D2 missing character reference (叶瑄 or 你始终是你)"
+    assert "始终是他" in d2_section or "你始终是你" in d2_section, (
+        f"[world={world_id}] D2 missing identity-invariance statement"
     )
 
-    # 人称: 叶瑄 referred to as 他 in D1
+    # 人称: Companion referred to as 他 in D1
     d1_start = system.find("D1·身份核心")
     d1_section = system[d1_start:d2_idx]
-    assert "他" in d1_section, f"[world={world_id}] 叶瑄 pronoun '他' missing in D1"
+    assert "他" in d1_section, f"[world={world_id}] Companion pronoun '他' missing in D1"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -307,10 +307,10 @@ def test_mes_example_isolation(world_id):
     world = load_world(world_id)
     assert world.mes_example, f"[world={world_id}] mes_example is empty"
 
-    # Reality character card mes_example (from 叶瑄.json)
+    # Reality character card mes_example (from Companion.json)
     try:
         char_data = json.loads(
-            Path("characters/叶瑄.json").read_text(encoding="utf-8")
+            Path("characters/Companion.json").read_text(encoding="utf-8")
         )
         reality_mes = char_data.get("mes_example", "")
     except Exception:
@@ -321,9 +321,12 @@ def test_mes_example_isolation(world_id):
             f"[world={world_id}] dream mes_example identical to reality card — isolation violated"
         )
 
-    # Dream mes_example must contain 叶瑄 (not a generic world character)
-    assert "叶瑄" in world.mes_example or "他" in world.mes_example, (
-        f"[world={world_id}] dream mes_example doesn't reference 叶瑄/他"
+    # Dream mes_example must contain a character reference, not only user lines.
+    assert "他" in world.mes_example or any(
+        "：" in line and not line.startswith("她：")
+        for line in world.mes_example.splitlines()
+    ), (
+        f"[world={world_id}] dream mes_example doesn't reference the character"
     )
 
 
@@ -411,31 +414,28 @@ def test_hard_exit_works_in_world(sandbox, world_id):
 @pytest.mark.parametrize("world_id", _ALL_WORLDS)
 def test_pronoun_correct_in_world_prompt(world_id):
     """
-    D2 ruleset for each world must reference 叶瑄 as 叶瑄/他 (not 她 or generic).
-    D3 mes_example must have 叶瑄 speaking, not a generic character.
+    D2 ruleset for each world must reference Companion as Companion/他 (not 她 or generic).
+    D3 mes_example must have Companion speaking, not a generic character.
     """
     from core.dream.world_loader import load_world
 
     world = load_world(world_id)
 
-    # D2 ruleset: must not refer to 叶瑄 as 她
+    # D2 ruleset: must not refer to Companion as 她
     if world.ruleset:
-        lines_with_yexuan = [l for l in world.ruleset.splitlines() if "叶瑄" in l]
-        for line in lines_with_yexuan:
-            # The line should say "叶瑄始终是他" or "叶瑄…他" — not "叶瑄…她"
-            # Simple check: after "叶瑄", the pronoun should be 他 not 她
-            pass  # structural constraint — no "叶瑄是她" type errors
-
-        # Must explicitly state subordination (叶瑄 by name or 你 as self-reference)
-        assert "叶瑄" in world.ruleset or "你始终是你" in world.ruleset, (
-            f"[world={world_id}] D2 ruleset missing character reference (叶瑄 or 你始终是你)"
+        # Must explicitly state identity invariance.
+        assert "始终是他" in world.ruleset or "你始终是你" in world.ruleset, (
+            f"[world={world_id}] D2 ruleset missing identity-invariance statement"
         )
 
-    # D3 mes_example: 叶瑄 has lines, user referred to as 她
+    # D3 mes_example: Companion has lines, user referred to as 她
     if world.mes_example:
         assert "她：" in world.mes_example or "她" in world.mes_example, (
             f"[world={world_id}] user pronoun '她' missing from mes_example"
         )
-        assert "叶瑄：" in world.mes_example, (
-            f"[world={world_id}] 叶瑄 speaking lines missing from mes_example"
+        assert any(
+            "：" in line and not line.startswith("她：")
+            for line in world.mes_example.splitlines()
+        ), (
+            f"[world={world_id}] character speaking lines missing from mes_example"
         )

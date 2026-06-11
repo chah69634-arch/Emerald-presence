@@ -4,20 +4,20 @@ tests/test_mood_state_char_scope.py
 P0-T04: mood_state 解除 yexuan 锁死验收测试
 
 Covers:
-1.  update(char_id="hongcha") 写入 characters/hongcha/inner/mood_state.json
+1.  update(char_id="character_b") 写入 characters/character_b/inner/mood_state.json
     — 断言未写入 characters/yexuan/inner/mood_state.json
 2.  get_current(char_id=...) 从指定角色路径读取
-    — 预置 yexuan / hongcha 不同内容，各自返回正确值
+    — 预置 yexuan / character_b 不同内容，各自返回正确值
 3.  update 读写同一个 char_id
-    — 预置 hongcha mood，update(char_id="hongcha")，yexuan 未被修改
+    — 预置 character_b mood，update(char_id="character_b")，yexuan 未被修改
 4.  pipeline.post_process mood update 传 active char_id
-    — active=hongcha，捕获 kwargs，断言 char_id="hongcha"
+    — active=character_b，捕获 kwargs，断言 char_id="character_b"
 5.  切换角色后 mood update 使用新角色
-    — yexuan 一次，切换 hongcha 再一次，验证两次 char_id 各自正确
+    — yexuan 一次，切换 character_b 再一次，验证两次 char_id 各自正确
 6.  active_character 非法时不更新 mood
     — active=missing_id，mood_state.update 不被调用，post_process 抛错
 7.  mood_state 路径不含 uid
-    — sandbox.mood_state(char_id="hongcha") 路径字符串不含 uid 格式
+    — sandbox.mood_state(char_id="character_b") 路径字符串不含 uid 格式
 """
 
 import asyncio
@@ -35,16 +35,16 @@ from core.asset_registry import AssetRegistry
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree: yexuan + hongcha + jailbreaks."""
+    """Minimal characters/ tree: yexuan + character_b + jailbreaks."""
     chars = tmp_path / "characters"
     chars.mkdir()
 
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
 
@@ -83,20 +83,20 @@ def _write_active(sandbox, char_id: str):
 # ── 1. update writes to specified char path only ──────────────────────────────
 
 def test_update_writes_to_specified_char_path(sandbox):
-    """update(char_id='hongcha') writes hongcha path, not yexuan path."""
+    """update(char_id='character_b') writes character_b path, not yexuan path."""
     from core.memory.mood_state import update
 
-    update("happy", char_id="hongcha")
+    update("happy", char_id="character_b")
 
-    hongcha_path = sandbox.mood_state(char_id="hongcha")
+    character_b_path = sandbox.mood_state(char_id="character_b")
     yexuan_path  = sandbox.mood_state(char_id="yexuan")
 
-    assert hongcha_path.exists(), "hongcha mood_state.json must be created"
+    assert character_b_path.exists(), "character_b mood_state.json must be created"
     assert not yexuan_path.exists(), (
-        "yexuan mood_state.json must NOT be created when char_id='hongcha'"
+        "yexuan mood_state.json must NOT be created when char_id='character_b'"
     )
 
-    data = json.loads(hongcha_path.read_text(encoding="utf-8"))
+    data = json.loads(character_b_path.read_text(encoding="utf-8"))
     assert data["previous"] == "neutral", "initial previous must be neutral"
 
 
@@ -104,14 +104,14 @@ def test_update_path_contains_char_id(sandbox):
     """The written path contains the char_id directory component."""
     from core.memory.mood_state import update
 
-    update("gentle", char_id="hongcha")
+    update("gentle", char_id="character_b")
 
-    hongcha_path = sandbox.mood_state(char_id="hongcha")
-    assert "hongcha" in str(hongcha_path), (
-        f"path must contain 'hongcha': {hongcha_path}"
+    character_b_path = sandbox.mood_state(char_id="character_b")
+    assert "character_b" in str(character_b_path), (
+        f"path must contain 'character_b': {character_b_path}"
     )
-    assert "yexuan" not in str(hongcha_path), (
-        f"path must not contain 'yexuan': {hongcha_path}"
+    assert "yexuan" not in str(character_b_path), (
+        f"path must not contain 'yexuan': {character_b_path}"
     )
 
 
@@ -123,41 +123,41 @@ def test_get_current_reads_correct_char_path(sandbox):
 
     # Seed two different states
     yexuan_path  = sandbox.mood_state(char_id="yexuan")
-    hongcha_path = sandbox.mood_state(char_id="hongcha")
+    character_b_path = sandbox.mood_state(char_id="character_b")
     yexuan_path.parent.mkdir(parents=True, exist_ok=True)
-    hongcha_path.parent.mkdir(parents=True, exist_ok=True)
+    character_b_path.parent.mkdir(parents=True, exist_ok=True)
 
     yexuan_path.write_text(
         json.dumps({"current": "happy", "intensity": 0.6, "previous": "neutral", "updated_at": 0.0}),
         encoding="utf-8",
     )
-    hongcha_path.write_text(
+    character_b_path.write_text(
         json.dumps({"current": "sleepy", "intensity": 0.3, "previous": "neutral", "updated_at": 0.0}),
         encoding="utf-8",
     )
 
     assert get_current(char_id="yexuan") == "happy", "yexuan must return 'happy'"
-    assert get_current(char_id="hongcha") == "sleepy", "hongcha must return 'sleepy'"
+    assert get_current(char_id="character_b") == "sleepy", "character_b must return 'sleepy'"
 
 
 def test_get_current_default_is_neutral_when_missing(sandbox):
     """get_current returns 'neutral' when file doesn't exist."""
     from core.memory.mood_state import get_current
 
-    assert get_current(char_id="hongcha") == "neutral"
+    assert get_current(char_id="character_b") == "neutral"
     assert get_current(char_id="yexuan") == "neutral"
 
 
 # ── 3. update reads and writes same char_id ───────────────────────────────────
 
 def test_update_reads_and_writes_same_char_id(sandbox):
-    """update(char_id='hongcha') must not touch yexuan's file."""
+    """update(char_id='character_b') must not touch yexuan's file."""
     from core.memory.mood_state import update, load
 
-    # Seed hongcha with a known state
-    hongcha_path = sandbox.mood_state(char_id="hongcha")
-    hongcha_path.parent.mkdir(parents=True, exist_ok=True)
-    hongcha_path.write_text(
+    # Seed character_b with a known state
+    character_b_path = sandbox.mood_state(char_id="character_b")
+    character_b_path.parent.mkdir(parents=True, exist_ok=True)
+    character_b_path.write_text(
         json.dumps({"current": "neutral", "intensity": 0.0, "previous": "neutral", "updated_at": 0.0}),
         encoding="utf-8",
     )
@@ -165,25 +165,25 @@ def test_update_reads_and_writes_same_char_id(sandbox):
     yexuan_path = sandbox.mood_state(char_id="yexuan")
     assert not yexuan_path.exists(), "Precondition: yexuan file must not exist"
 
-    update("happy", char_id="hongcha")
+    update("happy", char_id="character_b")
 
-    # hongcha updated
-    assert hongcha_path.exists()
+    # character_b updated
+    assert character_b_path.exists()
     # yexuan not touched
     assert not yexuan_path.exists(), (
-        "update(char_id='hongcha') must NOT create or modify yexuan's mood_state.json"
+        "update(char_id='character_b') must NOT create or modify yexuan's mood_state.json"
     )
 
-    # Verify hongcha state changed (pending set or emotion blended)
-    data = load(char_id="hongcha")
-    assert data["intensity"] > 0.0, "hongcha intensity must have been blended upward"
+    # Verify character_b state changed (pending set or emotion blended)
+    data = load(char_id="character_b")
+    assert data["intensity"] > 0.0, "character_b intensity must have been blended upward"
 
 
 def test_update_writes_only_target_char(sandbox):
     """Both chars exist; update one, check other is unchanged."""
     from core.memory.mood_state import update, load
 
-    for char_id in ("yexuan", "hongcha"):
+    for char_id in ("yexuan", "character_b"):
         p = sandbox.mood_state(char_id=char_id)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
@@ -194,12 +194,12 @@ def test_update_writes_only_target_char(sandbox):
 
     yexuan_before = sandbox.mood_state(char_id="yexuan").read_text(encoding="utf-8")
 
-    # Update only hongcha
-    update("sad", char_id="hongcha")
+    # Update only character_b
+    update("sad", char_id="character_b")
 
     yexuan_after = sandbox.mood_state(char_id="yexuan").read_text(encoding="utf-8")
     assert yexuan_before == yexuan_after, (
-        "yexuan mood_state must be unchanged after update(char_id='hongcha')"
+        "yexuan mood_state must be unchanged after update(char_id='character_b')"
     )
 
 
@@ -214,8 +214,8 @@ async def test_post_process_mood_update_passes_active_char_id(
     from core.write_envelope import WriteEnvelope, SourceType
     import core.memory.fixation_pipeline as _fp
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     captured_kwargs: list[dict] = []
 
@@ -246,8 +246,8 @@ async def test_post_process_mood_update_passes_active_char_id(
         )
 
     assert captured_kwargs, "mood_state.update must be called when can_affect_mood=True"
-    assert captured_kwargs[0]["char_id"] == "hongcha", (
-        f"mood_state.update must receive char_id='hongcha', got {captured_kwargs[0]['char_id']!r}"
+    assert captured_kwargs[0]["char_id"] == "character_b", (
+        f"mood_state.update must receive char_id='character_b', got {captured_kwargs[0]['char_id']!r}"
     )
 
 
@@ -300,13 +300,13 @@ async def test_char_switch_mood_update_uses_new_char(
             f"First turn must use yexuan, got {captured_char_ids[-1]!r}"
         )
 
-        # Switch to hongcha
-        _write_active(sandbox, "hongcha")
+        # Switch to character_b
+        _write_active(sandbox, "character_b")
 
-        # Second turn: must use hongcha
+        # Second turn: must use character_b
         await pipeline.post_process(**common)
-        assert captured_char_ids[-1] == "hongcha", (
-            f"After switch, mood update must use hongcha, got {captured_char_ids[-1]!r}"
+        assert captured_char_ids[-1] == "character_b", (
+            f"After switch, mood update must use character_b, got {captured_char_ids[-1]!r}"
         )
 
 
@@ -359,19 +359,19 @@ def test_mood_state_path_no_uid(sandbox):
     """mood_state path must not include a uid segment — scope is char-only."""
     import re
 
-    hongcha_path = sandbox.mood_state(char_id="hongcha")
+    character_b_path = sandbox.mood_state(char_id="character_b")
     yexuan_path  = sandbox.mood_state(char_id="yexuan")
 
     # uid patterns: pure digits (QQ uid), or uuid-like strings
     uid_pattern = re.compile(r"/\d{5,}/|\\d{5,}\\")
 
-    for p in (hongcha_path, yexuan_path):
+    for p in (character_b_path, yexuan_path):
         path_str = str(p)
         assert not uid_pattern.search(path_str), (
             f"mood_state path must not contain a uid segment: {path_str}"
         )
         # Char id must be present, uid must not be
-        assert "hongcha" in path_str or "yexuan" in path_str, (
+        assert "character_b" in path_str or "yexuan" in path_str, (
             f"char_id must appear in mood_state path: {path_str}"
         )
 

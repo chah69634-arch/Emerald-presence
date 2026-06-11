@@ -4,7 +4,7 @@ tests/test_slow_queue_char_scope.py
 P0-T03: slow_queue payload + handler 透传 char_id 验收测试
 
 Covers:
-1.  post_process enqueue payload 携带 active char_id (active=hongcha)
+1.  post_process enqueue payload 携带 active char_id (active=character_b)
 2.  角色切换后，旧 payload char_id 保持为入队时快照
 3.  handler_summarize_to_midterm 透传 char_id 到 mid_term writer
 4.  handler_reflect_to_episodic 透传 char_id 到 episodic writer
@@ -13,7 +13,7 @@ Covers:
 7.  handler_capture_turn_retry 透传 char_id 到 capture_turn
 8.  legacy DLQ payload 缺 char_id 不炸，WARN fallback=yexuan，不静默
 9.  active 非法时不入队
-10. 内容级端到端：yexuan/hongcha 内容只落入对应桶
+10. 内容级端到端：yexuan/character_b 内容只落入对应桶
 """
 
 import asyncio
@@ -35,11 +35,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -90,8 +90,8 @@ async def test_post_process_payload_carries_active_char_id(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """post_process() 所有 enqueue 调用都必须携带当前 active char_id。"""
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[tuple[str, dict]] = []
 
@@ -115,8 +115,8 @@ async def test_post_process_payload_carries_active_char_id(
     ]
     assert payloads_with_char, "应有至少一个非 consistency_check 入队任务"
     for task_type, payload in payloads_with_char:
-        assert payload.get("char_id") == "hongcha", (
-            f"任务 {task_type!r} payload 缺少 char_id='hongcha'，实际: {payload!r}"
+        assert payload.get("char_id") == "character_b", (
+            f"任务 {task_type!r} payload 缺少 char_id='character_b'，实际: {payload!r}"
         )
 
 
@@ -156,8 +156,8 @@ async def test_payload_char_id_is_snapshot_not_current(
     payload_a_char_ids = {p.get("char_id") for p in enqueued_a if p.get("char_id")}
     assert "yexuan" in payload_a_char_ids, f"第一轮 payload char_id 应含 yexuan，实际: {payload_a_char_ids}"
 
-    # 切换到 hongcha
-    _write_active(sandbox, "hongcha")
+    # 切换到 character_b
+    _write_active(sandbox, "character_b")
     _enqueued = enqueued_b
 
     # 此时 enqueued_a 里的 payload 对象已固化，char_id 不会改变
@@ -177,8 +177,8 @@ async def test_payload_char_id_is_snapshot_not_current(
         await pipeline.post_process("u1", "消息B", "回复B", envelope=env)
 
     payload_b_char_ids = {p.get("char_id") for p in enqueued_b if p.get("char_id")}
-    assert "hongcha" in payload_b_char_ids, (
-        f"切换后第二轮 payload char_id 应含 hongcha，实际: {payload_b_char_ids}"
+    assert "character_b" in payload_b_char_ids, (
+        f"切换后第二轮 payload char_id 应含 character_b，实际: {payload_b_char_ids}"
     )
 
 
@@ -206,12 +206,12 @@ async def test_handler_summarize_to_midterm_passes_char_id(sandbox):
             "uid": "u_test",
             "user_content": "内容",
             "reply": "回复",
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
     assert captured, "mid_term.append 应该被调用"
-    assert captured[0] == "hongcha", (
-        f"handler_summarize_to_midterm 应透传 char_id='hongcha'，实际: {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"handler_summarize_to_midterm 应透传 char_id='character_b'，实际: {captured[0]!r}"
     )
 
 
@@ -259,12 +259,12 @@ async def test_handler_reflect_to_episodic_passes_char_id(sandbox):
             "uid": "u_test",
             "mid_ids": ["mt_u_x_1"],
             "trigger": "eager",
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
     assert captured, "write_episode 应该被调用"
-    assert captured[0] == "hongcha", (
-        f"handler_reflect_to_episodic 应透传 char_id='hongcha'，实际: {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"handler_reflect_to_episodic 应透传 char_id='character_b'，实际: {captured[0]!r}"
     )
 
 
@@ -285,12 +285,12 @@ async def test_handler_user_profile_update_passes_char_id(sandbox):
         await _handler_user_profile_update({
             "uid": "u_test",
             "recent": [{"role": "user", "content": "hi"}],
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
     assert captured, "extract_and_update 应该被调用"
-    assert captured[0] == "hongcha", (
-        f"handler_user_profile_update 应透传 char_id='hongcha'，实际: {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"handler_user_profile_update 应透传 char_id='character_b'，实际: {captured[0]!r}"
     )
 
 
@@ -310,12 +310,12 @@ async def test_handler_consolidate_to_identity_passes_char_id(sandbox):
     with patch.object(_fp, "consolidate_to_identity", side_effect=_spy_consolidate):
         await _fp.handler_consolidate_to_identity({
             "uid": "u_test",
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
     assert captured, "consolidate_to_identity 应该被调用"
-    assert captured[0] == "hongcha", (
-        f"handler_consolidate_to_identity 应透传 char_id='hongcha'，实际: {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"handler_consolidate_to_identity 应透传 char_id='character_b'，实际: {captured[0]!r}"
     )
 
 
@@ -340,12 +340,12 @@ async def test_handler_capture_turn_retry_passes_char_id(sandbox):
             "user_content": "内容",
             "reply": "回复",
             "emotion": "neutral",
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
     assert captured, "capture_turn 应该被调用"
-    assert captured[0] == "hongcha", (
-        f"handler_capture_turn_retry 应透传 char_id='hongcha'，实际: {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"handler_capture_turn_retry 应透传 char_id='character_b'，实际: {captured[0]!r}"
     )
 
 
@@ -488,7 +488,7 @@ async def test_post_process_invalid_active_does_not_enqueue(
 @pytest.mark.asyncio
 async def test_e2e_char_scoped_mid_term_isolation(sandbox):
     """
-    端到端：yexuan 和 hongcha 的 summarize_to_midterm 写入各自桶，互不污染。
+    端到端：yexuan 和 character_b 的 summarize_to_midterm 写入各自桶，互不污染。
     使用 slow_queue.drain() 等待 worker 处理完毕，LLM 已 monkeypatch。
     """
     import core.post_process.slow_queue as sq
@@ -519,37 +519,37 @@ async def test_e2e_char_scoped_mid_term_isolation(sandbox):
             "char_id": "yexuan",
         })
 
-        # 入队 hongcha 任务
+        # 入队 character_b 任务
         sq.enqueue("summarize_to_midterm", {
-            "turn_id": f"turn_{uid}_hongcha",
+            "turn_id": f"turn_{uid}_character_b",
             "uid": uid,
             "user_content": "XYZ动画-T03",
             "reply": "好看的",
             "tags": [],
             "emotion": "neutral",
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
         await sq.drain()
 
     # 读两个桶
     yexuan_events = _mt.load(uid, char_id="yexuan")
-    hongcha_events = _mt.load(uid, char_id="hongcha")
+    character_b_events = _mt.load(uid, char_id="character_b")
 
     yexuan_text = " ".join(e.get("summary", "") for e in yexuan_events)
-    hongcha_text = " ".join(e.get("summary", "") for e in hongcha_events)
+    character_b_text = " ".join(e.get("summary", "") for e in character_b_events)
 
     assert "草莓大福-T03" in yexuan_text, (
         f"yexuan 桶应含 '草莓大福-T03'，实际: {yexuan_text!r}"
     )
     assert "XYZ动画-T03" not in yexuan_text, (
-        f"yexuan 桶不应含 'XYZ动画-T03'（hongcha 内容），实际: {yexuan_text!r}"
+        f"yexuan 桶不应含 'XYZ动画-T03'（character_b 内容），实际: {yexuan_text!r}"
     )
-    assert "XYZ动画-T03" in hongcha_text, (
-        f"hongcha 桶应含 'XYZ动画-T03'，实际: {hongcha_text!r}"
+    assert "XYZ动画-T03" in character_b_text, (
+        f"character_b 桶应含 'XYZ动画-T03'，实际: {character_b_text!r}"
     )
-    assert "草莓大福-T03" not in hongcha_text, (
-        f"hongcha 桶不应含 '草莓大福-T03'（yexuan 内容），实际: {hongcha_text!r}"
+    assert "草莓大福-T03" not in character_b_text, (
+        f"character_b 桶不应含 '草莓大福-T03'（yexuan 内容），实际: {character_b_text!r}"
     )
 
 
@@ -584,8 +584,8 @@ def test_t01_regression_fetch_context_char_id(chars_tree, monkeypatch, sandbox, 
     import core.memory.mood_state as _ms
     import core.user_relation as _ur
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     monkeypatch.setattr(_el, "search", AsyncMock(return_value=""))
     monkeypatch.setattr(_up, "load", lambda *a, **kw: {})
@@ -619,8 +619,8 @@ def test_t01_regression_fetch_context_char_id(chars_tree, monkeypatch, sandbox, 
     asyncio.run(pipeline.fetch_context(user_id="u1", content="hello"))
 
     assert captured, "short_term.load_for_prompt 应被调用"
-    assert captured[0] == "hongcha", (
-        f"T-01 回归: short_term.load_for_prompt 应收到 char_id='hongcha'，实际: {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"T-01 回归: short_term.load_for_prompt 应收到 char_id='character_b'，实际: {captured[0]!r}"
     )
 
 
@@ -642,9 +642,9 @@ def test_t02_regression_capture_turn_char_id(sandbox):
         patch.object(_st, "append", side_effect=_spy_st),
         patch.object(_el, "append", return_value=True),
     ):
-        capture_turn("u1", "你好", "在的", char_id="hongcha", envelope=env)
+        capture_turn("u1", "你好", "在的", char_id="character_b", envelope=env)
 
     assert captured, "short_term.append 应被调用"
-    assert all(c == "hongcha" for c in captured), (
-        f"T-02 回归: short_term.append 应收到 char_id='hongcha'，实际: {captured}"
+    assert all(c == "character_b" for c in captured), (
+        f"T-02 回归: short_term.append 应收到 char_id='character_b'，实际: {captured}"
     )

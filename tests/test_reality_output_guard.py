@@ -24,30 +24,30 @@ def _guard(text, char_name=None):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_character_prefix_colon_full_removed():
-    assert _guard("叶瑄：你好啊", "叶瑄") == "你好啊"
+    assert _guard("Companion：你好啊", "Companion") == "你好啊"
 
 
 def test_character_prefix_colon_half_removed():
-    assert _guard("叶瑄:你好啊", "叶瑄") == "你好啊"
+    assert _guard("Companion:你好啊", "Companion") == "你好啊"
 
 
 def test_character_prefix_bracket_removed():
-    assert _guard("[叶瑄] 你好啊", "叶瑄") == "你好啊"
+    assert _guard("[Companion] 你好啊", "Companion") == "你好啊"
 
 
 def test_character_prefix_says_removed():
-    assert _guard("叶瑄 说：你好啊", "叶瑄") == "你好啊"
+    assert _guard("Companion 说：你好啊", "Companion") == "你好啊"
 
 
 def test_character_prefix_absent_unchanged():
     text = "你好啊，今天怎么样？"
-    assert _guard(text, "叶瑄") == text
+    assert _guard(text, "Companion") == text
 
 
 def test_no_char_name_prefix_not_removed():
-    text = "叶瑄：你好啊"
+    text = "Companion：你好啊"
     result = _guard(text, None)
-    assert "叶瑄：" in result
+    assert "Companion：" in result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -93,7 +93,7 @@ def test_self_censor_language_model_removed():
 
 def test_pure_dialogue_preserved():
     text = "嗯，你说的对，我在想这件事。"
-    assert _guard(text, "叶瑄") == text
+    assert _guard(text, "Companion") == text
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -114,13 +114,13 @@ def test_whitespace_stripped():
 
 def test_action_descriptions_preserved():
     text = "我在。（抬起脑袋看你一眼）睡吧。"
-    result = _guard(text, "叶瑄")
+    result = _guard(text, "Companion")
     assert "（抬起脑袋看你一眼）" in result
 
 
 def test_markdown_action_preserved():
     text = "*他低头看了你一眼*\n别闹。"
-    result = _guard(text, "叶瑄")
+    result = _guard(text, "Companion")
     assert "*他低头看了你一眼*" in result
 
 
@@ -130,7 +130,7 @@ def test_markdown_action_preserved():
 
 def test_render_tags_preserved():
     text = "<say>你好。</say><do>他靠近你。</do>"
-    result = _guard(text, "叶瑄")
+    result = _guard(text, "Companion")
     assert "<say>" in result
     assert "<do>" in result
 
@@ -142,13 +142,13 @@ def test_render_tags_preserved():
 async def test_desktop_guard_removes_character_prefix_before_record():
     """
     Simulate run_owner_chat_turn():
-    raw LLM reply = "叶瑄：你好" → after guard = "你好" → what record_assistant_turn receives.
+    raw LLM reply = "Companion：你好" → after guard = "你好" → what record_assistant_turn receives.
     """
     received: list[str] = []
 
     class _FakePipeline:
         class character:
-            name = "叶瑄"
+            name = "Companion"
 
         async def fetch_context(self, *a, **kw):
             return {}
@@ -157,7 +157,7 @@ async def test_desktop_guard_removes_character_prefix_before_record():
             return [], {}
 
         async def run_llm(self, messages):
-            return "叶瑄：你好"
+            return "Companion：你好"
 
         async def post_process(self, uid, content, reply, **kwargs):
             received.append(reply)
@@ -165,11 +165,11 @@ async def test_desktop_guard_removes_character_prefix_before_record():
 
     from core.reality_output_guard import clean_reality_reply_text
 
-    raw = "叶瑄：你好"
-    cleaned = clean_reality_reply_text(raw, "叶瑄")
+    raw = "Companion：你好"
+    cleaned = clean_reality_reply_text(raw, "Companion")
     assert cleaned == "你好"
     # Verify the guard output is what post_process would see as memory_text
-    assert "叶瑄：" not in cleaned
+    assert "Companion：" not in cleaned
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -184,7 +184,7 @@ async def test_desktop_guard_removes_self_censor_before_record():
     from core.reality_output_guard import clean_reality_reply_text
 
     raw = "作为一个AI，我没有真实的感情。但我在这里陪你。"
-    cleaned = clean_reality_reply_text(raw, "叶瑄")
+    cleaned = clean_reality_reply_text(raw, "Companion")
     assert "作为一个AI" not in cleaned
     assert "我在这里陪你" in cleaned
 
@@ -197,7 +197,7 @@ def test_desktop_guard_removes_tool_call_residue():
     from core.reality_output_guard import clean_reality_reply_text
 
     raw = "<tool_call>get_time({})</tool_call>现在是下午三点。"
-    cleaned = clean_reality_reply_text(raw, "叶瑄")
+    cleaned = clean_reality_reply_text(raw, "Companion")
     assert "<tool_call>" not in cleaned
     assert "现在是下午三点" in cleaned
 
@@ -216,7 +216,7 @@ async def test_run_owner_chat_turn_guard_applied(monkeypatch):
     captured_assistant_text: list[str] = []
 
     class _FakeCharacter:
-        name = "叶瑄"
+        name = "Companion"
 
     class _FakePipeline:
         character = _FakeCharacter()
@@ -228,7 +228,7 @@ async def test_run_owner_chat_turn_guard_applied(monkeypatch):
             return [{"role": "user", "content": message}], {}
 
         async def run_llm(self, messages):
-            return "叶瑄：今天很开心见到你。"
+            return "Companion：今天很开心见到你。"
 
         async def post_process(self, uid, content, reply, **kwargs):
             return {"turn_id": "t99", "critical_written": True, "emotion": "happy"}
@@ -280,8 +280,8 @@ async def test_run_owner_chat_turn_guard_applied(monkeypatch):
     result = await _chat.run_owner_chat_turn("你好", "desktop")
 
     assert len(captured_assistant_text) == 1
-    # Guard must have removed the "叶瑄：" prefix before record_assistant_turn
-    assert "叶瑄：" not in captured_assistant_text[0]
+    # Guard must have removed the "Companion：" prefix before record_assistant_turn
+    assert "Companion：" not in captured_assistant_text[0]
     assert "今天很开心见到你" in captured_assistant_text[0]
 
 
@@ -293,7 +293,7 @@ def test_qq_process_still_segments():
     from core.response_processor import process
 
     long_text = "这是第一句话。" * 80  # well over 500 chars
-    segments = process(long_text, "叶瑄")
+    segments = process(long_text, "Companion")
     assert len(segments) > 1
     for seg in segments:
         assert len(seg) <= 500
@@ -302,10 +302,10 @@ def test_qq_process_still_segments():
 def test_qq_process_still_removes_prefix_and_filters():
     from core.response_processor import process
 
-    reply = "叶瑄：作为一个AI，我没有感情。但我在。"
-    segments = process(reply, "叶瑄")
+    reply = "Companion：作为一个AI，我没有感情。但我在。"
+    segments = process(reply, "Companion")
     full = " ".join(segments)
-    assert "叶瑄：" not in full
+    assert "Companion：" not in full
     assert "作为一个AI" not in full
     assert "我在" in full
 
@@ -337,11 +337,11 @@ def test_scrubber_not_affected_by_guard():
     from core.reality_output_scrubber import scrub_reality_output_text
 
     # Scrubber is for action descriptions — it must NOT strip prefix or self-censor
-    text_with_prefix = "叶瑄：你好。"
+    text_with_prefix = "Companion：你好。"
     result = scrub_reality_output_text(text_with_prefix)
     # Scrubber keeps dialogue lines; it is not responsible for prefix removal
     assert result is not None
-    assert "叶瑄：你好" in result  # scrubber left it intact
+    assert "Companion：你好" in result  # scrubber left it intact
 
     text_with_action = "我在。\n（他低头看了你一眼）\n别担心。"
     scrubbed = scrub_reality_output_text(text_with_action)
@@ -356,8 +356,8 @@ def test_strip_render_tags_not_affected_by_guard():
     from core.response_processor import strip_render_tags
 
     # strip_render_tags only removes XML-like tags — not prefix, not self-censor
-    text = "叶瑄：<say>你好。</say>"
+    text = "Companion：<say>你好。</say>"
     result = strip_render_tags(text)
     assert "<say>" not in result
-    assert "叶瑄：" in result   # prefix intact — not strip_render_tags' job
+    assert "Companion：" in result   # prefix intact — not strip_render_tags' job
     assert "你好" in result

@@ -4,7 +4,7 @@ R8-B: trait_tracker_update 独立 slow_queue 任务。
 Coverage:
 1.  register_slow_handlers() 注册 trait_tracker_update handler
 2.  post_process() 在 can_write_memory=True 时入队 trait_tracker_update
-3.  payload 使用实际 char_id，不硬编码 yexuan（用 hongcha 证伪）
+3.  payload 使用实际 char_id，不硬编码 yexuan（用 character_b 证伪）
 4.  can_write_memory=False 时不入队
 5.  handler 直接执行后写入 trait_state 文件
 6.  author_note_rotator 读取的路径与 handler 写入路径一致
@@ -24,15 +24,15 @@ import pytest
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree with yexuan + hongcha."""
+    """Minimal characters/ tree with yexuan + character_b."""
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -141,8 +141,8 @@ async def test_payload_uses_active_char_id_not_hardcoded(
     import core.post_process.slow_queue as sq
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     captured_payloads: list[dict] = []
 
@@ -168,8 +168,8 @@ async def test_payload_uses_active_char_id_not_hardcoded(
 
     assert captured_payloads, "trait_tracker_update must be enqueued"
     p = captured_payloads[0]
-    assert p["char_id"] == "hongcha", (
-        f"char_id must be 'hongcha' (active char), got {p.get('char_id')!r}"
+    assert p["char_id"] == "character_b", (
+        f"char_id must be 'character_b' (active char), got {p.get('char_id')!r}"
     )
     assert p["uid"] == "u1"
     assert "scope" in p, "payload must contain scope"

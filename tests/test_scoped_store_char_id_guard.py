@@ -34,7 +34,7 @@ class TestRequireCharacterId:
     def test_valid_string_returned_unchanged(self):
         from core.memory.scope import require_character_id
         assert require_character_id("yexuan") == "yexuan"
-        assert require_character_id("hongcha") == "hongcha"
+        assert require_character_id("character_b") == "character_b"
 
     def test_none_raises(self):
         from core.memory.scope import require_character_id

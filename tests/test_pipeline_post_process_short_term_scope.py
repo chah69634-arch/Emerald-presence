@@ -4,9 +4,9 @@ tests/test_pipeline_post_process_short_term_scope.py
 P1-0C.6: pipeline.post_process 中 _st.load 的 char_id 透传验收测试
 
 Covers:
-1.  post_process 中 profile 判断用 _st.load 收到 char_id="hongcha"，不默认 yexuan。
-2.  active 从 yexuan 切 hongcha 后，第二次 post_process 的 _st.load 读取 hongcha bucket。
-3.  内容级验证：hongcha post_process 的 user_profile_update recent 不含 yexuan bucket 唯一词。
+1.  post_process 中 profile 判断用 _st.load 收到 char_id="character_b"，不默认 yexuan。
+2.  active 从 yexuan 切 character_b 后，第二次 post_process 的 _st.load 读取 character_b bucket。
+3.  内容级验证：character_b post_process 的 user_profile_update recent 不含 yexuan bucket 唯一词。
 """
 
 import asyncio
@@ -32,11 +32,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -70,20 +70,20 @@ def _write_active(sandbox, char_id: str):
     )
 
 
-# ── 1. _st.load 收到 char_id="hongcha"，不默认 yexuan ─────────────────────────
+# ── 1. _st.load 收到 char_id="character_b"，不默认 yexuan ─────────────────────────
 
 @pytest.mark.asyncio
-async def test_post_process_st_load_receives_char_id_hongcha(
+async def test_post_process_st_load_receives_char_id_character_b(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
     Inside post_process, both _st.load calls for the profile-update check
-    must forward char_id='hongcha', not the default 'yexuan'.
+    must forward char_id='character_b', not the default 'yexuan'.
     """
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     captured_char_ids: list[str] = []
 
@@ -104,21 +104,21 @@ async def test_post_process_st_load_receives_char_id_hongcha(
         await pipeline.post_process(user_id="u1", content="你好", reply="在的", envelope=env)
 
     assert captured_char_ids, "_st.load must be called at least once inside post_process"
-    bad = [c for c in captured_char_ids if c != "hongcha"]
+    bad = [c for c in captured_char_ids if c != "character_b"]
     assert not bad, (
-        f"All _st.load calls must receive char_id='hongcha'; got unexpected: {bad}"
+        f"All _st.load calls must receive char_id='character_b'; got unexpected: {bad}"
     )
 
 
-# ── 2. yexuan → hongcha 切换后，第二次读取使用 hongcha ────────────────────────
+# ── 2. yexuan → character_b 切换后，第二次读取使用 character_b ────────────────────────
 
 @pytest.mark.asyncio
 async def test_post_process_st_load_uses_new_char_id_after_switch(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
-    After writing active_character hongcha, the next post_process call passes
-    char_id='hongcha' to _st.load (not 'yexuan' from the initial pipeline state).
+    After writing active_character character_b, the next post_process call passes
+    char_id='character_b' to _st.load (not 'yexuan' from the initial pipeline state).
     """
     from core.write_envelope import WriteEnvelope, SourceType
 
@@ -153,35 +153,35 @@ async def test_post_process_st_load_uses_new_char_id_after_switch(
         )
 
         captured.clear()
-        _write_active(sandbox, "hongcha")
+        _write_active(sandbox, "character_b")
 
-        # Second turn: hongcha active
+        # Second turn: character_b active
         await pipeline.post_process(user_id="u1", content="今天怎样", reply="挺好的", envelope=env)
         assert captured, "_st.load must be called on second turn"
-        assert all(c == "hongcha" for c in captured), (
-            f"After switch, _st.load must use char_id='hongcha'; got {captured}"
+        assert all(c == "character_b" for c in captured), (
+            f"After switch, _st.load must use char_id='character_b'; got {captured}"
         )
 
 
-# ── 3. 内容级：profile recent 来自 hongcha bucket，不含 yexuan 唯一词 ──────────
+# ── 3. 内容级：profile recent 来自 character_b bucket，不含 yexuan 唯一词 ──────────
 
 @pytest.mark.asyncio
-async def test_post_process_profile_recent_reads_hongcha_bucket_only(
+async def test_post_process_profile_recent_reads_character_b_bucket_only(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
     When user_profile_update triggers, the 'recent' slice sent to slow_queue
-    must contain only hongcha-bucket content. Yexuan-only sentinel must be absent.
+    must contain only character_b-bucket content. Yexuan-only sentinel must be absent.
     """
     import core.memory.short_term as _st_mod
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     uid = "u_pp_content_scope"
     YEXUAN_ONLY = "草莓大福-yexuan专属内容"
-    HONGCHA_SIGNAL = "荔枝红茶-hongcha专属"
+    CHARACTER_B_SIGNAL = "荔枝DemoUser-character_b专属"
 
     env = WriteEnvelope(source=SourceType.INGEST, can_write_memory=True, can_affect_mood=False)
 
@@ -205,7 +205,7 @@ async def test_post_process_profile_recent_reads_hongcha_bucket_only(
     ):
         # Pre-populate both buckets inside the patch so get_config mock applies
         _st_mod.append(uid, "user", YEXUAN_ONLY, char_id="yexuan")
-        _st_mod.append(uid, "user", HONGCHA_SIGNAL, char_id="hongcha")
+        _st_mod.append(uid, "user", CHARACTER_B_SIGNAL, char_id="character_b")
 
         await pipeline.post_process(user_id=uid, content="你好", reply="在的", envelope=env)
 
@@ -215,8 +215,8 @@ async def test_post_process_profile_recent_reads_hongcha_bucket_only(
     recent = profile_updates[0]["payload"].get("recent", [])
     recent_texts = " ".join(m.get("content", "") for m in recent)
 
-    assert HONGCHA_SIGNAL in recent_texts, (
-        f"profile recent must contain hongcha sentinel '{HONGCHA_SIGNAL}'; got: {recent_texts!r}"
+    assert CHARACTER_B_SIGNAL in recent_texts, (
+        f"profile recent must contain character_b sentinel '{CHARACTER_B_SIGNAL}'; got: {recent_texts!r}"
     )
     assert YEXUAN_ONLY not in recent_texts, (
         f"profile recent must NOT contain yexuan sentinel '{YEXUAN_ONLY}'; got: {recent_texts!r}"

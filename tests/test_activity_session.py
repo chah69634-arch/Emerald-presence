@@ -83,26 +83,26 @@ def test_create_chess_session(sandbox):
 def test_uid_char_id_path_isolation(sandbox):
     s1 = activity_store.create_session("user1", "yexuan", "gomoku")
     s2 = activity_store.create_session("user2", "yexuan", "gomoku")
-    s3 = activity_store.create_session("user1", "hongcha", "gomoku")
+    s3 = activity_store.create_session("user1", "character_b", "gomoku")
 
     d1 = sandbox.activity_session_dir(char_id="yexuan", uid="user1", activity_type="gomoku", session_id=s1.session_id)
     d2 = sandbox.activity_session_dir(char_id="yexuan", uid="user2", activity_type="gomoku", session_id=s2.session_id)
-    d3 = sandbox.activity_session_dir(char_id="hongcha", uid="user1", activity_type="gomoku", session_id=s3.session_id)
+    d3 = sandbox.activity_session_dir(char_id="character_b", uid="user1", activity_type="gomoku", session_id=s3.session_id)
 
     assert d1 != d2 != d3
     assert "yexuan" in str(d1)
-    assert "hongcha" in str(d3)
+    assert "character_b" in str(d3)
     assert "user1" in str(d1)
     assert "user2" in str(d2)
 
     # 跨 char_id 不可见
     yexuan_active = activity_store.find_active_session("yexuan", "user1", "gomoku")
-    hongcha_active = activity_store.find_active_session("hongcha", "user1", "gomoku")
+    character_b_active = activity_store.find_active_session("character_b", "user1", "gomoku")
     assert yexuan_active is not None
-    assert hongcha_active is not None
-    assert yexuan_active.session_id != hongcha_active.session_id
+    assert character_b_active is not None
+    assert yexuan_active.session_id != character_b_active.session_id
     assert yexuan_active.char_id == "yexuan"
-    assert hongcha_active.char_id == "hongcha"
+    assert character_b_active.char_id == "character_b"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

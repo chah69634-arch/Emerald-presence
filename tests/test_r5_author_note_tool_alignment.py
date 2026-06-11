@@ -73,7 +73,7 @@ def _build_minimal(monkeypatch, *, tool_result=None, user_message="你好"):
     import core.prompt_builder as _pb
     from core.character_loader import Character
 
-    char = Character(name="叶瑄")
+    char = Character(name="Companion")
     messages, meta = _pb.build(
         character=char,
         user_id="u_test",

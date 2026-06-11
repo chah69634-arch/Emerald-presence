@@ -15,7 +15,7 @@ Covers:
 3. summarize_to_midterm handler 不在 handler 内部调用 short_term.load
 4. reflect_to_episodic handler 不在 handler 内部调用 short_term.load
 5. capture_turn_retry handler 对 short_term 只写不读
-6. hongcha payload → short_term.load 从不被调用（无短路到 yexuan 默认桶）
+6. character_b payload → short_term.load 从不被调用（无短路到 yexuan 默认桶）
 7. 旧 payload 缺 char_id → WARN + fallback yexuan（DLQ 兼容层）
 8. 旧 payload 缺 char_id fallback 时 short_term 仍不被读取
 """
@@ -88,7 +88,7 @@ async def test_user_profile_update_does_not_read_short_term(sandbox):
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
     ]
-    payload = _profile_payload(uid, "hongcha", recent_msgs)
+    payload = _profile_payload(uid, "character_b", recent_msgs)
 
     st_load_called = []
 
@@ -123,7 +123,7 @@ async def test_consolidate_to_identity_does_not_read_short_term(sandbox):
     import core.memory.short_term as _st
 
     uid = "uid_consolidate_test"
-    payload = _consolidate_payload(uid, "hongcha")
+    payload = _consolidate_payload(uid, "character_b")
 
     st_load_called = []
 
@@ -158,7 +158,7 @@ async def test_summarize_to_midterm_does_not_read_short_term(sandbox):
     import core.memory.short_term as _st
 
     uid = "uid_summarize_test"
-    payload = _mt_payload(uid, "hongcha")
+    payload = _mt_payload(uid, "character_b")
 
     st_load_called = []
 
@@ -193,7 +193,7 @@ async def test_reflect_to_episodic_does_not_read_short_term(sandbox):
     import core.memory.short_term as _st
 
     uid = "uid_reflect_test"
-    payload = _reflect_payload(uid, "hongcha")
+    payload = _reflect_payload(uid, "character_b")
 
     st_load_called = []
 
@@ -228,7 +228,7 @@ async def test_capture_turn_retry_writes_not_reads_short_term(sandbox):
     import core.memory.short_term as _st
 
     uid = "uid_retry_test"
-    payload = _capture_retry_payload(uid, "hongcha")
+    payload = _capture_retry_payload(uid, "character_b")
 
     st_load_called = []
     st_append_called = []
@@ -253,21 +253,21 @@ async def test_capture_turn_retry_writes_not_reads_short_term(sandbox):
     assert st_load_called == [], (
         f"handler_capture_turn_retry 不应读 short_term，但调用了: {st_load_called}"
     )
-    # 写入应带 char_id=hongcha
+    # 写入应带 char_id=character_b
     for call_info in st_append_called:
-        assert call_info["char_id"] == "hongcha", (
-            f"capture_turn_retry 写入 short_term 应用 char_id='hongcha'，实际: {call_info}"
+        assert call_info["char_id"] == "character_b", (
+            f"capture_turn_retry 写入 short_term 应用 char_id='character_b'，实际: {call_info}"
         )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Test 6: hongcha payload → yexuan short_term bucket 从不被读取
+# Test 6: character_b payload → yexuan short_term bucket 从不被读取
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_hongcha_payload_never_reads_yexuan_short_term(sandbox):
+async def test_character_b_payload_never_reads_yexuan_short_term(sandbox):
     """
-    payload char_id='hongcha' 时，任意 handler 不会以 char_id='yexuan'
+    payload char_id='character_b' 时，任意 handler 不会以 char_id='yexuan'
     调用 short_term.load。
     """
     from core.memory.fixation_pipeline import (
@@ -279,7 +279,7 @@ async def test_hongcha_payload_never_reads_yexuan_short_term(sandbox):
     from core.pipeline import _handler_user_profile_update
     import core.memory.short_term as _st
 
-    uid = "uid_hongcha_isolation"
+    uid = "uid_character_b_isolation"
     yexuan_reads = []
 
     original_load = _st.load
@@ -313,14 +313,14 @@ async def test_hongcha_payload_never_reads_yexuan_short_term(sandbox):
               new=AsyncMock(return_value=True)),
         patch("core.memory.user_profile.extract_and_update", new=AsyncMock()),
     ):
-        await handler_summarize_to_midterm(_mt_payload(uid, "hongcha"))
-        await handler_reflect_to_episodic(_reflect_payload(uid, "hongcha"))
-        await handler_consolidate_to_identity(_consolidate_payload(uid, "hongcha"))
-        await handler_capture_turn_retry(_capture_retry_payload(uid, "hongcha"))
-        await _handler_user_profile_update(_profile_payload(uid, "hongcha", []))
+        await handler_summarize_to_midterm(_mt_payload(uid, "character_b"))
+        await handler_reflect_to_episodic(_reflect_payload(uid, "character_b"))
+        await handler_consolidate_to_identity(_consolidate_payload(uid, "character_b"))
+        await handler_capture_turn_retry(_capture_retry_payload(uid, "character_b"))
+        await _handler_user_profile_update(_profile_payload(uid, "character_b", []))
 
     assert yexuan_reads == [], (
-        f"hongcha payload 下所有 handler 均不应以 char_id='yexuan' 读取 short_term，"
+        f"character_b payload 下所有 handler 均不应以 char_id='yexuan' 读取 short_term，"
         f"但检测到: {yexuan_reads}"
     )
 
@@ -407,13 +407,13 @@ def test_get_char_id_from_payload_returns_char_id_silently(caplog):
     from core.pipeline import _get_scope_from_payload as _pl_helper
 
     with caplog.at_level(logging.WARNING):
-        fp_scope = _fp_helper({"uid": "u1", "char_id": "hongcha"}, "test_handler")
-    assert fp_scope.character_id == "hongcha"
+        fp_scope = _fp_helper({"uid": "u1", "char_id": "character_b"}, "test_handler")
+    assert fp_scope.character_id == "character_b"
     assert not caplog.records, f"char_id 存在时不应有 WARNING，但有: {caplog.records}"
 
     with caplog.at_level(logging.WARNING):
-        pl_scope = _pl_helper({"uid": "u2", "char_id": "hongcha"}, "test_handler2")
-    assert pl_scope.character_id == "hongcha"
+        pl_scope = _pl_helper({"uid": "u2", "char_id": "character_b"}, "test_handler2")
+    assert pl_scope.character_id == "character_b"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -444,7 +444,7 @@ async def test_consolidate_to_identity_integration_no_short_term(sandbox):
         patch("core.memory.episodic_memory.load_unconsolidated", return_value=[]),
         patch("core.memory.user_profile.load", return_value={}),
     ):
-        result = await consolidate_to_identity(uid, mock_llm, char_id="hongcha")
+        result = await consolidate_to_identity(uid, mock_llm, char_id="character_b")
 
     assert st_load_calls == [], (
         f"consolidate_to_identity 完整调用链不应读 short_term，但调用了: {st_load_calls}"

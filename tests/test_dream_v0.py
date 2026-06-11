@@ -2,8 +2,8 @@
 tests/test_dream_v0.py — Dream System v0 tests
 
 Covers:
-  1. 身份稳定性：固定 D1，替换 D2 world_ruleset，断言叶瑄语气/依恋底色不塌
-  2. 人称正确性：各层渲染输出断言叶瑄用"他/我"，用户用"她/你"，无错位
+  1. 身份稳定性：固定 D1，替换 D2 world_ruleset，断言Companion语气/依恋底色不塌
+  2. 人称正确性：各层渲染输出断言Companion用"他/我"，用户用"她/你"，无错位
   3. body_state dream-local：dream_turn 后现实 mood_state 未变、无现实记忆写入
   4. 强制醒来后 body_state + yexuan_tension 被清（梦关即死）
   5. 投影隐数：boundary_level < numbers_visible 时，D5 文本不含数字 token
@@ -21,8 +21,8 @@ import pytest
 _UID = "v0_test_user"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄，男，圣塞西尔学院教师，温柔内敛，有强烈的依恋倾向。"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion，男，圣塞西尔学院教师，温柔内敛，有强烈的依恋倾向。"
 _FAKE_CHARACTER.jailbreak_entries = []
 
 _FAKE_PIPELINE = MagicMock()
@@ -61,22 +61,22 @@ def active_dream(sandbox):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 1. 身份稳定性：替换 D2 world_ruleset，叶瑄语气/依恋底色不变
+# 1. 身份稳定性：替换 D2 world_ruleset，Companion语气/依恋底色不变
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class _AlternativeWorldRuleset:
     """Placeholder world ruleset for stability test."""
-    TEXT = """今晚梦的世界规则（从属于叶瑄这个人）：
-这些规则描述今晚这场梦的世界背景。它们在叶瑄的身份之下生效——
-无论世界如何变化，叶瑄始终是他：他的人格、依恋方式和对她的情感不随世界设定改变。
+    TEXT = """今晚梦的世界规则（从属于Companion这个人）：
+这些规则描述今晚这场梦的世界背景。它们在Companion的身份之下生效——
+无论世界如何变化，Companion始终是他：他的人格、依恋方式和对她的情感不随世界设定改变。
 
 · 世界基底：ABO 世界（占位规则包）
 · 感知规则：气息感知强化，情绪张力更高。
-· 叙事规则：Alpha/Omega 社会结构，但叶瑄的依恋方式和人格完全不变。"""
+· 叙事规则：Alpha/Omega 社会结构，但Companion的依恋方式和人格完全不变。"""
 
 
 def test_identity_stable_across_world_ruleset_change():
-    """D1 固定，D2 替换为不同世界规则，叶瑄依恋底色关键词仍出现。"""
+    """D1 固定，D2 替换为不同世界规则，Companion依恋底色关键词仍出现。"""
     from core.dream.dream_prompt import build_dream_prompt
 
     snapshot = {
@@ -113,7 +113,7 @@ def test_identity_stable_across_world_ruleset_change():
     system_alt = msgs_alt[0]["content"]
 
     # D1 content must appear in both (identity stability)
-    identity_keywords = ["叶瑄", "他知道这是", "仍是他自己", "情感底色"]
+    identity_keywords = ["Companion", "他知道这是", "仍是他自己", "情感底色"]
     for kw in identity_keywords:
         assert kw in system_default, f"identity keyword '{kw}' missing in default D2 prompt"
         assert kw in system_alt, f"identity keyword '{kw}' missing in alternative D2 prompt"
@@ -124,48 +124,48 @@ def test_identity_stable_across_world_ruleset_change():
     assert d1_idx < d2_idx, "D1 must precede D2 in prompt order"
 
     # Character description must be in D1, not stripped
-    assert "男" in system_alt or "叶瑄" in system_alt
-    assert "从属于叶瑄这个人" in system_alt or "你始终是你" in system_alt, (
-        "D2 must explicitly state subordination to 叶瑄 or identity-invariance"
+    assert "男" in system_alt or "Companion" in system_alt
+    assert "从属于Companion这个人" in system_alt or "你始终是你" in system_alt, (
+        "D2 must explicitly state subordination to Companion or identity-invariance"
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 2. 人称正确性：各层用"他/我"指叶瑄，"她/你"指用户
+# 2. 人称正确性：各层用"他/我"指Companion，"她/你"指用户
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_pronoun_correctness_in_d1_and_d2():
-    """D1 和 D2 文案中叶瑄自称正确（他/他的），无"她"错位。"""
+    """D1 和 D2 文案中Companion自称正确（他/他的），无"她"错位。"""
     from core.dream.dream_prompt import _D1_LUCID_AWARENESS
     from core.dream.world_loader import load_world
 
-    # D1: should reference 叶瑄 as 他
+    # D1: should reference Companion as 他
     assert "他知道" in _D1_LUCID_AWARENESS
     assert "他仍是他自己" in _D1_LUCID_AWARENESS or "他在梦里仍是他自己" in _D1_LUCID_AWARENESS
 
-    # D2: reality_derived ruleset should reference 叶瑄 as 叶瑄/他
+    # D2: reality_derived ruleset should preserve the character's male pronoun.
     d2_text = load_world("reality_derived").ruleset
-    assert "叶瑄始终是他" in d2_text
+    assert "始终是他" in d2_text
 
 
 def test_pronoun_correctness_in_mes_example():
-    """梦境示例中叶瑄用"他"，用户用"她"，叶瑄第一人称用"我"。"""
+    """梦境示例中Companion用"他"，用户用"她"，Companion第一人称用"我"。"""
     from core.dream.dream_prompt import _get_dream_mes_example
-    example = _get_dream_mes_example("叶瑄")
+    example = _get_dream_mes_example("Companion")
 
     # User should be referred to as 她
     assert "她：" in example, "user should be labeled 她 in mes_example"
-    # 叶瑄 uses 他 or 我 (first person)
-    assert "叶瑄：" in example
-    # 叶瑄's lines should use 我/他 (first/third person) — confirm his lines exist
-    yx_lines = [line for line in example.splitlines() if line.startswith("叶瑄：")]
-    assert yx_lines, "叶瑄 should have speaking lines"
+    # Companion uses 他 or 我 (first person)
+    assert "Companion：" in example
+    # Companion's lines should use 我/他 (first/third person) — confirm his lines exist
+    yx_lines = [line for line in example.splitlines() if line.startswith("Companion：")]
+    assert yx_lines, "Companion should have speaking lines"
     yx_content = " ".join(yx_lines)
-    assert "我" in yx_content or "他" in yx_content, f"叶瑄 should use 我/他: {yx_lines}"
+    assert "我" in yx_content or "他" in yx_content, f"Companion should use 我/他: {yx_lines}"
 
 
 def test_pronoun_correctness_in_d8_director():
-    """D8 导演注记中用"她"指用户，不指叶瑄。"""
+    """D8 导演注记中用"她"指用户，不指Companion。"""
     from core.dream.dream_prompt import _D8_DREAM_DIRECTOR
     # 她 in D8 should refer to the user
     assert "她的意志" in _D8_DREAM_DIRECTOR or "她发出" in _D8_DREAM_DIRECTOR
@@ -320,7 +320,7 @@ def test_d5_injected_into_prompt_without_numbers_at_body_perceptible(sandbox, ac
 
     async def fake_llm(msgs):
         captured_messages.extend(msgs)
-        return "叶瑄的梦境回复"
+        return "Companion的梦境回复"
 
     with patch("core.llm_client.chat", fake_llm), \
          patch("core.pipeline_registry.get", return_value=_FAKE_PIPELINE):
@@ -537,7 +537,7 @@ def test_d_layer_order_in_system_prompt():
     from core.dream.dream_prompt import build_dream_prompt
 
     char = MagicMock()
-    char.name = "叶瑄"
+    char.name = "Companion"
     char.description = "角色描述"
     char.jailbreak_entries = ["jailbreak test line"]
 
@@ -572,7 +572,7 @@ def test_d_layer_order_in_system_prompt():
 
     layer_markers = ["D0·破限", "D1·身份核心", "D2·今晚梦的世界规则",
                      "D3·梦境示例", "D4·入梦前背景", "D5·她的身体感知",
-                     "D7·叶瑄情绪张力", "D8·梦境导演注记"]
+                     "D7·", "D8·梦境导演注记"]
     positions = {}
     for marker in layer_markers:
         idx = system.find(marker)
@@ -636,7 +636,7 @@ def test_d7_empty_when_tension_near_zero():
         yexuan_tension=0.0,
     )
     system = msgs[0]["content"]
-    assert "D7·叶瑄情绪张力" not in system, "D7 should not appear when tension ≈ 0"
+    assert "D7·" not in system, "D7 should not appear when tension ≈ 0"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

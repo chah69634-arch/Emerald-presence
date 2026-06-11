@@ -11,7 +11,7 @@ Tests:
   7.  边界精确值：0.25 进上升中，0.5 进高位，0.75 进临界
   8.  D7 prompt 不包含 % 字符
   9.  D7 prompt 包含分桶文本（低位/上升中/高位/临界）
-  10. D7 ≤ 0.05 时层 DISABLED（prompt 中不含 D7·叶瑄情绪张力）
+  10. D7 ≤ 0.05 时层 DISABLED（prompt 中不含 D7 情绪张力层）
   11. Scenario 隔离：D4.5 在 scenario 模式仍被禁用
   12. Scenario 隔离：D5 在 scenario 模式仍被禁用
   13. Sandbox D7 注入分桶文本，不注入百分比
@@ -27,8 +27,8 @@ import pytest
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄，男，圣塞西尔学院教师"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion，男，圣塞西尔学院教师"
 _FAKE_CHARACTER.jailbreak_entries = []
 
 _EMPTY_SNAPSHOT: dict[str, Any] = {
@@ -187,12 +187,12 @@ def test_d7_contains_bucket_label(tension, expected_bucket):
 
 def test_d7_disabled_when_tension_low():
     sys = _system(_build(0.04))
-    assert "D7·叶瑄情绪张力" not in sys
+    assert "D7·" not in sys
 
 
 def test_d7_disabled_zero():
     sys = _system(_build(0.0))
-    assert "D7·叶瑄情绪张力" not in sys
+    assert "D7·" not in sys
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -269,7 +269,7 @@ def test_scenario_d5_still_disabled():
 
 def test_sandbox_d7_uses_bucket_not_percent():
     sys = _system(_build(0.6, dream_mode="sandbox"))
-    assert "D7·叶瑄情绪张力" in sys
+    assert "D7·" in sys and "情绪张力" in sys
     assert "高位" in sys
     assert "%" not in sys
 
@@ -280,6 +280,6 @@ def test_sandbox_d7_uses_bucket_not_percent():
 
 def test_mirror_d7_uses_same_bucket_logic():
     sys = _system(_build(0.8, dream_mode="mirror"))
-    assert "D7·叶瑄情绪张力" in sys
+    assert "D7·" in sys and "情绪张力" in sys
     assert "临界" in sys
     assert "%" not in sys

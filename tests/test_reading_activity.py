@@ -12,7 +12,7 @@ tests/test_reading_activity.py
 6.  扫描版/无文本 PDF → PDFOCRRequired
 7.  关闭 session 后 status = "closed"
 8.  不写 short_term / history / user_hidden_state
-9.  char_id 隔离（yexuan/hongcha 路径不相交）
+9.  char_id 隔离（yexuan/character_b 路径不相交）
 10. 文件名路径安全（恶意文件名不逃逸 runtime 目录）
 """
 from __future__ import annotations
@@ -296,39 +296,39 @@ def test_reading_does_not_write_user_hidden_state(sandbox):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 9. char_id 隔离（yexuan / hongcha 路径不相交）
+# 9. char_id 隔离（yexuan / character_b 路径不相交）
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_char_id_isolation_yexuan_vs_hongcha(sandbox):
-    """yexuan 和 hongcha 的 reading session 使用不同目录，互不可见。"""
+def test_char_id_isolation_yexuan_vs_character_b(sandbox):
+    """yexuan 和 character_b 的 reading session 使用不同目录，互不可见。"""
     yexuan_session = _make_session(sandbox, uid="user1", char_id="yexuan")
-    hongcha_session = _make_session(sandbox, uid="user1", char_id="hongcha")
+    character_b_session = _make_session(sandbox, uid="user1", char_id="character_b")
 
     # 路径不同
     yexuan_dir = sandbox.reading_session_dir(
         char_id="yexuan", uid="user1", session_id=yexuan_session.session_id
     )
-    hongcha_dir = sandbox.reading_session_dir(
-        char_id="hongcha", uid="user1", session_id=hongcha_session.session_id
+    character_b_dir = sandbox.reading_session_dir(
+        char_id="character_b", uid="user1", session_id=character_b_session.session_id
     )
-    assert yexuan_dir != hongcha_dir
+    assert yexuan_dir != character_b_dir
     assert "yexuan" in str(yexuan_dir)
-    assert "hongcha" in str(hongcha_dir)
+    assert "character_b" in str(character_b_dir)
 
-    # yexuan 视角看不到 hongcha session
+    # yexuan 视角看不到 character_b session
     found_from_yexuan = activity_store.find_active_session("yexuan", "user1")
-    found_from_hongcha = activity_store.find_active_session("hongcha", "user1")
+    found_from_character_b = activity_store.find_active_session("character_b", "user1")
     assert found_from_yexuan.session_id == yexuan_session.session_id
-    assert found_from_hongcha.session_id == hongcha_session.session_id
-    assert found_from_yexuan.session_id != found_from_hongcha.session_id
+    assert found_from_character_b.session_id == character_b_session.session_id
+    assert found_from_yexuan.session_id != found_from_character_b.session_id
 
 
 def test_load_session_by_id_scoped_to_char(sandbox):
-    """load_session_by_id 跨 char_id 不混用：yexuan session 不出现在 hongcha 查询中。"""
+    """load_session_by_id 跨 char_id 不混用：yexuan session 不出现在 character_b 查询中。"""
     yexuan_session = _make_session(sandbox, uid="user1", char_id="yexuan")
 
-    result = activity_store.load_session_by_id("hongcha", yexuan_session.session_id)
-    assert result is None  # hongcha 域找不到 yexuan 的 session
+    result = activity_store.load_session_by_id("character_b", yexuan_session.session_id)
+    assert result is None  # character_b 域找不到 yexuan 的 session
 
     result2 = activity_store.load_session_by_id("yexuan", yexuan_session.session_id)
     assert result2 is not None

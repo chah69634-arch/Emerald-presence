@@ -42,10 +42,10 @@ def char_dir(tmp_path):
     chars.mkdir()
 
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄"}), encoding="utf-8"
+        json.dumps({"name": "Companion"}), encoding="utf-8"
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶"}), encoding="utf-8"
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser"}), encoding="utf-8"
     )
     (chars / "yexuanJ-5412.json").write_text(
         json.dumps({"name": "J5412"}), encoding="utf-8"
@@ -107,8 +107,8 @@ def test_avatar_url_contains_version(registry):
 
 # ── 2. Characters without avatar return None ──────────────────────────────────
 
-def test_hongcha_no_avatar_returns_none(registry):
-    entry = registry.resolve("hongcha", "character")
+def test_character_b_no_avatar_returns_none(registry):
+    entry = registry.resolve("character_b", "character")
     assert entry.avatar_url is None
 
 
@@ -127,7 +127,7 @@ def test_as_ui_dict_includes_avatar_url_when_present(registry):
 
 
 def test_as_ui_dict_includes_avatar_url_none_when_absent(registry):
-    d = registry.resolve("hongcha", "character").as_ui_dict()
+    d = registry.resolve("character_b", "character").as_ui_dict()
     assert "avatar_url" in d
     assert d["avatar_url"] is None
 
@@ -148,9 +148,9 @@ def test_unknown_char_id_raises_value_error(registry):
 # ── 5. Avatar URL is id-based, not derived from label or filename ─────────────
 
 def test_avatar_url_uses_id_not_label(registry):
-    """The avatar_url path segment must equal the id ('yexuan'), not the label ('叶瑄')."""
+    """The avatar_url path segment must equal the id ('yexuan'), not the label ('Companion')."""
     entry = registry.resolve("yexuan", "character")
-    assert "叶瑄" not in (entry.avatar_url or "")
+    assert "Companion" not in (entry.avatar_url or "")
     assert "yexuan" in (entry.avatar_url or "")
 
 
@@ -161,11 +161,11 @@ def test_avatar_url_uses_id_not_filename(registry):
 
 
 def test_no_cross_character_avatar_fallback(registry):
-    """hongcha must not receive yexuan's avatar_url even though yexuan has one."""
+    """character_b must not receive yexuan's avatar_url even though yexuan has one."""
     yexuan_url = registry.resolve("yexuan", "character").avatar_url
-    hongcha_url = registry.resolve("hongcha", "character").avatar_url
-    assert hongcha_url is None
-    assert hongcha_url != yexuan_url
+    character_b_url = registry.resolve("character_b", "character").avatar_url
+    assert character_b_url is None
+    assert character_b_url != yexuan_url
 
 
 # ── 6 & 7. HTTP GET endpoint ──────────────────────────────────────────────────
@@ -177,7 +177,7 @@ def test_avatar_endpoint_returns_image_for_existing(client_with_avatars):
 
 
 def test_avatar_endpoint_404_when_no_avatar(client_with_avatars):
-    resp = client_with_avatars.get("/settings/character-avatar/hongcha")
+    resp = client_with_avatars.get("/settings/character-avatar/character_b")
     assert resp.status_code == 404
 
 
@@ -197,7 +197,7 @@ def test_avatar_endpoint_404_not_fallback_to_other_character(client_with_avatars
 
 def test_avatar_endpoint_does_not_accept_label(client_with_avatars):
     """Passing the Chinese label as char_id must 404, not resolve yexuan's avatar."""
-    resp = client_with_avatars.get("/settings/character-avatar/叶瑄")
+    resp = client_with_avatars.get("/settings/character-avatar/Companion")
     assert resp.status_code == 404
 
 
@@ -209,23 +209,23 @@ def test_avatar_endpoint_does_not_accept_filename(client_with_avatars):
 
 # ── 8. Upload creates only the target char's avatar file ─────────────────────
 
-def test_upload_hongcha_creates_only_hongcha_file(char_dir, client_with_avatars):
+def test_upload_character_b_creates_only_character_b_file(char_dir, client_with_avatars):
     resp = client_with_avatars.post(
-        "/settings/characters/hongcha/avatar",
+        "/settings/characters/character_b/avatar",
         files={"file": ("avatar.png", b"\x89PNG\r\n\x1a\n", "image/png")},
     )
     assert resp.status_code == 200
 
-    hongcha_path = char_dir / "data" / "runtime" / "characters" / "hongcha" / "avatar.png"
+    character_b_path = char_dir / "data" / "runtime" / "characters" / "character_b" / "avatar.png"
     yexuan_path  = char_dir / "data" / "runtime" / "characters" / "yexuan"  / "avatar.png"
 
-    assert hongcha_path.exists(), "hongcha runtime avatar must be created"
+    assert character_b_path.exists(), "character_b runtime avatar must be created"
     assert not yexuan_path.exists(), "yexuan runtime avatar must NOT be touched"
 
 
 # ── 9. Upload does not touch other characters ─────────────────────────────────
 
-def test_upload_does_not_touch_yexuan_when_uploading_hongcha(char_dir, client_with_avatars):
+def test_upload_does_not_touch_yexuan_when_uploading_character_b(char_dir, client_with_avatars):
     # Pre-create yexuan runtime avatar to verify it's not modified
     yexuan_rt = char_dir / "data" / "runtime" / "characters" / "yexuan"
     yexuan_rt.mkdir(parents=True, exist_ok=True)
@@ -233,12 +233,12 @@ def test_upload_does_not_touch_yexuan_when_uploading_hongcha(char_dir, client_wi
     (yexuan_rt / "avatar.png").write_bytes(sentinel)
 
     client_with_avatars.post(
-        "/settings/characters/hongcha/avatar",
+        "/settings/characters/character_b/avatar",
         files={"file": ("avatar.png", b"\x89PNG\r\n\x1a\n", "image/png")},
     )
 
     assert (yexuan_rt / "avatar.png").read_bytes() == sentinel, \
-        "yexuan runtime avatar must be unchanged after uploading hongcha avatar"
+        "yexuan runtime avatar must be unchanged after uploading character_b avatar"
 
 
 # ── 10. Priority: runtime override served before authored default ─────────────
@@ -264,13 +264,13 @@ def test_after_upload_has_runtime_avatar_is_true(char_dir, monkeypatch):
     _sb._instance = None
 
     # Simulate runtime avatar on disk
-    rt_dir = char_dir / "data" / "runtime" / "characters" / "hongcha"
+    rt_dir = char_dir / "data" / "runtime" / "characters" / "character_b"
     rt_dir.mkdir(parents=True, exist_ok=True)
     (rt_dir / "avatar.png").write_bytes(b"\x89PNG\r\n\x1a\n")
 
     _reg_mod._registry = None
     reg = AssetRegistry()
-    entry = reg.resolve("hongcha", "character")
+    entry = reg.resolve("character_b", "character")
 
     assert entry.has_runtime_avatar is True
     assert entry.avatar_url is not None
@@ -307,7 +307,7 @@ def test_delete_removes_runtime_and_falls_back_to_authored(char_dir, client_with
 
 
 def test_delete_on_char_without_runtime_returns_deleted_false(client_with_avatars):
-    resp = client_with_avatars.delete("/settings/characters/hongcha/avatar")
+    resp = client_with_avatars.delete("/settings/characters/character_b/avatar")
     assert resp.status_code == 200
     assert resp.json()["deleted"] is False
 
@@ -317,7 +317,7 @@ def test_delete_on_char_without_runtime_returns_deleted_false(client_with_avatar
 def test_upload_rejects_oversized_file(client_with_avatars):
     big = b"\x89PNG" + b"\x00" * (5 * 1024 * 1024 + 1)
     resp = client_with_avatars.post(
-        "/settings/characters/hongcha/avatar",
+        "/settings/characters/character_b/avatar",
         files={"file": ("big.png", big, "image/png")},
     )
     assert resp.status_code == 422
@@ -328,7 +328,7 @@ def test_upload_rejects_oversized_file(client_with_avatars):
 
 def test_upload_rejects_gif(client_with_avatars):
     resp = client_with_avatars.post(
-        "/settings/characters/hongcha/avatar",
+        "/settings/characters/character_b/avatar",
         files={"file": ("avatar.gif", b"GIF89a", "image/gif")},
     )
     assert resp.status_code == 422
@@ -336,7 +336,7 @@ def test_upload_rejects_gif(client_with_avatars):
 
 def test_upload_rejects_text(client_with_avatars):
     resp = client_with_avatars.post(
-        "/settings/characters/hongcha/avatar",
+        "/settings/characters/character_b/avatar",
         files={"file": ("avatar.txt", b"hello", "text/plain")},
     )
     assert resp.status_code == 422

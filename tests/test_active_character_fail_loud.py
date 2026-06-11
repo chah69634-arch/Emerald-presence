@@ -22,8 +22,8 @@ Covers:
     → returns 422
     → active_prompt_assets.json unchanged
 
-5.  config.default=yexuan but active_prompt_assets.active_character=hongcha
-    → pipeline uses hongcha
+5.  config.default=yexuan but active_prompt_assets.active_character=character_b
+    → pipeline uses character_b
     → config.default does NOT override active_prompt_assets
 
 6.  active_prompt_assets.json missing, config.default valid
@@ -49,16 +49,16 @@ from core.asset_registry import AssetRegistry
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree with yexuan + hongcha + jailbreaks."""
+    """Minimal characters/ tree with yexuan + character_b + jailbreaks."""
     chars = tmp_path / "characters"
     chars.mkdir()
 
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
 
@@ -99,7 +99,7 @@ def test_missing_active_character_field_raises(chars_tree, monkeypatch, sandbox,
     with pytest.raises(ValueError, match="active_character"):
         pipeline._refresh_character_if_needed()
 
-    assert pipeline.character.name == "叶瑄", "character must remain unchanged"
+    assert pipeline.character.name == "Companion", "character must remain unchanged"
     assert pipeline._active_character_id == "yexuan"
 
 
@@ -115,7 +115,7 @@ def test_empty_active_character_field_raises(chars_tree, monkeypatch, sandbox, r
     with pytest.raises(ValueError, match="active_character"):
         pipeline._refresh_character_if_needed()
 
-    assert pipeline.character.name == "叶瑄"
+    assert pipeline.character.name == "Companion"
     assert pipeline._active_character_id == "yexuan"
 
 
@@ -228,12 +228,12 @@ def test_unknown_active_character_raises_valueerror(chars_tree, monkeypatch, san
         "active_character_id must remain yexuan, not updated to the invalid id"
     )
     # The character object must be the original yexuan, not any new object
-    assert pipeline.character.name == "叶瑄"
+    assert pipeline.character.name == "Companion"
 
 
 def test_unknown_active_character_no_ai_fallback(chars_tree, monkeypatch, sandbox, registry):
     """No Character(name='AI') fallback on unknown active_character."""
-    pipeline = _make_pipeline("hongcha", registry)
+    pipeline = _make_pipeline("character_b", registry)
 
     sandbox.active_prompt_assets().write_text(
         json.dumps({"active_character": "ghost_123", "enabled_lorebooks": [],
@@ -245,13 +245,13 @@ def test_unknown_active_character_no_ai_fallback(chars_tree, monkeypatch, sandbo
         pipeline._refresh_character_if_needed()
 
     assert pipeline.character.name != "AI"
-    assert pipeline.character.name == "红茶", "must keep hongcha, not fallback to AI"
-    assert pipeline._active_character_id == "hongcha"
+    assert pipeline.character.name == "DemoUser", "must keep character_b, not fallback to AI"
+    assert pipeline._active_character_id == "character_b"
 
 
 def test_unknown_active_character_no_yexuan_fallback(chars_tree, monkeypatch, sandbox, registry):
-    """Starting from hongcha, unknown active_character must NOT silently swap to yexuan."""
-    pipeline = _make_pipeline("hongcha", registry)
+    """Starting from character_b, unknown active_character must NOT silently swap to yexuan."""
+    pipeline = _make_pipeline("character_b", registry)
 
     sandbox.active_prompt_assets().write_text(
         json.dumps({"active_character": "ghost_char", "enabled_lorebooks": [],
@@ -262,8 +262,8 @@ def test_unknown_active_character_no_yexuan_fallback(chars_tree, monkeypatch, sa
     with pytest.raises(ValueError):
         pipeline._refresh_character_if_needed()
 
-    assert pipeline.character.name == "红茶", "must stay as hongcha, no fallback to yexuan"
-    assert pipeline._active_character_id == "hongcha"
+    assert pipeline.character.name == "DemoUser", "must stay as character_b, no fallback to yexuan"
+    assert pipeline._active_character_id == "character_b"
 
 
 # ── 3. PATCH /settings/prompt-assets with invalid active_character → 422 ─────
@@ -310,7 +310,7 @@ def test_patch_invalid_active_character_no_disk_write(chars_tree, monkeypatch, s
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             patch_prompt_assets(
-                PromptAssetsUpdate(active_character="叶瑄"),  # label, not id
+                PromptAssetsUpdate(active_character="Companion"),  # label, not id
                 auth="dummy",
             )
         )
@@ -385,7 +385,7 @@ def test_put_active_invalid_id_does_not_update_pipeline(
             set_active_character({"id": "unknown_ghost"}, auth="dummy")
         )
 
-    assert pipeline.character.name == "叶瑄", "Pipeline character must remain unchanged"
+    assert pipeline.character.name == "Companion", "Pipeline character must remain unchanged"
     assert pipeline._active_character_id == "yexuan"
 
 
@@ -400,9 +400,9 @@ def test_active_overrides_config_default_at_pipeline_refresh(
 
     pipeline = Pipeline(_load("yexuan"), lore_engine=None, active_character_id="yexuan")
 
-    # active_prompt_assets says hongcha
+    # active_prompt_assets says character_b
     sandbox.active_prompt_assets().write_text(
-        json.dumps({"active_character": "hongcha", "enabled_lorebooks": [],
+        json.dumps({"active_character": "character_b", "enabled_lorebooks": [],
                     "enabled_jailbreaks": []}),
         encoding="utf-8",
     )
@@ -411,10 +411,10 @@ def test_active_overrides_config_default_at_pipeline_refresh(
     with patch("core.config_loader.get_config", return_value={"character": {"default": "yexuan"}}):
         pipeline._refresh_character_if_needed()
 
-    assert pipeline.character.name == "红茶", (
-        "Pipeline must use active_prompt_assets (hongcha), not config.default (yexuan)"
+    assert pipeline.character.name == "DemoUser", (
+        "Pipeline must use active_prompt_assets (character_b), not config.default (yexuan)"
     )
-    assert pipeline._active_character_id == "hongcha"
+    assert pipeline._active_character_id == "character_b"
 
 
 # ── 6. File missing + valid config.default → auto-created correctly ───────────

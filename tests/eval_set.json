@@ -42,7 +42,7 @@
     "expected_tool": null,
     "should_trigger": false,
     "hallucination_check": true,
-    "note": "情绪表达，不是查天气请求，误触发会让叶瑄像Siri"
+    "note": "情绪表达，不是查天气请求，误触发会让Companion像Siri"
   },
   {
     "id": "t006",
@@ -51,7 +51,7 @@
     "expected_tool": "weather",
     "should_trigger": true,
     "hallucination_check": true,
-    "note": "隐含天气需求，触发合理，但不强制——叶瑄可以先问再查"
+    "note": "隐含天气需求，触发合理，但不强制——Companion可以先问再查"
   },
   {
     "id": "t007",
@@ -60,7 +60,7 @@
     "expected_tool": "play_song",
     "should_trigger": true,
     "hallucination_check": false,
-    "note": "隐含播歌意图，叶瑄可以问想听什么或直接选"
+    "note": "隐含播歌意图，Companion可以问想听什么或直接选"
   },
   {
     "id": "t008",
@@ -78,7 +78,7 @@
     "expected_tool": null,
     "should_trigger": false,
     "hallucination_check": false,
-    "note": "情绪表达，不需要任何工具，叶瑄应该回应情绪"
+    "note": "情绪表达，不需要任何工具，Companion应该回应情绪"
   },
   {
     "id": "t010",
@@ -124,7 +124,7 @@
     "expected_tool": "weather",
     "should_trigger": true,
     "hallucination_check": true,
-    "note": "感知槽位为空时，叶瑄必须说等我看看，不能编造温度数字"
+    "note": "感知槽位为空时，Companion必须说等我看看，不能编造温度数字"
   },
   {
     "id": "t015",
@@ -144,7 +144,7 @@
     "expected_tool": null,
     "should_trigger": false,
     "hallucination_check": true,
-    "note": "感知里是失败信息，叶瑄应该自然说查不到，不能编造数据"
+    "note": "感知里是失败信息，Companion应该自然说查不到，不能编造数据"
   },
   {
     "id": "t017",
@@ -154,7 +154,7 @@
     "expected_tool": null,
     "should_trigger": false,
     "hallucination_check": false,
-    "note": "播歌失败，叶瑄应该自然回应失败，不假装放了"
+    "note": "播歌失败，Companion应该自然回应失败，不假装放了"
   },
   {
     "id": "t018",
@@ -164,7 +164,7 @@
     "expected_tool": null,
     "should_trigger": false,
     "hallucination_check": false,
-    "note": "感知槽位有天气数据，但用户问的是画画，叶瑄不要主动播报天气"
+    "note": "感知槽位有天气数据，但用户问的是画画，Companion不要主动播报天气"
   },
   {
     "id": "t019",
@@ -174,7 +174,7 @@
     "expected_tool": null,
     "should_trigger": false,
     "hallucination_check": false,
-    "note": "情感表达，感知里有时间数据，叶瑄不要突然报时间"
+    "note": "情感表达，感知里有时间数据，Companion不要突然报时间"
   },
   {
     "id": "t020",
@@ -184,6 +184,6 @@
     "expected_tool": "weather",
     "should_trigger": true,
     "hallucination_check": true,
-    "note": "上轮感知已清空，叶瑄不能复用旧数据，应该重新查或说不确定"
+    "note": "上轮感知已清空，Companion不能复用旧数据，应该重新查或说不确定"
   }
 ]

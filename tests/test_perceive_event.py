@@ -355,7 +355,7 @@ async def test_ordinary_owner_chat_unaffected(monkeypatch):
     )
 
     class _FakePipeline:
-        character = type("C", (), {"name": "叶瑄"})()
+        character = type("C", (), {"name": "Companion"})()
 
         async def fetch_context(self, uid, message, *a, **kw):
             return {}
@@ -418,7 +418,7 @@ async def test_desktop_wake_path_b_uses_perceive_gate(monkeypatch):
     llm_calls: list[int] = [0]
 
     class _FakePipeline:
-        character = type("C", (), {"name": "叶瑄"})()
+        character = type("C", (), {"name": "Companion"})()
 
         async def fetch_context(self, uid, prompt, *a, **kw):
             return {}

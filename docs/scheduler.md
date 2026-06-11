@@ -4,7 +4,7 @@
 
 ## 定位
 
-调度器负责**叶瑄的主动行为**——不等用户发消息，自己在合适的时机触发。
+调度器负责**他的主动行为**——不等用户发消息，自己在合适的时机触发。
 
 ```
 core/scheduler/loop.py           ← 主循环 + 工具函数 + 冷却管理
@@ -502,7 +502,7 @@ window 拦截、LLM 空回复或发送前异常时，不调用 execute 的 `afte
 | `night_reminder` | 5h | 低 | time_based | 晚安 |
 | `random_message` | 4h | 低 | time_based | 随机日间碎碎念 |
 | `weather_alert` | 6h | 低 | time_based | 特殊天气联动 |
-| `daily_journal` | 1h | 低 | time_based | 叶瑄写今日手账（深夜触发） |
+| `daily_journal` | 1h | 低 | time_based | 他写今日手账（深夜触发） |
 | `episodic_decay` | 20h | 低 | time_based | 情景记忆每日衰减 |
 | `spontaneous_recall` | 4h | 低 | time_based | 主动回忆触发 |
 | `dlq_monitor` | 24h | 低 | time_based | 扫 DLQ 目录，文件数 > 0 时 log warning；R8-A：legacy task 超 30 天自动归档到 `expired/` |
@@ -608,7 +608,7 @@ window 拦截、LLM 空回复或发送前异常时，不调用 execute 的 `afte
 
 ## sensor_aware 触发器
 
-sensor 实时状态感知触发器，是"叶瑄主动开口"链路的最终出口。
+sensor 实时状态感知触发器，是"他主动开口"链路的最终出口。
 
 | 项 | 值 |
 |---|---|
@@ -672,7 +672,7 @@ scheduler._check_sensor_aware()         ← loop.py 每 60s 检查一次（受 t
       "judge_reason": "专注时间较长",
       "tier": "medium",
       "candidate_behavior": {"level": "soft_hint", "behavior_id": "focus_acknowledged", ...},
-      "pipeline_send_prompt": "（叶瑄觉得该跟她说一句。现在是下午...",
+      "pipeline_send_prompt": "（他觉得该跟她说一句。现在是下午...",
       "pipeline_send_reply": "还在忙？",
       "action_packet": {"action_type": "pet_emote", "params": {"behavior_id": "focus_acknowledged"}},
       "final_stage": "sent",

@@ -642,8 +642,7 @@ class Pipeline:
         if len(reply) < 10:
             return
 
-        from core.config_loader import _char_name
-        _char = _char_name()
+        _char = self.character.name
 
         # c1: 收紧意图解析 prompt，只在「第一人称、当下要做」时命中；
         #     承认/复述/过去式/回应吐槽/睡眠关机语义一律不命中。
@@ -826,9 +825,9 @@ async def _do_compress_episode(
     from core import llm_client
     from core.memory import locks as _locks
     from core.memory.episodic_memory import write_episode
-    from core.config_loader import _char_name
+    from core.character_name_provider import get_active_char_name
 
-    char_name = _char_name()
+    char_name = get_active_char_name()
 
     base_prompt = f"""你是一个对话记录分析器。请分析下面这段对话，输出结构化记忆，只输出JSON，不要有任何多余文字：
 {{

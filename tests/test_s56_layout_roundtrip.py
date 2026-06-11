@@ -76,7 +76,7 @@ def test_old_event_log_fallback_readable_via_union(sandbox):
     old_dir.mkdir(parents=True, exist_ok=True)
     (old_dir / f"{today}.md").write_text(
         "## 10:00\n**用户**：旧路径数据\n> turn_id:old-tid\n"
-        "**叶瑄**：已读到\n> emotion:neutral intensity:0 turn_id:old-tid\n---\n",
+        "**Companion**：已读到\n> emotion:neutral intensity:0 turn_id:old-tid\n---\n",
         encoding="utf-8",
     )
 
@@ -102,7 +102,7 @@ def test_reality_chain_full_turn_new_layout(sandbox):
     two_days_ago = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
     (old_dir / f"{two_days_ago}.md").write_text(
         f"## 09:00\n**用户**：旧数据\n> turn_id:legacy-tid\n"
-        f"**叶瑄**：旧回复\n> emotion:neutral intensity:0 turn_id:legacy-tid\n---\n",
+        f"**Companion**：旧回复\n> emotion:neutral intensity:0 turn_id:legacy-tid\n---\n",
         encoding="utf-8",
     )
 

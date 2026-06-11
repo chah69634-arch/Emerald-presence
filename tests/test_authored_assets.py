@@ -22,7 +22,7 @@ _ROOT = Path(__file__).parent.parent
 TRACKED_JSON = [
     "characters/reality/jailbreak_entries.json",
     "defaults/jailbreak_entries.json",
-    "docs/templates/character_template.json",
+    "examples/character_template.json",
 ]
 
 TRACKED_YAML = [
@@ -87,9 +87,9 @@ def test_lorebook_schema():
 
 
 def test_character_template_has_name_field():
-    """docs/templates/character_template.json must have a 'name' field."""
-    path = _ROOT / "docs/templates/character_template.json"
-    assert path.exists(), "character_template.json missing from docs/templates/"
+    """examples/character_template.json must have a 'name' field."""
+    path = _ROOT / "examples/character_template.json"
+    assert path.exists(), "character_template.json missing from examples/"
     data = json.loads(path.read_text(encoding="utf-8"))
     assert "name" in data, "character_template.json must have a 'name' field"
 
@@ -114,5 +114,5 @@ def test_no_template_files_in_characters_root():
     ]
     assert not bad, (
         f"Template/example scaffold files found in characters/ root "
-        f"(move to docs/templates/ instead): {bad}"
+        f"(move to examples/ instead): {bad}"
     )

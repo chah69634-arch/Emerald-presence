@@ -50,7 +50,7 @@ def test_load_returns_empty_string_when_file_missing(tmp_path, monkeypatch):
             return p
 
     monkeypatch.setattr("core.memory.character_growth.get_paths", _FakePaths)
-    result = cg.load("叶瑄", "test_uid_999")
+    result = cg.load("Companion", "test_uid_999")
     assert result == "", f"Expected '' for missing file, got {result!r}"
 
 
@@ -60,7 +60,7 @@ def test_load_returns_content_when_file_exists(tmp_path, monkeypatch):
 
     growth_dir = tmp_path / "character_growth"
     growth_dir.mkdir(parents=True, exist_ok=True)
-    growth_file = growth_dir / "叶瑄_test_uid_888.md"
+    growth_file = growth_dir / "Companion_test_uid_888.md"
     growth_file.write_text("## 用户特点\n- 夜猫子", encoding="utf-8")
 
     class _FakePaths:
@@ -68,7 +68,7 @@ def test_load_returns_content_when_file_exists(tmp_path, monkeypatch):
             return growth_dir
 
     monkeypatch.setattr("core.memory.character_growth.get_paths", _FakePaths)
-    result = cg.load("叶瑄", "test_uid_888")
+    result = cg.load("Companion", "test_uid_888")
     assert "夜猫子" in result, f"Expected file content, got {result!r}"
 
 

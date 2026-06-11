@@ -4,7 +4,7 @@ import pytest
 
 
 class _MockCharacter:
-    name = "叶瑄"
+    name = "Companion"
 
 
 class _FakePipeline:

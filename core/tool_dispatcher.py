@@ -14,12 +14,12 @@ import platform
 import subprocess
 from typing import Callable
 
-from core.config_loader import get_config, _char_name
+from core.config_loader import get_config
+from core.character_name_provider import get_active_char_name
 from core.error_handler import log_error
 from core.tools.garden_tools import water_garden
 
 logger = logging.getLogger(__name__)
-_CHAR = _char_name()
 
 # ─── 工具注册表 ────────────────────────────────────────────────────────────────
 _TOOL_REGISTRY: dict[str, dict] = {}
@@ -138,14 +138,13 @@ async def _get_episodic_wrapper(user_id: str, topic: str = "") -> str:
     """召回情景记忆。"""
     from core.memory.episodic_memory import retrieve, format_for_prompt
     memories = retrieve(user_id=user_id, topic=topic, top_k=3)
-    return format_for_prompt(memories, char_name=_CHAR) if memories else "暂无相关记忆"
+    return format_for_prompt(memories, char_name=get_active_char_name()) if memories else "暂无相关记忆"
 
 
 async def _get_growth_wrapper(user_id: str) -> str:
     """召回角色对用户的认知。"""
     from core.memory import character_growth
-    from core.config_loader import get_config
-    char_name = _char_name()
+    char_name = get_active_char_name()
     content = character_growth.load(char_name, user_id)
     return content[:500] if content else "暂无认知记录"
 
@@ -209,7 +208,9 @@ async def _desktop_play_pause_wrapper() -> str:
     return "已请求播放/暂停媒体" if result == "ok" else result
 
 
-async def _desktop_notify_wrapper(title: str = _CHAR, message: str = "") -> str:
+async def _desktop_notify_wrapper(title: str = "", message: str = "") -> str:
+    if not title:
+        title = get_active_char_name()
     result = await _push_desktop_action({"type": "notify", "title": title, "message": message})
     return f"已发送通知：{message}" if result == "ok" else result
 
@@ -268,7 +269,7 @@ async def _exit_yandere_wrapper() -> str:
     signal_file = Path(emerald_path) / "data" / "yandere_exit.signal"
     signal_file.parent.mkdir(parents=True, exist_ok=True)
     signal_file.write_text(json.dumps({"exit": True}), encoding="utf-8")
-    return f"{_CHAR}平静下来了"
+    return f"{get_active_char_name()}平静下来了"
 
 
 _TOOL_REGISTRY["get_time"] = {
@@ -375,8 +376,8 @@ _TOOL_REGISTRY["web_search"] = {
 _TOOL_REGISTRY["read_diary"] = {
     "func": _read_diary_wrapper,
     "description": (
-        f"当用户主动请求让{_CHAR}查看、阅读或评价自己的日记时调用。"
-        f"用户会拧巴，除了描述写日记的情况外，即使是只提到了日记也要调用。"
+        "当用户主动请求让{char}查看、阅读或评价自己的日记时调用。"
+        "用户会拧巴，除了描述写日记的情况外，即使是只提到了日记也要调用。"
     ),
     "dangerous": False,
     "category": "info",
@@ -402,7 +403,7 @@ _TOOL_REGISTRY["read_diary"] = {
 
 _TOOL_REGISTRY["read_watch"] = {
     "func": _read_watch_wrapper,
-    "description": f"当用户或{_CHAR}想了解用户的睡眠、心率、运动等身体数据时调用。可以查最近记录或历史趋势。",
+    "description": "当用户或{char}想了解用户的睡眠、心率、运动等身体数据时调用。可以查最近记录或历史趋势。",
     "dangerous": False,
     "category": "memory",
     "parameters": {
@@ -419,7 +420,7 @@ _TOOL_REGISTRY["read_watch"] = {
 
 _TOOL_REGISTRY["search_diary"] = {
     "func": _search_diary_wrapper,
-    "description": f"按主题或关键词检索用户最近30天的日记内容。当{_CHAR}想回忆用户写过的某个话题、情绪、事件时主动调用，不需要用户明确要求。",
+    "description": "按主题或关键词检索用户最近30天的日记内容。当{char}想回忆用户写过的某个话题、情绪、事件时主动调用，不需要用户明确要求。",
     "dangerous": False,
     "category": "memory",
     "parameters": {
@@ -436,7 +437,7 @@ _TOOL_REGISTRY["search_diary"] = {
 
 _TOOL_REGISTRY["desktop_minimize"] = {
     "func": _desktop_minimize_wrapper,
-    "description": f"最小化用户电脑上的某个窗口。当{_CHAR}觉得用户应该休息、或者用户在看让{_CHAR}不开心的东西时可以调用。",
+    "description": "最小化用户电脑上的某个窗口。当{char}觉得用户应该休息、或者用户在看让{char}不开心的东西时可以调用。",
     "dangerous": False,
     "category": "desktop",
     "parameters": {
@@ -455,7 +456,7 @@ _TOOL_REGISTRY["desktop_minimize"] = {
 
 _TOOL_REGISTRY["desktop_open_url"] = {
     "func": _desktop_open_url_wrapper,
-    "description": f"在用户电脑上打开一个网址。{_CHAR}想分享内容、帮用户查东西时使用。",
+    "description": "在用户电脑上打开一个网址。{char}想分享内容、帮用户查东西时使用。",
     "dangerous": False,
     "category": "desktop",
     "parameters": {
@@ -474,7 +475,7 @@ _TOOL_REGISTRY["desktop_open_url"] = {
 
 _TOOL_REGISTRY["desktop_play_pause"] = {
     "func": _desktop_play_pause_wrapper,
-    "description": f"控制用户电脑的媒体播放/暂停。{_CHAR}想让用户听音乐或暂停音乐时使用。",
+    "description": "控制用户电脑的媒体播放/暂停。{char}想让用户听音乐或暂停音乐时使用。",
     "dangerous": False,
     "category": "desktop",
     "parameters": {
@@ -488,7 +489,7 @@ _TOOL_REGISTRY["desktop_play_pause"] = {
 
 _TOOL_REGISTRY["desktop_notify"] = {
     "func": _desktop_notify_wrapper,
-    "description": f"向用户发送一条系统通知。{_CHAR}有重要的事想提醒用户时使用，比如该吃饭了、该休息了。",
+    "description": "向用户发送一条系统通知。{char}有重要的事想提醒用户时使用，比如该吃饭了、该休息了。",
     "dangerous": False,
     "category": "desktop",
     "parameters": {
@@ -534,7 +535,7 @@ _TOOL_REGISTRY["play_song"] = {
 
 _TOOL_REGISTRY["get_profile"] = {
     "func": _get_profile_wrapper,
-    "description": f"获取用户的基本信息和重要事实。当{_CHAR}需要了解用户的基本情况时调用。",
+    "description": "获取用户的基本信息和重要事实。当{char}需要了解用户的基本情况时调用。",
     "dangerous": False,
     "category": "memory",
     "parameters": {
@@ -546,7 +547,7 @@ _TOOL_REGISTRY["get_profile"] = {
 
 _TOOL_REGISTRY["get_episodic"] = {
     "func": _get_episodic_wrapper,
-    "description": f"召回与当前话题相关的情景记忆片段。当{_CHAR}想起某段往事或需要回忆过去时调用。",
+    "description": "召回与当前话题相关的情景记忆片段。当{char}想起某段往事或需要回忆过去时调用。",
     "dangerous": False,
     "category": "memory",
     "parameters": {
@@ -563,7 +564,7 @@ _TOOL_REGISTRY["get_episodic"] = {
 
 _TOOL_REGISTRY["get_growth"] = {
     "func": _get_growth_wrapper,
-    "description": f"读取 {_CHAR} 对用户的 legacy growth snapshot（只读历史成长摘要）。不触发写入或更新。如需了解角色历史认知记录时调用。",
+    "description": "读取 {char} 对用户的 legacy growth snapshot（只读历史成长摘要）。不触发写入或更新。如需了解角色历史认知记录时调用。",
     "dangerous": False,
     "category": "memory",
     "parameters": {
@@ -575,7 +576,7 @@ _TOOL_REGISTRY["get_growth"] = {
 
 _TOOL_REGISTRY["exit_yandere"] = {
     "func": _exit_yandere_wrapper,
-    "description": f"当{_CHAR}决定从病娇状态平静下来时调用，通常是用户说了让她安心的话之后。由{_CHAR}自主判断是否调用，不需要用户明确要求。",
+    "description": "当{char}决定从病娇状态平静下来时调用，通常是用户说了让她安心的话之后。由{char}自主判断是否调用，不需要用户明确要求。",
     "dangerous": False,
     "category": "system",
     "parameters": {
@@ -587,7 +588,7 @@ _TOOL_REGISTRY["exit_yandere"] = {
 
 _TOOL_REGISTRY["water_garden"] = {
     "func": water_garden,
-    "description": f"用户催{_CHAR}去浇花、关心花园、问花长得怎么样并暗示该浇水时调用。无参数。{_CHAR}会按当前心情挑对应的那株花浇一次。",
+    "description": "用户催{char}去浇花、关心花园、问花长得怎么样并暗示该浇水时调用。无参数。{char}会按当前心情挑对应的那株花浇一次。",
     "dangerous": False,
     "category": "info",
     "parameters": {
@@ -675,6 +676,7 @@ def get_tools_schema(categories: list[str] | None = None) -> list[dict]:
     """返回已启用工具的 OpenAI function_calling 格式 schema。
     categories: 若提供，仅返回该分类内的工具；None 返回全部。
     """
+    char_name = get_active_char_name()
     schemas = []
     for name, info in _TOOL_REGISTRY.items():
         if not _is_tool_enabled(name):
@@ -685,7 +687,7 @@ def get_tools_schema(categories: list[str] | None = None) -> list[dict]:
             "type": "function",
             "function": {
                 "name": name,
-                "description": info["description"],
+                "description": info["description"].replace("{char}", char_name),
                 "parameters": info["parameters"],
             },
         })
@@ -721,11 +723,12 @@ def get_probe_prompt(location: str) -> str:
         "不要用工具结果替代陪伴回应；工具结果只能补充事实。"
         "\n可用工具：",
     ]
+    char_name = get_active_char_name()
     for name, spec in _TOOL_REGISTRY.items():
         if spec.get("category") not in ("info", "desktop"):
             continue
         examples = spec.get("examples", [])
-        desc = spec.get("description", "")
+        desc = spec.get("description", "").replace("{char}", char_name)
         example_str = " / ".join(examples) if examples else "（无示例）"
         lines.append(f"- {name}: {desc}\n  触发例句: {example_str}")
     lines.append("\n以上都不符合 → 输出空字符串，不调用任何工具")

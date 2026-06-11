@@ -14,7 +14,7 @@ Covers:
 8.  admin garden active 读取失败时 HTTP 503，不调用 get_state
 9.  admin garden active 非法时 HTTP 422，不调用 get_state
 10. 所有失败场景不 fallback yexuan
-11. active=hongcha 时正常透传 char_id="hongcha"
+11. active=character_b 时正常透传 char_id="character_b"
 """
 
 import json
@@ -273,12 +273,12 @@ def test_no_yexuan_fallback_admin_garden(sandbox):
     assert yexuan_calls == [], "get_state must never be called with fallback char_id='yexuan'"
 
 
-# ── 11. active=hongcha passes hongcha correctly ───────────────────────────────
+# ── 11. active=character_b passes character_b correctly ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_garden_water_hongcha_passes_hongcha(sandbox):
-    """_check_garden_water with active=hongcha must call auto_water_tick(char_id='hongcha')."""
-    _write_active(sandbox, "hongcha")
+async def test_garden_water_character_b_passes_character_b(sandbox):
+    """_check_garden_water with active=character_b must call auto_water_tick(char_id='character_b')."""
+    _write_active(sandbox, "character_b")
 
     called = []
 
@@ -295,13 +295,13 @@ async def test_garden_water_hongcha_passes_hongcha(sandbox):
         from core.scheduler.triggers.garden_water import _check_garden_water
         await _check_garden_water()
 
-    assert called == ["hongcha"], f"expected char_id='hongcha', got {called}"
+    assert called == ["character_b"], f"expected char_id='character_b', got {called}"
 
 
 @pytest.mark.asyncio
-async def test_garden_tools_hongcha_passes_hongcha(sandbox):
-    """water_garden with active=hongcha must call force_water(char_id='hongcha')."""
-    _write_active(sandbox, "hongcha")
+async def test_garden_tools_character_b_passes_character_b(sandbox):
+    """water_garden with active=character_b must call force_water(char_id='character_b')."""
+    _write_active(sandbox, "character_b")
 
     called = []
 
@@ -313,13 +313,13 @@ async def test_garden_tools_hongcha_passes_hongcha(sandbox):
         from core.tools.garden_tools import water_garden
         await water_garden()
 
-    assert called == ["hongcha"], f"expected char_id='hongcha', got {called}"
+    assert called == ["character_b"], f"expected char_id='character_b', got {called}"
 
 
-def test_admin_garden_hongcha_returns_hongcha(sandbox):
-    """admin _active_char_id with active=hongcha must return 'hongcha' without exception."""
-    _write_active(sandbox, "hongcha")
+def test_admin_garden_character_b_returns_character_b(sandbox):
+    """admin _active_char_id with active=character_b must return 'character_b' without exception."""
+    _write_active(sandbox, "character_b")
 
     from admin.routers.garden import _active_char_id
     result = _active_char_id()
-    assert result == "hongcha", f"expected 'hongcha', got {result!r}"
+    assert result == "character_b", f"expected 'character_b', got {result!r}"

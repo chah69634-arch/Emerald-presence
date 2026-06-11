@@ -44,7 +44,7 @@ def _patch_pipeline(monkeypatch, uid: str = _OWNER_ID):
     import main as _main
     fake = MagicMock()
     fake.character = MagicMock()
-    fake.character.name = "叶瑄"
+    fake.character.name = "Companion"
     fake.author_note_extra = ""
     fake._active_character_id = "yexuan"
     # N1: _current_reality_scope must return a real MemoryScope so char_id is a string.
@@ -317,7 +317,7 @@ async def test_stamp_qq_used_in_reality_chat(sandbox, monkeypatch):
     import main as _main
     fake = MagicMock()
     fake.character = MagicMock()
-    fake.character.name = "叶瑄"
+    fake.character.name = "Companion"
     fake.author_note_extra = ""
     fake._active_character_id = "yexuan"
     # N1 fix: _current_reality_scope must return a real MemoryScope

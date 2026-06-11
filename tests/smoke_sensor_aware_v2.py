@@ -145,7 +145,7 @@ async def scene_c():
             return_value=(True, None),
         ) as mock_action,
         patch("core.scheduler.sensor_events.mark_proactive_sent") as mock_mark,
-        patch("core.scheduler.triggers.sensor_aware._char_name", return_value="叶瑄"),
+        patch("core.scheduler.triggers.sensor_aware._char_name", return_value="Companion"),
     ):
         await sa.handle_tick()
 
@@ -202,7 +202,7 @@ async def scene_d():
             return_value=(True, None),
         ) as mock_action,
         patch("core.scheduler.sensor_events.mark_proactive_sent"),
-        patch("core.scheduler.triggers.sensor_aware._char_name", return_value="叶瑄"),
+        patch("core.scheduler.triggers.sensor_aware._char_name", return_value="Companion"),
     ):
         await sa.handle_tick()
 
@@ -258,7 +258,7 @@ async def scene_e():
             return_value=(True, None),
         ) as mock_action,
         patch("core.scheduler.sensor_events.mark_proactive_sent"),
-        patch("core.scheduler.triggers.sensor_aware._char_name", return_value="叶瑄"),
+        patch("core.scheduler.triggers.sensor_aware._char_name", return_value="Companion"),
     ):
         await sa.handle_tick()
 

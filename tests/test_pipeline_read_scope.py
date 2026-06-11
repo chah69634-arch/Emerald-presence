@@ -11,7 +11,7 @@ Covers:
 5.  episodic_memory.retrieve    receives char_id=active_character_id
 6.  user_identity.format_for_prompt  receives char_id=active_character_id
 7.  impression_loader.load_impression_text  receives char_id=active_character_id
-8.  Character switch: yexuan → hongcha, fetch_context uses new id
+8.  Character switch: yexuan → character_b, fetch_context uses new id
 9.  Invalid active_character: fetch_context raises, no reader called
 """
 
@@ -46,16 +46,16 @@ import core.user_relation             # noqa: F401
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree with yexuan + hongcha."""
+    """Minimal characters/ tree with yexuan + character_b."""
     chars = tmp_path / "characters"
     chars.mkdir()
 
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
 
@@ -168,15 +168,15 @@ def _capture_char_id_async(monkeypatch, module, func_name):
     return captured
 
 
-# ── 1. event_log.search receives char_id="hongcha" ───────────────────────────
+# ── 1. event_log.search receives char_id="character_b" ───────────────────────────
 
 def test_fetch_context_passes_char_id_to_event_log_search(
     chars_tree, monkeypatch, sandbox, registry
 ):
     import core.memory.event_log as _el
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -190,20 +190,20 @@ def test_fetch_context_passes_char_id_to_event_log_search(
     _run_fetch(pipeline)
 
     assert len(captured) == 1, "event_log.search should be called once"
-    assert captured[0] == "hongcha", (
-        f"event_log.search must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"event_log.search must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 2. user_profile.load receives char_id="hongcha" ──────────────────────────
+# ── 2. user_profile.load receives char_id="character_b" ──────────────────────────
 
 def test_fetch_context_passes_char_id_to_user_profile_load(
     chars_tree, monkeypatch, sandbox, registry
 ):
     import core.memory.user_profile as _up
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -217,20 +217,20 @@ def test_fetch_context_passes_char_id_to_user_profile_load(
     _run_fetch(pipeline)
 
     assert len(captured) >= 1, "user_profile.load should be called"
-    assert captured[0] == "hongcha", (
-        f"user_profile.load must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"user_profile.load must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 3. mid_term.format_for_prompt receives char_id="hongcha" ─────────────────
+# ── 3. mid_term.format_for_prompt receives char_id="character_b" ─────────────────
 
 def test_fetch_context_passes_char_id_to_mid_term_format(
     chars_tree, monkeypatch, sandbox, registry
 ):
     import core.memory.mid_term as _mt
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -244,20 +244,20 @@ def test_fetch_context_passes_char_id_to_mid_term_format(
     _run_fetch(pipeline)
 
     assert len(captured) >= 1, "mid_term.format_for_prompt should be called"
-    assert captured[0] == "hongcha", (
-        f"mid_term.format_for_prompt must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"mid_term.format_for_prompt must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 4. short_term.load_for_prompt receives char_id="hongcha" ─────────────────
+# ── 4. short_term.load_for_prompt receives char_id="character_b" ─────────────────
 
 def test_fetch_context_passes_char_id_to_short_term_load_for_prompt(
     chars_tree, monkeypatch, sandbox, registry
 ):
     import core.memory.short_term as _st
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -271,20 +271,20 @@ def test_fetch_context_passes_char_id_to_short_term_load_for_prompt(
     _run_fetch(pipeline)
 
     assert len(captured) >= 1, "short_term.load_for_prompt should be called"
-    assert captured[0] == "hongcha", (
-        f"short_term.load_for_prompt must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"short_term.load_for_prompt must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 5. episodic_memory.retrieve receives char_id="hongcha" ───────────────────
+# ── 5. episodic_memory.retrieve receives char_id="character_b" ───────────────────
 
 def test_fetch_context_passes_char_id_to_episodic_retrieve(
     chars_tree, monkeypatch, sandbox, registry
 ):
     import core.memory.episodic_memory as _ep
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -298,20 +298,20 @@ def test_fetch_context_passes_char_id_to_episodic_retrieve(
     _run_fetch(pipeline)
 
     assert len(captured) >= 1, "episodic_memory.retrieve should be called"
-    assert captured[0] == "hongcha", (
-        f"episodic_memory.retrieve must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"episodic_memory.retrieve must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 6. user_identity.format_for_prompt receives char_id="hongcha" ────────────
+# ── 6. user_identity.format_for_prompt receives char_id="character_b" ────────────
 
 def test_fetch_context_passes_char_id_to_user_identity_format(
     chars_tree, monkeypatch, sandbox, registry
 ):
     import core.memory.user_identity as _ui
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -325,12 +325,12 @@ def test_fetch_context_passes_char_id_to_user_identity_format(
     _run_fetch(pipeline)
 
     assert len(captured) >= 1, "user_identity.format_for_prompt should be called"
-    assert captured[0] == "hongcha", (
-        f"user_identity.format_for_prompt must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"user_identity.format_for_prompt must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 7. impression_loader.load_impression_text receives char_id="hongcha" ──────
+# ── 7. impression_loader.load_impression_text receives char_id="character_b" ──────
 
 def test_fetch_context_passes_char_id_to_impression_loader(
     chars_tree, monkeypatch, sandbox, registry
@@ -342,8 +342,8 @@ def test_fetch_context_passes_char_id_to_impression_loader(
     """
     import core.dream.impression_loader as _il
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_base_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -357,18 +357,18 @@ def test_fetch_context_passes_char_id_to_impression_loader(
     _run_fetch(pipeline)
 
     assert len(captured) >= 1, "load_impression_text should be called"
-    assert captured[0] == "hongcha", (
-        f"load_impression_text must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"load_impression_text must receive char_id='character_b', got {captured[0]!r}"
     )
 
 
-# ── 8. Character switch: yexuan → hongcha ────────────────────────────────────
+# ── 8. Character switch: yexuan → character_b ────────────────────────────────────
 
 def test_fetch_context_uses_new_char_id_after_switch(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
-    First run with yexuan, then update active_prompt_assets to hongcha.
+    First run with yexuan, then update active_prompt_assets to character_b.
     fetch_context must pass the new char_id after the switch.
     """
     import core.memory.short_term as _st
@@ -389,13 +389,13 @@ def test_fetch_context_uses_new_char_id_after_switch(
     _run_fetch(pipeline)
     assert captured[-1] == "yexuan", f"First call must use yexuan, got {captured[-1]!r}"
 
-    # Switch active to hongcha
-    _write_active(sandbox, "hongcha")
+    # Switch active to character_b
+    _write_active(sandbox, "character_b")
 
-    # Second call: must now use hongcha
+    # Second call: must now use character_b
     _run_fetch(pipeline)
-    assert captured[-1] == "hongcha", (
-        f"After switch, fetch_context must use hongcha, got {captured[-1]!r}"
+    assert captured[-1] == "character_b", (
+        f"After switch, fetch_context must use character_b, got {captured[-1]!r}"
     )
 
 

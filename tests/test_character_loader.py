@@ -6,7 +6,7 @@ Fail-loud character loading tests (P1.5).
 Covers:
 - character.default: yexuan  →  loads yexuan.json
 - character.default: yexuan.json  →  legacy normalize → loads yexuan.json
-- character.default: 叶瑄  →  legacy normalize (Chinese label) → loads yexuan.json
+- character.default: Companion  →  legacy normalize (Chinese label) → loads yexuan.json
 - unknown character id  →  ValueError
 - registry points to filename that is missing on disk  →  FileNotFoundError
 - corrupt character JSON  →  json.JSONDecodeError
@@ -39,7 +39,7 @@ def chars_dir(tmp_path):
     d.mkdir()
     (d / "yexuan.json").write_text(
         json.dumps({
-            "name": "叶瑄",
+            "name": "Companion",
             "description": "测试描述",
             "personality": "温柔",
             "scenario": "",
@@ -66,7 +66,7 @@ def registry_from(chars_dir, monkeypatch):
 
 def test_load_by_id(registry_from):
     char = load("yexuan")
-    assert char.name == "叶瑄"
+    assert char.name == "Companion"
     assert isinstance(char, Character)
 
 
@@ -74,14 +74,14 @@ def test_load_by_id(registry_from):
 
 def test_load_by_legacy_filename(registry_from):
     char = load("yexuan.json")
-    assert char.name == "叶瑄"
+    assert char.name == "Companion"
 
 
-# ── 3. Legacy: Chinese label "叶瑄" normalizes to id and loads ───────────────
+# ── 3. Legacy: Chinese label "Companion" normalizes to id and loads ───────────────
 
 def test_load_by_chinese_label(registry_from):
-    char = load("叶瑄")
-    assert char.name == "叶瑄"
+    char = load("Companion")
+    assert char.name == "Companion"
 
 
 # ── 4. Unknown id → ValueError (fail-loud) ───────────────────────────────────
@@ -193,8 +193,8 @@ def test_authored_asset_missing_raises_not_silently_skipped(chars_dir, monkeypat
 # ── 11. Chinese label with .json extension normalizes correctly ───────────────
 
 def test_chinese_label_with_extension(registry_from):
-    char = load("叶瑄.json")
-    assert char.name == "叶瑄"
+    char = load("Companion.json")
+    assert char.name == "Companion"
 
 
 # ── 12. World-book field is a list ────────────────────────────────────────────

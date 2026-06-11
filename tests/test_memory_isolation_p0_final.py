@@ -5,11 +5,11 @@ P0 Final Gate: 内容级跨角色串味验收
 确认"不再产生新串味"成立。
 
 场景 A: active=yexuan 写入唯一词"草莓大福-P0Final"
-        → 切 active=hongcha → fetch_context → prompt 不含该词
-场景 B: active=hongcha 写入唯一词"XYZ动画-P0Final"
+        → 切 active=character_b → fetch_context → prompt 不含该词
+场景 B: active=character_b 写入唯一词"XYZ动画-P0Final"
         → 切 active=yexuan → fetch_context → prompt 不含该词
-场景 C: yexuan 触发 hidden_state/afterglow → 读 hongcha bucket → 未受影响
-场景 D: 入梦 active=yexuan → 关梦前切 active=hongcha
+场景 C: yexuan 触发 hidden_state/afterglow → 读 character_b bucket → 未受影响
+场景 D: 入梦 active=yexuan → 关梦前切 active=character_b
         → close (使用 dream_state.char_id=yexuan) → summary/impression 写 yexuan 桶
 
 禁止 sleep；直接调用同步写路径 + drain slow_queue / 直接 handler 调用。
@@ -50,11 +50,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -122,17 +122,17 @@ def _apply_fetch_stubs(monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 场景 A: yexuan 写入唯一词 → 切 hongcha → fetch_context → 不含 yexuan 词
+# 场景 A: yexuan 写入唯一词 → 切 character_b → fetch_context → 不含 yexuan 词
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_scenario_a_yexuan_content_not_in_hongcha_context(
+def test_scenario_a_yexuan_content_not_in_character_b_context(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
     内容级隔离 A:
     1. capture_turn 写"草莓大福-P0Final"到 yexuan short_term
     2. mid_term.append 写含唯一词摘要到 yexuan mid_term（同步，不走 LLM）
-    3. 切 active=hongcha
+    3. 切 active=character_b
     4. fetch_context → context["history"] 和 context["mid_term"] 均不含唯一词
     """
     from core.memory.fixation_pipeline import capture_turn
@@ -155,21 +155,21 @@ def test_scenario_a_yexuan_content_not_in_hongcha_context(
     yexuan_mt = _mt.format_for_prompt(uid, char_id="yexuan")
     assert unique_word in yexuan_mt, "预置失败：yexuan mid_term 应含唯一词"
 
-    # Step 2: Switch to hongcha and fetch_context
-    _write_active(sandbox, "hongcha")
+    # Step 2: Switch to character_b and fetch_context
+    _write_active(sandbox, "character_b")
     _apply_fetch_stubs(monkeypatch)
-    pipeline = _make_pipeline("hongcha", registry)
+    pipeline = _make_pipeline("character_b", registry)
     ctx = asyncio.run(pipeline.fetch_context(user_id=uid, content="你好"))
 
     # Step 3: Verify no contamination
     hist_text = " ".join(m.get("content", "") for m in ctx["history"])
     assert unique_word not in hist_text, (
-        f"P0 FAIL 场景A: hongcha context['history'] 含有 yexuan 唯一词 {unique_word!r}\n"
+        f"P0 FAIL 场景A: character_b context['history'] 含有 yexuan 唯一词 {unique_word!r}\n"
         f"history: {hist_text!r}"
     )
     mid_text = ctx.get("mid_term", "")
     assert unique_word not in mid_text, (
-        f"P0 FAIL 场景A: hongcha context['mid_term'] 含有 yexuan 唯一词 {unique_word!r}\n"
+        f"P0 FAIL 场景A: character_b context['mid_term'] 含有 yexuan 唯一词 {unique_word!r}\n"
         f"mid_term: {mid_text!r}"
     )
 
@@ -191,22 +191,22 @@ def test_scenario_a_yexuan_bucket_still_has_content(sandbox):
     assert unique_word in yexuan_text, (
         "正控失败：yexuan 写路径未正确工作，short_term 应含唯一词"
     )
-    # hongcha bucket must be empty for this uid
-    hongcha_hist = load_for_prompt(uid, char_id="hongcha")
-    assert hongcha_hist == [], "yexuan 写入不应污染 hongcha short_term"
+    # character_b bucket must be empty for this uid
+    character_b_hist = load_for_prompt(uid, char_id="character_b")
+    assert character_b_hist == [], "yexuan 写入不应污染 character_b short_term"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 场景 B: hongcha 写入唯一词 → 切 yexuan → fetch_context → 不含 hongcha 词
+# 场景 B: character_b 写入唯一词 → 切 yexuan → fetch_context → 不含 character_b 词
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_scenario_b_hongcha_content_not_in_yexuan_context(
+def test_scenario_b_character_b_content_not_in_yexuan_context(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
     内容级隔离 B:
-    1. capture_turn 写"XYZ动画-P0Final"到 hongcha short_term
-    2. mid_term.append 写含唯一词摘要到 hongcha mid_term（同步，不走 LLM）
+    1. capture_turn 写"XYZ动画-P0Final"到 character_b short_term
+    2. mid_term.append 写含唯一词摘要到 character_b mid_term（同步，不走 LLM）
     3. 切 active=yexuan
     4. fetch_context → context["history"] 和 context["mid_term"] 均不含唯一词
     """
@@ -219,16 +219,16 @@ def test_scenario_b_hongcha_content_not_in_yexuan_context(
     uid = _UID_BASE + "_b"
     unique_word = "XYZ动画-P0Final"
 
-    # Step 1: Write unique word to hongcha buckets
-    capture_turn(uid, f"{unique_word}用户消息", f"{unique_word}回复", char_id="hongcha", envelope=env)
-    _mt.append(uid, f"摘要:{unique_word}", tags=[], char_id="hongcha")
+    # Step 1: Write unique word to character_b buckets
+    capture_turn(uid, f"{unique_word}用户消息", f"{unique_word}回复", char_id="character_b", envelope=env)
+    _mt.append(uid, f"摘要:{unique_word}", tags=[], char_id="character_b")
 
-    # Sanity: verify unique word IS in hongcha bucket
-    hongcha_hist = load_for_prompt(uid, char_id="hongcha")
-    hongcha_text = " ".join(m.get("content", "") for m in hongcha_hist)
-    assert unique_word in hongcha_text, "预置失败：hongcha short_term 应含唯一词"
-    hongcha_mt = _mt.format_for_prompt(uid, char_id="hongcha")
-    assert unique_word in hongcha_mt, "预置失败：hongcha mid_term 应含唯一词"
+    # Sanity: verify unique word IS in character_b bucket
+    character_b_hist = load_for_prompt(uid, char_id="character_b")
+    character_b_text = " ".join(m.get("content", "") for m in character_b_hist)
+    assert unique_word in character_b_text, "预置失败：character_b short_term 应含唯一词"
+    character_b_mt = _mt.format_for_prompt(uid, char_id="character_b")
+    assert unique_word in character_b_mt, "预置失败：character_b mid_term 应含唯一词"
 
     # Step 2: Switch to yexuan and fetch_context
     _write_active(sandbox, "yexuan")
@@ -239,18 +239,18 @@ def test_scenario_b_hongcha_content_not_in_yexuan_context(
     # Step 3: Verify no contamination
     hist_text = " ".join(m.get("content", "") for m in ctx["history"])
     assert unique_word not in hist_text, (
-        f"P0 FAIL 场景B: yexuan context['history'] 含有 hongcha 唯一词 {unique_word!r}\n"
+        f"P0 FAIL 场景B: yexuan context['history'] 含有 character_b 唯一词 {unique_word!r}\n"
         f"history: {hist_text!r}"
     )
     mid_text = ctx.get("mid_term", "")
     assert unique_word not in mid_text, (
-        f"P0 FAIL 场景B: yexuan context['mid_term'] 含有 hongcha 唯一词 {unique_word!r}\n"
+        f"P0 FAIL 场景B: yexuan context['mid_term'] 含有 character_b 唯一词 {unique_word!r}\n"
         f"mid_term: {mid_text!r}"
     )
 
 
-def test_scenario_b_hongcha_bucket_still_has_content(sandbox):
-    """场景 B 正控：hongcha 桶仍保有写入的唯一词（写路径未破坏）。"""
+def test_scenario_b_character_b_bucket_still_has_content(sandbox):
+    """场景 B 正控：character_b 桶仍保有写入的唯一词（写路径未破坏）。"""
     from core.memory.fixation_pipeline import capture_turn
     from core.memory.short_term import load_for_prompt
     from core.write_envelope import WriteEnvelope, SourceType
@@ -259,28 +259,28 @@ def test_scenario_b_hongcha_bucket_still_has_content(sandbox):
     uid = _UID_BASE + "_b_ctrl"
     unique_word = "XYZ动画-P0Final-控制"
 
-    capture_turn(uid, f"{unique_word}用户", f"{unique_word}回复", char_id="hongcha", envelope=env)
+    capture_turn(uid, f"{unique_word}用户", f"{unique_word}回复", char_id="character_b", envelope=env)
 
-    hongcha_hist = load_for_prompt(uid, char_id="hongcha")
-    hongcha_text = " ".join(m.get("content", "") for m in hongcha_hist)
-    assert unique_word in hongcha_text, (
-        "正控失败：hongcha 写路径未正确工作，short_term 应含唯一词"
+    character_b_hist = load_for_prompt(uid, char_id="character_b")
+    character_b_text = " ".join(m.get("content", "") for m in character_b_hist)
+    assert unique_word in character_b_text, (
+        "正控失败：character_b 写路径未正确工作，short_term 应含唯一词"
     )
     # yexuan bucket must be empty for this uid
     yexuan_hist = load_for_prompt(uid, char_id="yexuan")
-    assert yexuan_hist == [], "hongcha 写入不应污染 yexuan short_term"
+    assert yexuan_hist == [], "character_b 写入不应污染 yexuan short_term"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 场景 C: yexuan afterglow → load hongcha hidden_state → 未受污染
+# 场景 C: yexuan afterglow → load character_b hidden_state → 未受污染
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_scenario_c_yexuan_afterglow_not_in_hongcha_hidden_state(sandbox):
+def test_scenario_c_yexuan_afterglow_not_in_character_b_hidden_state(sandbox):
     """
     隔离验收 C:
     - yexuan 触发 afterglow 落盘 + integrate (sensitivity.current 上涨)
-    - 读 hongcha hidden_state
-    - hongcha bucket sensitivity.current 保持 50.0（未受 yexuan afterglow 影响）
+    - 读 character_b hidden_state
+    - character_b bucket sensitivity.current 保持 50.0（未受 yexuan afterglow 影响）
     - yexuan bucket sensitivity.current > 50.0（afterglow 正确写入）
     直接调用同步函数，不使用 sleep。
     """
@@ -304,7 +304,7 @@ def test_scenario_c_yexuan_afterglow_not_in_hongcha_hidden_state(sandbox):
 
     state_h = default_hidden_state()
     state_h.sensitivity.current.value = 50.0
-    save_hidden_state(uid, state_h, char_id="hongcha")
+    save_hidden_state(uid, state_h, char_id="character_b")
 
     # yexuan afterglow: comfort tone → sensitivity.current should increase
     residue = AfterglowResidueInput(emotional_tags=["warm"], tone="comfort", age_hours=0.0)
@@ -312,13 +312,13 @@ def test_scenario_c_yexuan_afterglow_not_in_hongcha_hidden_state(sandbox):
     envelope = stamp_dream_afterglow()
     integrate_afterglow_and_save(uid, residue, envelope, now, char_id="yexuan")
 
-    # Load hongcha bucket — must be unchanged at 50.0
-    hongcha_after = load_hidden_state(uid, char_id="hongcha")
+    # Load character_b bucket — must be unchanged at 50.0
+    character_b_after = load_hidden_state(uid, char_id="character_b")
     yexuan_after = load_hidden_state(uid, char_id="yexuan")
 
-    assert hongcha_after.sensitivity.current.value == pytest.approx(50.0), (
-        f"P0 FAIL 场景C: hongcha hidden_state.sensitivity.current 被 yexuan afterglow 改动: "
-        f"{hongcha_after.sensitivity.current.value} (期望 50.0)"
+    assert character_b_after.sensitivity.current.value == pytest.approx(50.0), (
+        f"P0 FAIL 场景C: character_b hidden_state.sensitivity.current 被 yexuan afterglow 改动: "
+        f"{character_b_after.sensitivity.current.value} (期望 50.0)"
     )
     assert yexuan_after.sensitivity.current.value > 50.0, (
         f"正控失败 场景C: yexuan afterglow 应已上调 sensitivity.current，"
@@ -328,7 +328,7 @@ def test_scenario_c_yexuan_afterglow_not_in_hongcha_hidden_state(sandbox):
 
 def test_scenario_c_afterglow_residue_file_isolation(sandbox):
     """
-    场景 C 补充：afterglow_residue.json 文件只写 yexuan 桶，不写 hongcha 桶。
+    场景 C 补充：afterglow_residue.json 文件只写 yexuan 桶，不写 character_b 桶。
     """
     from datetime import datetime, timezone
     from core.memory.user_hidden_state import AfterglowResidueInput
@@ -341,27 +341,27 @@ def test_scenario_c_afterglow_residue_file_isolation(sandbox):
     save_afterglow_residue(uid, residue, created_at=now, char_id="yexuan")
 
     yexuan_path = sandbox.user_memory_root(uid, char_id="yexuan") / "afterglow_residue.json"
-    hongcha_path = sandbox.user_memory_root(uid, char_id="hongcha") / "afterglow_residue.json"
+    character_b_path = sandbox.user_memory_root(uid, char_id="character_b") / "afterglow_residue.json"
 
     assert yexuan_path.exists(), "yexuan afterglow_residue.json 应被写入"
-    assert not hongcha_path.exists(), (
-        "yexuan afterglow 不应写入 hongcha 桶的 afterglow_residue.json"
+    assert not character_b_path.exists(), (
+        "yexuan afterglow 不应写入 character_b 桶的 afterglow_residue.json"
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 场景 D: 入梦 active=yexuan → 切 active=hongcha → close → 写 yexuan 桶
+# 场景 D: 入梦 active=yexuan → 切 active=character_b → close → 写 yexuan 桶
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_scenario_d_dream_close_writes_to_session_char_yexuan(sandbox):
     """
     Dream 桶锁定验收 D:
     - dream_state.char_id="yexuan"（入梦时锁定）
-    - "active" 已切换到 hongcha（不影响 dream close 路径）
+    - "active" 已切换到 character_b（不影响 dream close 路径）
     - _generate_summary_bg(char_id="yexuan") 使用入梦时的 char_id
     - summary 写入 yexuan summaries_dir
     - impression 写入 yexuan impressions 桶
-    - hongcha summaries_dir 和 impressions 桶均为空
+    - character_b summaries_dir 和 impressions 桶均为空
     """
     from core.dream.dream_state import write_state, DreamStatus
     from core.dream.impression_store import load_impressions
@@ -382,12 +382,12 @@ def test_scenario_d_dream_close_writes_to_session_char_yexuan(sandbox):
     archive_dir = sandbox.dreams_archive_dir(char_id="yexuan")
     archive_dir.mkdir(parents=True, exist_ok=True)
     (archive_dir / f"dream_{dream_id}.jsonl").write_text(
-        json.dumps({"role": "user", "content": "叶瑄梦境内容场景D"}) + "\n",
+        json.dumps({"role": "user", "content": "Companion梦境内容场景D"}) + "\n",
         encoding="utf-8",
     )
 
     mock_summary = json.dumps({
-        "title": "叶瑄之梦",
+        "title": "Companion之梦",
         "summary": "漂浮感",
         "emotional_tags": ["温柔"],
         "high_weight_lines": [],
@@ -406,20 +406,20 @@ def test_scenario_d_dream_close_writes_to_session_char_yexuan(sandbox):
              patch("core.dream.distill_impression._llm_distill",
                    AsyncMock(return_value=mock_distill_result)), \
              patch("core.dream.dream_exit_afterglow.wire_afterglow_from_summary"):
-            # char_id comes from dream_state — even if active has been switched to hongcha
+            # char_id comes from dream_state — even if active has been switched to character_b
             await _generate_summary_bg(uid, dream_id, "soft", char_id="yexuan")
 
     asyncio.run(run())
 
-    # Verify summary written to yexuan summaries dir, NOT hongcha
+    # Verify summary written to yexuan summaries dir, NOT character_b
     yexuan_summary_path = sandbox.dreams_summaries_dir(char_id="yexuan") / f"dream_{dream_id}.summary.json"
-    hongcha_summary_path = sandbox.dreams_summaries_dir(char_id="hongcha") / f"dream_{dream_id}.summary.json"
+    character_b_summary_path = sandbox.dreams_summaries_dir(char_id="character_b") / f"dream_{dream_id}.summary.json"
 
     assert yexuan_summary_path.exists(), (
         f"P0 FAIL 场景D: summary 应写入 yexuan summaries_dir，但文件不存在: {yexuan_summary_path}"
     )
-    assert not hongcha_summary_path.exists(), (
-        f"P0 FAIL 场景D: summary 不应写入 hongcha summaries_dir，但文件存在: {hongcha_summary_path}"
+    assert not character_b_summary_path.exists(), (
+        f"P0 FAIL 场景D: summary 不应写入 character_b summaries_dir，但文件存在: {character_b_summary_path}"
     )
 
     # Verify summary record carries char_id='yexuan' (T-06 seam)
@@ -428,15 +428,15 @@ def test_scenario_d_dream_close_writes_to_session_char_yexuan(sandbox):
         f"summary 记录的 char_id 应为 'yexuan'，实际: {summary_record.get('char_id')!r}"
     )
 
-    # Verify impression written to yexuan bucket, NOT hongcha
+    # Verify impression written to yexuan bucket, NOT character_b
     yexuan_impressions = load_impressions(uid, char_id="yexuan")
-    hongcha_impressions = load_impressions(uid, char_id="hongcha")
+    character_b_impressions = load_impressions(uid, char_id="character_b")
 
     assert len(yexuan_impressions) >= 1, (
         f"P0 FAIL 场景D: impression 应写入 yexuan 桶，但实际: {len(yexuan_impressions)} 条"
     )
-    assert hongcha_impressions == [], (
-        f"P0 FAIL 场景D: hongcha 桶应为空，但含有: {len(hongcha_impressions)} 条"
+    assert character_b_impressions == [], (
+        f"P0 FAIL 场景D: character_b 桶应为空，但含有: {len(character_b_impressions)} 条"
     )
 
 
@@ -505,7 +505,7 @@ async def test_slow_queue_drain_mid_term_isolation(sandbox):
     """
     slow_queue 内容级隔离：
     直接调用 handler_summarize_to_midterm（等效 drain），
-    验证 yexuan / hongcha 摘要只落入各自 mid_term 桶。
+    验证 yexuan / character_b 摘要只落入各自 mid_term 桶。
     不使用 sleep。
     """
     import core.memory.mid_term as _mt
@@ -514,7 +514,7 @@ async def test_slow_queue_drain_mid_term_isolation(sandbox):
 
     uid = _UID_BASE + "_sq"
     yexuan_word = "草莓大福-SQ"
-    hongcha_word = "XYZ动画-SQ"
+    character_b_word = "XYZ动画-SQ"
 
     async def _mock_summarize(user_msg, reply, tags=None):
         return f"摘要:{user_msg[:30]}"
@@ -533,33 +533,33 @@ async def test_slow_queue_drain_mid_term_isolation(sandbox):
             "char_id": "yexuan",
         })
 
-        # hongcha 任务
+        # character_b 任务
         await handler_summarize_to_midterm({
-            "turn_id": f"turn_{uid}_hongcha",
+            "turn_id": f"turn_{uid}_character_b",
             "uid": uid,
-            "user_content": hongcha_word,
+            "user_content": character_b_word,
             "reply": "好看的",
             "tags": [],
             "emotion": "neutral",
-            "char_id": "hongcha",
+            "char_id": "character_b",
         })
 
     yexuan_events = _mt.load(uid, char_id="yexuan")
-    hongcha_events = _mt.load(uid, char_id="hongcha")
+    character_b_events = _mt.load(uid, char_id="character_b")
     yexuan_text = " ".join(e.get("summary", "") for e in yexuan_events)
-    hongcha_text = " ".join(e.get("summary", "") for e in hongcha_events)
+    character_b_text = " ".join(e.get("summary", "") for e in character_b_events)
 
     assert yexuan_word in yexuan_text, (
         f"P0 FAIL slow_queue: yexuan mid_term 应含 {yexuan_word!r}，实际: {yexuan_text!r}"
     )
-    assert hongcha_word not in yexuan_text, (
-        f"P0 FAIL slow_queue: yexuan mid_term 不应含 hongcha 词 {hongcha_word!r}"
+    assert character_b_word not in yexuan_text, (
+        f"P0 FAIL slow_queue: yexuan mid_term 不应含 character_b 词 {character_b_word!r}"
     )
-    assert hongcha_word in hongcha_text, (
-        f"P0 FAIL slow_queue: hongcha mid_term 应含 {hongcha_word!r}，实际: {hongcha_text!r}"
+    assert character_b_word in character_b_text, (
+        f"P0 FAIL slow_queue: character_b mid_term 应含 {character_b_word!r}，实际: {character_b_text!r}"
     )
-    assert yexuan_word not in hongcha_text, (
-        f"P0 FAIL slow_queue: hongcha mid_term 不应含 yexuan 词 {yexuan_word!r}"
+    assert yexuan_word not in character_b_text, (
+        f"P0 FAIL slow_queue: character_b mid_term 不应含 yexuan 词 {yexuan_word!r}"
     )
 
 

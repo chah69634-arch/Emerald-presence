@@ -29,7 +29,7 @@ from core.memory import user_facts as uf
 
 UID = "testuser42"
 CHAR_A = "yexuan"
-CHAR_B = "hongcha"
+CHAR_B = "character_b"
 
 
 def _s(path) -> str:
@@ -73,7 +73,7 @@ def test_user_facts_path_ends_with_user_facts_json(sandbox):
 
 
 # ---------------------------------------------------------------------------
-# 2. Cross-character identity: yexuan and hongcha share the same facts file
+# 2. Cross-character identity: yexuan and character_b share the same facts file
 # ---------------------------------------------------------------------------
 
 def test_cross_character_same_facts(sandbox):

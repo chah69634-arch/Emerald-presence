@@ -8,6 +8,17 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
+
+
+@pytest.fixture(autouse=True)
+def _mock_pipeline_for_char_name(monkeypatch):
+    """Provide a minimal pipeline so trigger _char_name() doesn't raise in these tests."""
+    import core.pipeline_registry as _pr
+    mock_char = MagicMock()
+    mock_char.name = "test_char"
+    mock_pl = MagicMock()
+    mock_pl.character = mock_char
+    monkeypatch.setattr(_pr, "get", lambda: mock_pl)
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 

@@ -2,8 +2,8 @@
 R8-C: author_note_rotator trait_state 多角色读路径修复。
 
 Coverage:
-1.  get_current_note(char_id="hongcha") 读 hongcha trait_state，不读 yexuan
-2.  yexuan/hongcha 同时存在时，hongcha 数据影响 _pick_note underrepresented 入参
+1.  get_current_note(char_id="character_b") 读 character_b trait_state，不读 yexuan
+2.  yexuan/character_b 同时存在时，character_b 数据影响 _pick_note underrepresented 入参
 3.  prompt_builder.build() 传入 char_id 时，get_current_note 以该 char_id 被调用
 4.  char_id=None 兼容旧行为（legacy path：trait_state 调用无 char_id kwarg）
 5.  core/author_note_rotator.py 无新增 char_id="yexuan" 函数参数默认值（R3-CI Rule-1）
@@ -37,10 +37,10 @@ def _pool_data(*note_ids_and_traits) -> dict:
 class _FakePaths:
     """Minimal paths stub; lets tests control each path independently."""
 
-    def __init__(self, pool_path, state_path, hongcha_trait_path, yexuan_trait_path=None):
+    def __init__(self, pool_path, state_path, character_b_trait_path, yexuan_trait_path=None):
         self._pool = pool_path
         self._state = state_path
-        self._hongcha_trait = hongcha_trait_path
+        self._character_b_trait = character_b_trait_path
         self._yexuan_trait = yexuan_trait_path
         self.trait_calls: list[dict] = []
 
@@ -53,21 +53,21 @@ class _FakePaths:
     def trait_state(self, **kw):
         self.trait_calls.append(dict(kw))
         char = kw.get("char_id")
-        if char == "hongcha":
-            return self._hongcha_trait
+        if char == "character_b":
+            return self._character_b_trait
         # For yexuan or default: return yexuan_trait if provided, else a nonexistent path
         if self._yexuan_trait is not None:
             return self._yexuan_trait
-        return self._hongcha_trait.parent / "yexuan_trait_state.json"
+        return self._character_b_trait.parent / "yexuan_trait_state.json"
 
 
 # ---------------------------------------------------------------------------
-# 1. get_current_note(char_id="hongcha") 调 trait_state(char_id="hongcha")
+# 1. get_current_note(char_id="character_b") 调 trait_state(char_id="character_b")
 # ---------------------------------------------------------------------------
 
-def test_rotator_uses_hongcha_trait_state_when_char_id_hongcha(tmp_path):
+def test_rotator_uses_character_b_trait_state_when_char_id_character_b(tmp_path):
     """
-    With char_id="hongcha", get_current_note must call paths.trait_state(char_id="hongcha"),
+    With char_id="character_b", get_current_note must call paths.trait_state(char_id="character_b"),
     not paths.trait_state() (which would default to yexuan).
     """
     from core.author_note_rotator import get_current_note
@@ -78,31 +78,31 @@ def test_rotator_uses_hongcha_trait_state_when_char_id_hongcha(tmp_path):
         ("note2", ["TRAIT_B"]),
     )), encoding="utf-8")
 
-    hongcha_trait = tmp_path / "hongcha_trait.json"
-    hongcha_trait.write_text(json.dumps({"underrepresented": ["TRAIT_A"]}), encoding="utf-8")
+    character_b_trait = tmp_path / "character_b_trait.json"
+    character_b_trait.write_text(json.dumps({"underrepresented": ["TRAIT_A"]}), encoding="utf-8")
 
     paths = _FakePaths(
         pool_path=pool_file,
         state_path=tmp_path / "state.json",
-        hongcha_trait_path=hongcha_trait,
+        character_b_trait_path=character_b_trait,
     )
 
-    get_current_note(paths=paths, char_id="hongcha")
+    get_current_note(paths=paths, char_id="character_b")
 
     assert paths.trait_calls, "trait_state() was never called"
     call = paths.trait_calls[-1]
-    assert call == {"char_id": "hongcha"}, (
-        f"trait_state must be called with char_id='hongcha', got {call}"
+    assert call == {"char_id": "character_b"}, (
+        f"trait_state must be called with char_id='character_b', got {call}"
     )
 
 
 # ---------------------------------------------------------------------------
-# 2. hongcha 与 yexuan 同时存在时，hongcha 数据影响 underrepresented 入参
+# 2. character_b 与 yexuan 同时存在时，character_b 数据影响 underrepresented 入参
 # ---------------------------------------------------------------------------
 
-def test_hongcha_underrepresented_reaches_pick_note(tmp_path, monkeypatch):
+def test_character_b_underrepresented_reaches_pick_note(tmp_path, monkeypatch):
     """
-    With char_id="hongcha", _pick_note must receive hongcha's underrepresented
+    With char_id="character_b", _pick_note must receive character_b's underrepresented
     list, not yexuan's.
     """
     import core.author_note_rotator as _anr
@@ -110,12 +110,12 @@ def test_hongcha_underrepresented_reaches_pick_note(tmp_path, monkeypatch):
 
     pool_file = tmp_path / "notes.json"
     pool_file.write_text(json.dumps(_pool_data(
-        ("note1", ["HONGCHA_TRAIT"]),
+        ("note1", ["CHARACTER_B_TRAIT"]),
         ("note2", ["YEXUAN_TRAIT"]),
     )), encoding="utf-8")
 
-    hongcha_trait = tmp_path / "hongcha_trait.json"
-    hongcha_trait.write_text(json.dumps({"underrepresented": ["HONGCHA_TRAIT"]}), encoding="utf-8")
+    character_b_trait = tmp_path / "character_b_trait.json"
+    character_b_trait.write_text(json.dumps({"underrepresented": ["CHARACTER_B_TRAIT"]}), encoding="utf-8")
 
     yexuan_trait = tmp_path / "yexuan_trait.json"
     yexuan_trait.write_text(json.dumps({"underrepresented": ["YEXUAN_TRAIT"]}), encoding="utf-8")
@@ -123,7 +123,7 @@ def test_hongcha_underrepresented_reaches_pick_note(tmp_path, monkeypatch):
     paths = _FakePaths(
         pool_path=pool_file,
         state_path=tmp_path / "state.json",
-        hongcha_trait_path=hongcha_trait,
+        character_b_trait_path=character_b_trait,
         yexuan_trait_path=yexuan_trait,
     )
 
@@ -136,14 +136,14 @@ def test_hongcha_underrepresented_reaches_pick_note(tmp_path, monkeypatch):
 
     monkeypatch.setattr(_anr, "_pick_note", _spy_pick)
 
-    get_current_note(paths=paths, char_id="hongcha")
+    get_current_note(paths=paths, char_id="character_b")
 
     assert captured.get("underrepresented") is not None, "_pick_note was never called"
-    assert "HONGCHA_TRAIT" in captured["underrepresented"], (
-        f"hongcha's underrepresented should be passed; got {captured['underrepresented']}"
+    assert "CHARACTER_B_TRAIT" in captured["underrepresented"], (
+        f"character_b's underrepresented should be passed; got {captured['underrepresented']}"
     )
     assert "YEXUAN_TRAIT" not in captured["underrepresented"], (
-        f"yexuan's underrepresented must NOT appear when char_id='hongcha'; "
+        f"yexuan's underrepresented must NOT appear when char_id='character_b'; "
         f"got {captured['underrepresented']}"
     )
 
@@ -154,7 +154,7 @@ def test_hongcha_underrepresented_reaches_pick_note(tmp_path, monkeypatch):
 
 def test_build_passes_char_id_to_get_current_note(monkeypatch):
     """
-    prompt_builder.build(char_id="hongcha") must call get_current_note(char_id="hongcha").
+    prompt_builder.build(char_id="character_b") must call get_current_note(char_id="character_b").
     """
     import core.prompt_builder as _pb
     import core.presence as _pres
@@ -177,7 +177,7 @@ def test_build_passes_char_id_to_get_current_note(monkeypatch):
     monkeypatch.setattr(_anr, "get_current_note", _spy_get_current_note)
 
     from core.character_loader import Character
-    char = Character(name="红茶")
+    char = Character(name="DemoUser")
 
     _pb.build(
         character=char,
@@ -187,12 +187,12 @@ def test_build_passes_char_id_to_get_current_note(monkeypatch):
         relation={},
         profile={},
         group_context=[],
-        char_id="hongcha",
+        char_id="character_b",
     )
 
     assert received_char_id, "get_current_note was never called during build()"
-    assert received_char_id[0] == "hongcha", (
-        f"build() must forward char_id='hongcha'; got {received_char_id[0]}"
+    assert received_char_id[0] == "character_b", (
+        f"build() must forward char_id='character_b'; got {received_char_id[0]}"
     )
 
 
@@ -216,7 +216,7 @@ def test_char_id_none_legacy_no_char_id_kwarg(tmp_path):
     paths = _FakePaths(
         pool_path=pool_file,
         state_path=tmp_path / "state.json",
-        hongcha_trait_path=trait_file,   # doesn't matter for char_id=None
+        character_b_trait_path=trait_file,   # doesn't matter for char_id=None
     )
     # Override trait_state to capture the actual kwargs
     trait_calls: list[dict] = []
@@ -290,12 +290,12 @@ def test_r8b_write_path_matches_rotator_read_path_per_char_id(sandbox):
     """
     For a given char_id, the path the R8-B handler writes to must equal the path
     get_current_note reads trait_state from.
-    Checks both yexuan and hongcha to confirm char_id is respected.
+    Checks both yexuan and character_b to confirm char_id is respected.
     """
     from core.sandbox import get_paths
     paths = get_paths()
 
-    for char_id in ("yexuan", "hongcha"):
+    for char_id in ("yexuan", "character_b"):
         handler_write = paths.trait_state(char_id=char_id)
 
         # Simulate what get_current_note does with _kw = {"char_id": char_id}
@@ -306,11 +306,11 @@ def test_r8b_write_path_matches_rotator_read_path_per_char_id(sandbox):
             f"rotator reads from {rotator_read}"
         )
 
-    # Explicit: hongcha and yexuan paths must differ
+    # Explicit: character_b and yexuan paths must differ
     yexuan_path = paths.trait_state(char_id="yexuan")
-    hongcha_path = paths.trait_state(char_id="hongcha")
-    assert yexuan_path != hongcha_path, (
-        "yexuan and hongcha trait_state paths must be different "
+    character_b_path = paths.trait_state(char_id="character_b")
+    assert yexuan_path != character_b_path, (
+        "yexuan and character_b trait_state paths must be different "
         f"(both resolved to {yexuan_path})"
     )
 
@@ -322,7 +322,7 @@ def test_r8b_write_path_matches_rotator_read_path_per_char_id(sandbox):
 def test_yexuan_explicit_reads_yexuan_trait_state(tmp_path):
     """
     get_current_note(char_id="yexuan") must call trait_state(char_id="yexuan"),
-    confirming the explicit path is symmetric with the hongcha test.
+    confirming the explicit path is symmetric with the character_b test.
     """
     from core.author_note_rotator import get_current_note
 
@@ -335,7 +335,7 @@ def test_yexuan_explicit_reads_yexuan_trait_state(tmp_path):
     paths = _FakePaths(
         pool_path=pool_file,
         state_path=tmp_path / "state.json",
-        hongcha_trait_path=tmp_path / "hongcha_trait.json",
+        character_b_trait_path=tmp_path / "character_b_trait.json",
         yexuan_trait_path=yexuan_trait,
     )
 
@@ -368,12 +368,12 @@ class _FakePathsWithP(_FakePaths):
 
 
 # ---------------------------------------------------------------------------
-# 8. _TRANSITION_CHARACTER_INNER=True, char_id="hongcha" → must NOT write yexuan_inner
+# 8. _TRANSITION_CHARACTER_INNER=True, char_id="character_b" → must NOT write yexuan_inner
 # ---------------------------------------------------------------------------
 
 def test_transition_write_back_skipped_for_non_yexuan(tmp_path, monkeypatch):
     """
-    P1-R8C: When _TRANSITION_CHARACTER_INNER is True and char_id="hongcha",
+    P1-R8C: When _TRANSITION_CHARACTER_INNER is True and char_id="character_b",
     the legacy write-back to yexuan_inner/author_note_state.json must NOT happen.
     """
     import core.sandbox as _sb
@@ -386,16 +386,16 @@ def test_transition_write_back_skipped_for_non_yexuan(tmp_path, monkeypatch):
         tmp_path=tmp_path,
         pool_path=pool_file,
         state_path=tmp_path / "state.json",
-        hongcha_trait_path=tmp_path / "hongcha_trait.json",
+        character_b_trait_path=tmp_path / "character_b_trait.json",
     )
 
     monkeypatch.setattr(_sb, "_TRANSITION_CHARACTER_INNER", True)
 
-    get_current_note(paths=paths, char_id="hongcha")
+    get_current_note(paths=paths, char_id="character_b")
 
     yexuan_inner_calls = [args for args in paths.p_calls if args and args[0] == "yexuan_inner"]
     assert not yexuan_inner_calls, (
-        f"yexuan_inner write-back must NOT occur for char_id='hongcha'; "
+        f"yexuan_inner write-back must NOT occur for char_id='character_b'; "
         f"_p calls: {paths.p_calls}"
     )
 
@@ -419,7 +419,7 @@ def test_transition_write_back_preserved_for_yexuan(tmp_path, monkeypatch):
         tmp_path=tmp_path,
         pool_path=pool_file,
         state_path=tmp_path / "state.json",
-        hongcha_trait_path=tmp_path / "yexuan_trait.json",
+        character_b_trait_path=tmp_path / "yexuan_trait.json",
     )
 
     monkeypatch.setattr(_sb, "_TRANSITION_CHARACTER_INNER", True)

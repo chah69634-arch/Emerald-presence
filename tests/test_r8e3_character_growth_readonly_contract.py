@@ -152,7 +152,7 @@ def test_get_growth_calls_character_growth_load():
 
         # Patch config_loader.get_config
         mock_config = MagicMock()
-        mock_config.character.name = "叶瑄"
+        mock_config.character.name = "Companion"
         with patch("core.config_loader.get_config", return_value=mock_config):
             # Call through the registry
             wrapper = td._TOOL_REGISTRY["get_growth"]["func"]

@@ -12,12 +12,12 @@ Covers:
  5.  event_log day file path identity
  6.  char_id=None → ValueError (fail-loud, no fallback yexuan)
  7.  char_id="" → ValueError (fail-loud, no fallback yexuan)
- 8.  yexuan / hongcha event_log buckets are isolated
- 9.  hongcha search does not return yexuan-exclusive content
+ 8.  yexuan / character_b event_log buckets are isolated
+ 9.  character_b search does not return yexuan-exclusive content
 10.  30-day union: new dir takes precedence; old dir used as fallback when new absent
 11.  path_resolver "event_log" returns directory (not a file)
 12.  resolve_path event_log exact layout: runtime/memory/{char_id}/{uid}/event_log
-13.  get_recent_days yexuan and hongcha return different content
+13.  get_recent_days yexuan and character_b return different content
 """
 from __future__ import annotations
 
@@ -45,17 +45,17 @@ def _s(p: Path) -> str:
 def test_append_writes_to_resolver_day_file(sandbox):
     import core.memory.event_log as el
 
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     el_dir = resolve_path(scope, "event_log")
 
-    ok = el.append(_UID, "user", "红茶专属内容", char_id="hongcha")
+    ok = el.append(_UID, "user", "DemoUser专属内容", char_id="character_b")
     assert ok is True
 
     today = datetime.now().strftime("%Y-%m-%d")
     expected = el_dir / f"{today}.md"
     assert expected.exists(), f"append() must write to {expected}"
     text = expected.read_text(encoding="utf-8")
-    assert "红茶专属内容" in text
+    assert "DemoUser专属内容" in text
 
 
 # ---------------------------------------------------------------------------
@@ -65,10 +65,10 @@ def test_append_writes_to_resolver_day_file(sandbox):
 async def test_search_reads_from_resolver_dir(sandbox):
     import core.memory.event_log as el
 
-    el.append(_UID, "user", "搜索关键词红茶测试", char_id="hongcha")
+    el.append(_UID, "user", "搜索关键词DemoUser测试", char_id="character_b")
 
-    result = await el.search(_UID, "红茶测试", char_id="hongcha")
-    assert "红茶测试" in result or result != ""
+    result = await el.search(_UID, "DemoUser测试", char_id="character_b")
+    assert "DemoUser测试" in result or result != ""
 
 
 # ---------------------------------------------------------------------------
@@ -78,9 +78,9 @@ async def test_search_reads_from_resolver_dir(sandbox):
 def test_get_recent_days_reads_from_resolver_dir(sandbox):
     import core.memory.event_log as el
 
-    el.append(_UID, "user", "最近N天内容验证", char_id="hongcha")
+    el.append(_UID, "user", "最近N天内容验证", char_id="character_b")
 
-    text = el.get_recent_days(_UID, days=1, char_id="hongcha")
+    text = el.get_recent_days(_UID, days=1, char_id="character_b")
     assert "最近N天内容验证" in text
 
 
@@ -89,9 +89,9 @@ def test_get_recent_days_reads_from_resolver_dir(sandbox):
 # ---------------------------------------------------------------------------
 
 def test_event_log_dir_path_equals_legacy_sandbox_path(sandbox):
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     resolver_dir = resolve_path(scope, "event_log")
-    legacy_dir = sandbox.user_memory_root(_UID, char_id="hongcha") / "event_log"
+    legacy_dir = sandbox.user_memory_root(_UID, char_id="character_b") / "event_log"
     assert resolver_dir == legacy_dir, (
         f"Resolver event_log dir diverged from legacy:\n"
         f"  resolver: {resolver_dir}\n"
@@ -113,10 +113,10 @@ def test_event_log_dir_path_equals_legacy_sandbox_path_yexuan(sandbox):
 def test_event_log_day_file_path_identity(sandbox):
     import core.memory.event_log as el
 
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     el_dir = resolve_path(scope, "event_log")
 
-    el.append(_UID, "user", "日文件路径测试", char_id="hongcha")
+    el.append(_UID, "user", "日文件路径测试", char_id="character_b")
     today = datetime.now().strftime("%Y-%m-%d")
     expected_day = el_dir / f"{today}.md"
 
@@ -186,19 +186,19 @@ async def test_search_empty_char_id_raises(sandbox):
 
 
 # ---------------------------------------------------------------------------
-# 8. yexuan / hongcha buckets are isolated
+# 8. yexuan / character_b buckets are isolated
 # ---------------------------------------------------------------------------
 
-def test_yexuan_hongcha_event_log_isolated(sandbox):
+def test_yexuan_character_b_event_log_isolated(sandbox):
     import core.memory.event_log as el
 
-    el.append(_UID, "user", "叶瑄专属词YEXUAN_ONLY", char_id="yexuan")
-    el.append(_UID, "user", "红茶专属词HONGCHA_ONLY", char_id="hongcha")
+    el.append(_UID, "user", "Companion专属词YEXUAN_ONLY", char_id="yexuan")
+    el.append(_UID, "user", "DemoUser专属词CHARACTER_B_ONLY", char_id="character_b")
 
     y_dir = resolve_path(MemoryScope.reality_scope(_UID, "yexuan"), "event_log")
-    h_dir = resolve_path(MemoryScope.reality_scope(_UID, "hongcha"), "event_log")
+    h_dir = resolve_path(MemoryScope.reality_scope(_UID, "character_b"), "event_log")
 
-    assert y_dir != h_dir, "yexuan and hongcha must have different event_log dirs"
+    assert y_dir != h_dir, "yexuan and character_b must have different event_log dirs"
     assert y_dir.exists()
     assert h_dir.exists()
 
@@ -206,25 +206,25 @@ def test_yexuan_hongcha_event_log_isolated(sandbox):
     y_text = (y_dir / f"{today}.md").read_text(encoding="utf-8")
     h_text = (h_dir / f"{today}.md").read_text(encoding="utf-8")
 
-    assert "叶瑄专属词YEXUAN_ONLY" in y_text
-    assert "叶瑄专属词YEXUAN_ONLY" not in h_text
-    assert "红茶专属词HONGCHA_ONLY" in h_text
-    assert "红茶专属词HONGCHA_ONLY" not in y_text
+    assert "Companion专属词YEXUAN_ONLY" in y_text
+    assert "Companion专属词YEXUAN_ONLY" not in h_text
+    assert "DemoUser专属词CHARACTER_B_ONLY" in h_text
+    assert "DemoUser专属词CHARACTER_B_ONLY" not in y_text
 
 
 # ---------------------------------------------------------------------------
-# 9. hongcha search does not return yexuan exclusive content
+# 9. character_b search does not return yexuan exclusive content
 # ---------------------------------------------------------------------------
 
-async def test_search_hongcha_excludes_yexuan_content(sandbox):
+async def test_search_character_b_excludes_yexuan_content(sandbox):
     import core.memory.event_log as el
 
-    el.append(_UID2, "user", "叶瑄独有词YEXUAN_SENTINEL_XYZ", char_id="yexuan")
-    el.append(_UID2, "user", "红茶普通内容", char_id="hongcha")
+    el.append(_UID2, "user", "Companion独有词YEXUAN_SENTINEL_XYZ", char_id="yexuan")
+    el.append(_UID2, "user", "DemoUser普通内容", char_id="character_b")
 
-    result = await el.search(_UID2, "YEXUAN_SENTINEL_XYZ", char_id="hongcha")
+    result = await el.search(_UID2, "YEXUAN_SENTINEL_XYZ", char_id="character_b")
     assert "YEXUAN_SENTINEL_XYZ" not in result, (
-        "hongcha search must not find yexuan-bucket content"
+        "character_b search must not find yexuan-bucket content"
     )
 
 
@@ -235,9 +235,9 @@ async def test_search_hongcha_excludes_yexuan_content(sandbox):
 def test_get_recent_days_reads_new_dir_when_present(sandbox):
     import core.memory.event_log as el
 
-    el.append(_UID, "user", "新目录写入内容", char_id="hongcha")
+    el.append(_UID, "user", "新目录写入内容", char_id="character_b")
 
-    text = el.get_recent_days(_UID, days=1, char_id="hongcha")
+    text = el.get_recent_days(_UID, days=1, char_id="character_b")
     assert "新目录写入内容" in text
 
 
@@ -257,11 +257,11 @@ def test_get_recent_days_union_reads_old_dir_as_fallback(sandbox):
     )
 
     # new dir does NOT exist → resolver dir is absent
-    scope = MemoryScope.reality_scope(uid, "hongcha")
+    scope = MemoryScope.reality_scope(uid, "character_b")
     new_dir = resolve_path(scope, "event_log")
     assert not new_dir.exists(), "new dir must not exist for this fallback test"
 
-    text = el.get_recent_days(_UID, days=1, char_id="hongcha")
+    text = el.get_recent_days(_UID, days=1, char_id="character_b")
     assert "旧目录专属内容OLD_ONLY" in text
 
 
@@ -270,7 +270,7 @@ def test_get_recent_days_union_reads_old_dir_as_fallback(sandbox):
 # ---------------------------------------------------------------------------
 
 def test_event_log_resolver_returns_directory_path(sandbox):
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     p = resolve_path(scope, "event_log")
     assert p.suffix == "", f"event_log must resolve to a directory path, got: {p}"
     assert p.name == "event_log"
@@ -281,27 +281,27 @@ def test_event_log_resolver_returns_directory_path(sandbox):
 # ---------------------------------------------------------------------------
 
 def test_event_log_resolver_exact_layout(sandbox):
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     p = _s(resolve_path(scope, "event_log"))
-    assert f"runtime/memory/hongcha/{_UID}/event_log" in p, (
+    assert f"runtime/memory/character_b/{_UID}/event_log" in p, (
         f"event_log resolver path wrong layout: {p}"
     )
 
 
 # ---------------------------------------------------------------------------
-# 13. get_recent_days yexuan and hongcha return different content
+# 13. get_recent_days yexuan and character_b return different content
 # ---------------------------------------------------------------------------
 
-def test_get_recent_days_yexuan_hongcha_isolated(sandbox):
+def test_get_recent_days_yexuan_character_b_isolated(sandbox):
     import core.memory.event_log as el
 
-    el.append(_UID, "user", "叶瑄日志内容YEXUAN_LOG", char_id="yexuan")
-    el.append(_UID, "user", "红茶日志内容HONGCHA_LOG", char_id="hongcha")
+    el.append(_UID, "user", "Companion日志内容YEXUAN_LOG", char_id="yexuan")
+    el.append(_UID, "user", "DemoUser日志内容CHARACTER_B_LOG", char_id="character_b")
 
     y_text = el.get_recent_days(_UID, days=1, char_id="yexuan")
-    h_text = el.get_recent_days(_UID, days=1, char_id="hongcha")
+    h_text = el.get_recent_days(_UID, days=1, char_id="character_b")
 
-    assert "叶瑄日志内容YEXUAN_LOG" in y_text
-    assert "叶瑄日志内容YEXUAN_LOG" not in h_text
-    assert "红茶日志内容HONGCHA_LOG" in h_text
-    assert "红茶日志内容HONGCHA_LOG" not in y_text
+    assert "Companion日志内容YEXUAN_LOG" in y_text
+    assert "Companion日志内容YEXUAN_LOG" not in h_text
+    assert "DemoUser日志内容CHARACTER_B_LOG" in h_text
+    assert "DemoUser日志内容CHARACTER_B_LOG" not in y_text

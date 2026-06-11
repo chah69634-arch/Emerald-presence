@@ -20,14 +20,14 @@ def test_recall_last_mentioned_reads_event_log_by_recent_time(sandbox):
 ## 14:00
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得这件事。
+**Companion**：我记得这件事。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 
 ## 15:00
 **用户**：我明天要测试桌宠通道
 > turn_id:t2
-**叶瑄**：那我陪你看结果。
+**Companion**：那我陪你看结果。
 > emotion:gentle intensity:1 turn_id:t2
 ---
 """,
@@ -51,9 +51,9 @@ def test_recall_last_mentioned_skips_no_recent_followable_topic(sandbox):
         "2026-05-25",
         """
 ## 14:00
-**用户**：嗯。叶瑄。
+**用户**：嗯。Companion。
 > turn_id:t1
-**叶瑄**：我在。
+**Companion**：我在。
 > emotion:neutral intensity:0 turn_id:t1
 ---
 """,
@@ -106,7 +106,7 @@ def test_topic_key_stays_stable_for_same_input_recall(sandbox):
 ## 15:00
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,

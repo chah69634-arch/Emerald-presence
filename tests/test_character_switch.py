@@ -4,13 +4,13 @@ tests/test_character_switch.py
 Reality character-card asset-switching pipeline tests.
 
 Covers:
-1.  hongcha.json registry: id="hongcha", label="红茶", not hidden
+1.  character_b.json registry: id="character_b", label="DemoUser", not hidden
 2.  yexuanJ-5412.json registry: id="yexuanJ-5412", not hidden
-3.  GET /settings/prompt-assets returns hongcha in characters list
-4.  PATCH active_character=hongcha writes hongcha to active_prompt_assets.json
-5.  character_loader.load("hongcha") loads the hongcha character correctly
+3.  GET /settings/prompt-assets returns character_b in characters list
+4.  PATCH active_character=character_b writes character_b to active_prompt_assets.json
+5.  character_loader.load("character_b") loads the character_b character correctly
 6.  Pipeline._refresh_character_if_needed() hot-swaps when active_prompt_assets changes
-7.  config.default=yexuan but active_character=hongcha → pipeline uses hongcha at next turn
+7.  config.default=yexuan but active_character=character_b → pipeline uses character_b at next turn
 8.  Unknown active_character → ValueError raised (fail-loud, no silent AI fallback)
 9.  active_prompt_assets empty active_character → pipeline raises ValueError (fail-loud)
 10. active_prompt_assets missing → auto-created from config.default (non-empty value)
@@ -30,21 +30,21 @@ from core.asset_registry import AssetRegistry
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree with yexuan + hongcha + jailbreaks."""
+    """Minimal characters/ tree with yexuan + character_b + jailbreaks."""
     chars = tmp_path / "characters"
     chars.mkdir()
 
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     # yexuanJ-5412 also present
     (chars / "yexuanJ-5412.json").write_text(
-        json.dumps({"name": "叶瑄J-5412", "description": "j5412 test", "world_book": []}),
+        json.dumps({"name": "CompanionJ-5412", "description": "j5412 test", "world_book": []}),
         encoding="utf-8",
     )
 
@@ -63,24 +63,24 @@ def registry(chars_tree, monkeypatch):
     return reg
 
 
-# ── 1. hongcha.json registry entry ───────────────────────────────────────────
+# ── 1. character_b.json registry entry ───────────────────────────────────────────
 
-def test_hongcha_registry_id_label(registry):
-    entry = registry.resolve("hongcha", "character")
-    assert entry.id == "hongcha"
-    assert entry.label == "红茶"
-    assert entry.filename == "hongcha.json"
+def test_character_b_registry_id_label(registry):
+    entry = registry.resolve("character_b", "character")
+    assert entry.id == "character_b"
+    assert entry.label == "DemoUser"
+    assert entry.filename == "character_b.json"
     assert not entry.hidden
 
 
-def test_hongcha_appears_in_ui_list(registry):
+def test_character_b_appears_in_ui_list(registry):
     visible_ids = [e.id for e in registry.list_ui("character")]
-    assert "hongcha" in visible_ids
+    assert "character_b" in visible_ids
 
 
-def test_hongcha_label_is_chinese(registry):
-    entry = registry.resolve("hongcha", "character")
-    assert entry.label == "红茶", "label must be 红茶 (from JSON name field)"
+def test_character_b_label_is_chinese(registry):
+    entry = registry.resolve("character_b", "character")
+    assert entry.label == "DemoUser", "label must be DemoUser (from JSON name field)"
 
 
 # ── 2. yexuanJ-5412 registry entry ───────────────────────────────────────────
@@ -88,7 +88,7 @@ def test_hongcha_label_is_chinese(registry):
 def test_j5412_registry_entry(registry):
     entry = registry.resolve("yexuanJ-5412", "character")
     assert entry.id == "yexuanJ-5412"
-    assert entry.label == "叶瑄J-5412"
+    assert entry.label == "CompanionJ-5412"
     assert not entry.hidden
 
 
@@ -97,10 +97,10 @@ def test_j5412_appears_in_ui_list(registry):
     assert "yexuanJ-5412" in visible_ids
 
 
-# ── 3. GET /settings/prompt-assets returns hongcha ────────────────────────────
+# ── 3. GET /settings/prompt-assets returns character_b ────────────────────────────
 
-def test_get_prompt_assets_includes_hongcha(chars_tree, monkeypatch, sandbox):
-    """GET /settings/prompt-assets characters list includes hongcha."""
+def test_get_prompt_assets_includes_character_b(chars_tree, monkeypatch, sandbox):
+    """GET /settings/prompt-assets characters list includes character_b."""
     monkeypatch.chdir(chars_tree)
     reg = AssetRegistry()
     monkeypatch.setattr(_reg_mod, "_registry", reg)
@@ -111,14 +111,14 @@ def test_get_prompt_assets_includes_hongcha(chars_tree, monkeypatch, sandbox):
 
     ids = [c["id"] for c in result["characters"]]
     labels = {c["id"]: c["label"] for c in result["characters"]}
-    assert "hongcha" in ids, f"hongcha missing from characters list: {ids}"
-    assert labels["hongcha"] == "红茶"
+    assert "character_b" in ids, f"character_b missing from characters list: {ids}"
+    assert labels["character_b"] == "DemoUser"
 
 
 # ── 4. PATCH saves active_character to active_prompt_assets.json ──────────────
 
 def test_patch_active_character_writes_json(chars_tree, monkeypatch, sandbox):
-    """PATCH active_character=hongcha persists to active_prompt_assets.json."""
+    """PATCH active_character=character_b persists to active_prompt_assets.json."""
     monkeypatch.chdir(chars_tree)
     reg = AssetRegistry()
     monkeypatch.setattr(_reg_mod, "_registry", reg)
@@ -135,14 +135,14 @@ def test_patch_active_character_writes_json(chars_tree, monkeypatch, sandbox):
 
     asyncio.run(
         patch_prompt_assets(
-            PromptAssetsUpdate(active_character="hongcha"),
+            PromptAssetsUpdate(active_character="character_b"),
             auth="dummy",
         )
     )
 
     saved = json.loads(assets_path.read_text(encoding="utf-8"))
-    assert saved["active_character"] == "hongcha", (
-        f"active_prompt_assets.json should store 'hongcha', got {saved['active_character']!r}"
+    assert saved["active_character"] == "character_b", (
+        f"active_prompt_assets.json should store 'character_b', got {saved['active_character']!r}"
     )
 
 
@@ -172,19 +172,19 @@ def test_patch_active_character_rejects_unknown(chars_tree, monkeypatch, sandbox
     assert after["active_character"] == original["active_character"]
 
 
-# ── 5. character_loader.load("hongcha") loads hongcha.json ────────────────────
+# ── 5. character_loader.load("character_b") loads character_b.json ────────────────────
 
-def test_load_hongcha_by_id(chars_tree, monkeypatch, registry):
+def test_load_character_b_by_id(chars_tree, monkeypatch, registry):
     from core.character_loader import load
 
-    char = load("hongcha")
-    assert char.name == "红茶"
+    char = load("character_b")
+    assert char.name == "DemoUser"
 
 
-def test_load_hongcha_never_returns_ai_fallback(chars_tree, monkeypatch, registry):
+def test_load_character_b_never_returns_ai_fallback(chars_tree, monkeypatch, registry):
     from core.character_loader import load, Character
 
-    char = load("hongcha")
+    char = load("character_b")
     assert char.name != "AI", "load() must not return Character(name='AI') for known id"
     assert isinstance(char, Character)
 
@@ -203,12 +203,12 @@ def test_pipeline_refresh_swaps_character(chars_tree, monkeypatch, sandbox):
     # Start pipeline with yexuan
     yexuan = _load("yexuan")
     pipeline = Pipeline(yexuan, lore_engine=None, active_character_id="yexuan")
-    assert pipeline.character.name == "叶瑄"
+    assert pipeline.character.name == "Companion"
     assert pipeline._active_character_id == "yexuan"
 
-    # Switch active_prompt_assets.json to hongcha
+    # Switch active_prompt_assets.json to character_b
     sandbox.active_prompt_assets().write_text(
-        json.dumps({"active_character": "hongcha", "enabled_lorebooks": [],
+        json.dumps({"active_character": "character_b", "enabled_lorebooks": [],
                     "enabled_jailbreaks": []}),
         encoding="utf-8",
     )
@@ -216,9 +216,9 @@ def test_pipeline_refresh_swaps_character(chars_tree, monkeypatch, sandbox):
     # Trigger refresh
     pipeline._refresh_character_if_needed()
 
-    assert pipeline._active_character_id == "hongcha"
-    assert pipeline.character.name == "红茶", (
-        "Pipeline character must be 红茶 after refresh with active_character=hongcha"
+    assert pipeline._active_character_id == "character_b"
+    assert pipeline.character.name == "DemoUser", (
+        "Pipeline character must be DemoUser after refresh with active_character=character_b"
     )
 
 
@@ -246,7 +246,7 @@ def test_pipeline_refresh_no_swap_when_same(chars_tree, monkeypatch, sandbox):
     assert pipeline.character is original_char, "Character object must not change when id unchanged"
 
 
-# ── 7. config.default=yexuan but active_character=hongcha → uses hongcha ──────
+# ── 7. config.default=yexuan but active_character=character_b → uses character_b ──────
 
 def test_active_prompt_assets_overrides_config_default(chars_tree, monkeypatch, sandbox):
     """active_prompt_assets.json active_character takes precedence over config.yaml default."""
@@ -254,9 +254,9 @@ def test_active_prompt_assets_overrides_config_default(chars_tree, monkeypatch, 
     reg = AssetRegistry()
     monkeypatch.setattr(_reg_mod, "_registry", reg)
 
-    # active_prompt_assets.json says hongcha
+    # active_prompt_assets.json says character_b
     sandbox.active_prompt_assets().write_text(
-        json.dumps({"active_character": "hongcha", "enabled_lorebooks": [],
+        json.dumps({"active_character": "character_b", "enabled_lorebooks": [],
                     "enabled_jailbreaks": []}),
         encoding="utf-8",
     )
@@ -272,14 +272,14 @@ def test_active_prompt_assets_overrides_config_default(chars_tree, monkeypatch, 
         # Replicate main.py priority logic
         char_ref = active_data.get("active_character") or cfg.get("character", {}).get("default", "")
 
-    assert char_ref == "hongcha", (
+    assert char_ref == "character_b", (
         f"active_prompt_assets.json active_character must override config.yaml default, "
         f"got {char_ref!r}"
     )
 
     from core.character_loader import load
     char = load(char_ref)
-    assert char.name == "红茶", f"Should load hongcha (红茶), got {char.name!r}"
+    assert char.name == "DemoUser", f"Should load character_b (DemoUser), got {char.name!r}"
 
 
 def test_empty_active_character_raises_in_pipeline(
@@ -309,7 +309,7 @@ def test_empty_active_character_raises_in_pipeline(
         pipeline._refresh_character_if_needed()
 
     # Pipeline character must not have changed
-    assert pipeline.character.name == "叶瑄", "Character must remain unchanged on empty active_character"
+    assert pipeline.character.name == "Companion", "Character must remain unchanged on empty active_character"
     assert pipeline._active_character_id == "yexuan"
 
 
@@ -349,8 +349,8 @@ def test_pipeline_refresh_fail_loud_on_unknown_id(chars_tree, monkeypatch, sandb
         "Pipeline must not silently fallback to Character(name='AI') on unknown active_character"
     )
     # The original character must remain (swap was aborted before assignment)
-    assert pipeline.character.name == "叶瑄", (
-        "Pipeline character must stay as original (叶瑄) after failed swap"
+    assert pipeline.character.name == "Companion", (
+        "Pipeline character must stay as original (Companion) after failed swap"
     )
     # active_character_id must NOT have been updated to the bad id
     assert pipeline._active_character_id == "yexuan"

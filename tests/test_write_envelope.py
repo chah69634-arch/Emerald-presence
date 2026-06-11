@@ -310,7 +310,7 @@ class TestMoodGate:
         from core.pipeline import Pipeline
 
         class _FakeChar:
-            name = "叶瑄"
+            name = "Companion"
 
         p = Pipeline(_FakeChar(), lore_engine=None)
         env = WriteEnvelope(can_write_memory=True, can_affect_mood=False)
@@ -348,7 +348,7 @@ class TestMoodGate:
         from core.pipeline import Pipeline
 
         class _FakeChar:
-            name = "叶瑄"
+            name = "Companion"
 
         p = Pipeline(_FakeChar(), lore_engine=None)
         await p.post_process("u1", "你好", "在呢", envelope=stamp_user_chat())

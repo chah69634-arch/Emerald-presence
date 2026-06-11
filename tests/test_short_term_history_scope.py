@@ -2,10 +2,10 @@
 tests/test_short_term_history_scope.py — P1-0C.5: get_history / module-level load char_id scope
 
 Covers:
-1.  Module-level short_term.load(uid, char_id="hongcha") reads hongcha bucket only.
-2.  get_history(uid, char_id="hongcha") reads hongcha bucket only.
-3.  get_history(uid, char_id="hongcha") does not expose yexuan-bucket content.
-4.  ShortTermMemory.get_history(uid, char_id="hongcha") reads hongcha bucket only.
+1.  Module-level short_term.load(uid, char_id="character_b") reads character_b bucket only.
+2.  get_history(uid, char_id="character_b") reads character_b bucket only.
+3.  get_history(uid, char_id="character_b") does not expose yexuan-bucket content.
+4.  ShortTermMemory.get_history(uid, char_id="character_b") reads character_b bucket only.
 5.  get_history respects max_turns truncation when char_id is supplied.
 6.  Production caller audit: no file outside short_term.py calls get_history() at module level
     with an implicit yexuan default — at time of writing there are zero production callers.
@@ -23,95 +23,95 @@ import pytest
 # `sandbox` is provided by conftest.py and redirects DataPaths._base to tmp_path.
 
 
-# ── 1. Module-level load reads hongcha bucket ─────────────────────────────────
+# ── 1. Module-level load reads character_b bucket ─────────────────────────────────
 
-def test_module_load_reads_hongcha_bucket(sandbox):
-    """short_term.load(uid, char_id='hongcha') returns only hongcha content."""
+def test_module_load_reads_character_b_bucket(sandbox):
+    """short_term.load(uid, char_id='character_b') returns only character_b content."""
     from core.memory.short_term import append, load
 
     uid = "u_hist_load"
-    SENTINEL_H = "荔枝红茶-load-hongcha"
-    SENTINEL_Y = "茉莉叶瑄-load-yexuan"
+    SENTINEL_H = "荔枝DemoUser-load-character_b"
+    SENTINEL_Y = "茉莉Companion-load-yexuan"
 
-    append(uid, "user", SENTINEL_H, char_id="hongcha")
+    append(uid, "user", SENTINEL_H, char_id="character_b")
     append(uid, "user", SENTINEL_Y, char_id="yexuan")
 
-    hongcha = load(uid, char_id="hongcha")
+    character_b = load(uid, char_id="character_b")
     yexuan = load(uid, char_id="yexuan")
 
-    assert any(SENTINEL_H in m.get("content", "") for m in hongcha), (
-        f"hongcha bucket must contain sentinel; got {hongcha}"
+    assert any(SENTINEL_H in m.get("content", "") for m in character_b), (
+        f"character_b bucket must contain sentinel; got {character_b}"
     )
     assert not any(SENTINEL_H in m.get("content", "") for m in yexuan), (
-        f"yexuan bucket must not contain hongcha sentinel; got {yexuan}"
+        f"yexuan bucket must not contain character_b sentinel; got {yexuan}"
     )
-    assert not any(SENTINEL_Y in m.get("content", "") for m in hongcha), (
-        f"hongcha bucket must not contain yexuan sentinel; got {hongcha}"
+    assert not any(SENTINEL_Y in m.get("content", "") for m in character_b), (
+        f"character_b bucket must not contain yexuan sentinel; got {character_b}"
     )
 
 
-# ── 2. get_history reads hongcha bucket ───────────────────────────────────────
+# ── 2. get_history reads character_b bucket ───────────────────────────────────────
 
-def test_get_history_reads_hongcha_bucket(sandbox):
-    """get_history(uid, char_id='hongcha') returns hongcha bucket content."""
+def test_get_history_reads_character_b_bucket(sandbox):
+    """get_history(uid, char_id='character_b') returns character_b bucket content."""
     from core.memory.short_term import append, get_history
 
     uid = "u_hist_gh"
-    SENTINEL_H = "荔枝红茶-gh-hongcha"
+    SENTINEL_H = "荔枝DemoUser-gh-character_b"
 
-    append(uid, "user", SENTINEL_H, char_id="hongcha")
+    append(uid, "user", SENTINEL_H, char_id="character_b")
 
-    result = get_history(uid, char_id="hongcha")
+    result = get_history(uid, char_id="character_b")
     assert any(SENTINEL_H in m.get("content", "") for m in result), (
-        f"get_history with char_id='hongcha' must return hongcha content; got {result}"
+        f"get_history with char_id='character_b' must return character_b content; got {result}"
     )
 
 
-# ── 3. get_history does not expose yexuan content when reading hongcha ────────
+# ── 3. get_history does not expose yexuan content when reading character_b ────────
 
 def test_get_history_excludes_cross_bucket_content(sandbox):
-    """get_history with char_id='hongcha' must not contain yexuan-only content."""
+    """get_history with char_id='character_b' must not contain yexuan-only content."""
     from core.memory.short_term import append, get_history
 
     uid = "u_hist_cross"
-    SENTINEL_Y = "茉莉叶瑄-cross-yexuan"
-    SENTINEL_H = "荔枝红茶-cross-hongcha"
+    SENTINEL_Y = "茉莉Companion-cross-yexuan"
+    SENTINEL_H = "荔枝DemoUser-cross-character_b"
 
     append(uid, "user", SENTINEL_Y, char_id="yexuan")
-    append(uid, "user", SENTINEL_H, char_id="hongcha")
+    append(uid, "user", SENTINEL_H, char_id="character_b")
 
-    result = get_history(uid, char_id="hongcha")
+    result = get_history(uid, char_id="character_b")
 
     assert not any(SENTINEL_Y in m.get("content", "") for m in result), (
-        f"get_history(hongcha) must not leak yexuan sentinel; got {result}"
+        f"get_history(character_b) must not leak yexuan sentinel; got {result}"
     )
     assert any(SENTINEL_H in m.get("content", "") for m in result), (
-        f"get_history(hongcha) must still return hongcha content; got {result}"
+        f"get_history(character_b) must still return character_b content; got {result}"
     )
 
 
 # ── 4. ShortTermMemory.get_history class method char_id ───────────────────────
 
-def test_stm_get_history_class_method_reads_hongcha_bucket(sandbox):
-    """ShortTermMemory.get_history(uid, char_id='hongcha') reads hongcha bucket."""
+def test_stm_get_history_class_method_reads_character_b_bucket(sandbox):
+    """ShortTermMemory.get_history(uid, char_id='character_b') reads character_b bucket."""
     from core.memory.short_term import ShortTermMemory, append
 
     uid = "u_hist_stm"
-    SENTINEL_H = "荔枝红茶-stm-gh-hongcha"
-    SENTINEL_Y = "茉莉叶瑄-stm-gh-yexuan"
+    SENTINEL_H = "荔枝DemoUser-stm-gh-character_b"
+    SENTINEL_Y = "茉莉Companion-stm-gh-yexuan"
 
-    append(uid, "user", SENTINEL_H, char_id="hongcha")
+    append(uid, "user", SENTINEL_H, char_id="character_b")
     append(uid, "user", SENTINEL_Y, char_id="yexuan")
 
     stm = ShortTermMemory()
-    hongcha = stm.get_history(uid, char_id="hongcha")
+    character_b = stm.get_history(uid, char_id="character_b")
     yexuan = stm.get_history(uid, char_id="yexuan")
 
-    assert any(SENTINEL_H in m.get("content", "") for m in hongcha), (
-        f"ShortTermMemory.get_history(hongcha) must return hongcha content; got {hongcha}"
+    assert any(SENTINEL_H in m.get("content", "") for m in character_b), (
+        f"ShortTermMemory.get_history(character_b) must return character_b content; got {character_b}"
     )
     assert not any(SENTINEL_H in m.get("content", "") for m in yexuan), (
-        f"ShortTermMemory.get_history(yexuan) must not see hongcha sentinel; got {yexuan}"
+        f"ShortTermMemory.get_history(yexuan) must not see character_b sentinel; got {yexuan}"
     )
 
 
@@ -123,10 +123,10 @@ def test_get_history_max_turns_with_char_id(sandbox):
 
     uid = "u_hist_mt"
     for i in range(6):
-        append(uid, "user",      f"msg {i}", char_id="hongcha")
-        append(uid, "assistant", f"rep {i}", char_id="hongcha")
+        append(uid, "user",      f"msg {i}", char_id="character_b")
+        append(uid, "assistant", f"rep {i}", char_id="character_b")
 
-    result = get_history(uid, max_turns=2, char_id="hongcha")
+    result = get_history(uid, max_turns=2, char_id="character_b")
     assert len(result) <= 4, (
         f"max_turns=2 should return at most 4 messages; got {len(result)}"
     )

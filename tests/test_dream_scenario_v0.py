@@ -25,8 +25,8 @@ import yaml
 _UID = "scenario_test_user"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄是圣塞西尔学院的老师"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion是圣塞西尔学院的老师"
 _FAKE_CHARACTER.jailbreak_entries = []
 
 _EMPTY_SNAPSHOT: dict[str, Any] = {
@@ -395,7 +395,7 @@ def test_dream_turn_increments_scenario_stage_turns(sandbox):
         patch("core.dream.dream_log.append_turn"),
         patch("core.pipeline_registry.get", return_value=fake_pipeline),
         patch("core.dream.dream_prompt.build_dream_prompt", return_value=fake_msgs),
-        patch("core.llm_client.chat", new=AsyncMock(return_value="叶瑄回复了")),
+        patch("core.llm_client.chat", new=AsyncMock(return_value="Companion回复了")),
         patch(
             "core.dream.body_tracker.analyze_turn",
             return_value=MagicMock(to_dict=lambda: {}),
@@ -406,7 +406,7 @@ def test_dream_turn_increments_scenario_stage_turns(sandbox):
         ),
         patch(
             "core.narrative_parser.parse_narrative_segments",
-            return_value={"segments": [], "content": "叶瑄回复了"},
+            return_value={"segments": [], "content": "Companion回复了"},
         ),
     ):
         result = asyncio.run(dream_turn(_UID, "你好"))
@@ -646,7 +646,7 @@ def test_extract_scenario_control_valid():
     from core.dream.dream_pipeline import _extract_scenario_control
 
     raw = (
-        "叶瑄看了她一眼，没说话。\n"
+        "Companion看了她一眼，没说话。\n"
         "<scenario_control>\n"
         '{"progress_signal": "approaching", "matched_exit_signs": ["双方有了第一次真实的对话"], "blocked_events": []}\n'
         "</scenario_control>"
@@ -654,7 +654,7 @@ def test_extract_scenario_control_valid():
     visible, ctrl = _extract_scenario_control(raw)
 
     assert "scenario_control" not in visible
-    assert "叶瑄看了她一眼" in visible
+    assert "Companion看了她一眼" in visible
     assert ctrl is not None
     assert ctrl["progress_signal"] == "approaching"
     assert ctrl["matched_exit_signs"] == ["双方有了第一次真实的对话"]
@@ -684,9 +684,9 @@ def test_dream_turn_saves_progress_signal(sandbox):
         ))
 
     llm_response = (
-        "叶瑄沉默地看着她。\n"
+        "Companion沉默地看着她。\n"
         "<scenario_control>\n"
-        '{"progress_signal": "satisfied", "matched_exit_signs": ["她说出了自己的名字"], "blocked_events": ["叶瑄主动表露情感"]}\n'
+        '{"progress_signal": "satisfied", "matched_exit_signs": ["她说出了自己的名字"], "blocked_events": ["Companion主动表露情感"]}\n'
         "</scenario_control>"
     )
     fake_msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}]
@@ -702,7 +702,7 @@ def test_dream_turn_saves_progress_signal(sandbox):
         patch("core.dream.body_projection.project_body_for_yexuan",
               return_value={"d5_text": "", "yexuan_tension": 0.0}),
         patch("core.narrative_parser.parse_narrative_segments",
-              return_value={"segments": [], "content": "叶瑄沉默地看着她。"}),
+              return_value={"segments": [], "content": "Companion沉默地看着她。"}),
     ):
         result = asyncio.run(dream_turn(_UID, "我叫林梦。"))
 
@@ -738,9 +738,9 @@ def test_with_progress_signal_saves_blocked_events():
     sc2 = sc.with_progress_signal(
         "not_close",
         matched_exit_signs=[],
-        blocked_events=["叶瑄主动表露情感"],
+        blocked_events=["Companion主动表露情感"],
     )
-    assert sc2.last_blocked_events == ["叶瑄主动表露情感"]
+    assert sc2.last_blocked_events == ["Companion主动表露情感"]
     assert sc.last_blocked_events == []  # original frozen, unchanged
 
 
@@ -768,7 +768,7 @@ def test_extract_scenario_control_missing():
     """When no control block is present, reply is unchanged and control is None."""
     from core.dream.dream_pipeline import _extract_scenario_control
 
-    raw = "普通的叶瑄回复，没有任何控制块。"
+    raw = "普通的Companion回复，没有任何控制块。"
     visible, ctrl = _extract_scenario_control(raw)
 
     assert visible == raw
@@ -826,7 +826,7 @@ def test_scenario_control_stripped_from_reply_and_log(sandbox):
         ))
 
     llm_response = (
-        "叶瑄抬起眼睛。\n"
+        "Companion抬起眼睛。\n"
         "<scenario_control>\n"
         '{"progress_signal": "not_close", "matched_exit_signs": [], "blocked_events": []}\n'
         "</scenario_control>"
@@ -849,14 +849,14 @@ def test_scenario_control_stripped_from_reply_and_log(sandbox):
         patch("core.dream.body_projection.project_body_for_yexuan",
               return_value={"d5_text": "", "yexuan_tension": 0.0}),
         patch("core.narrative_parser.parse_narrative_segments",
-              return_value={"segments": [], "content": "叶瑄抬起眼睛。"}),
+              return_value={"segments": [], "content": "Companion抬起眼睛。"}),
     ):
         result = asyncio.run(dream_turn(_UID, "你好"))
 
     assert "scenario_control" not in result.get("reply", "")
     assert len(logged_assistant_turns) == 1
     assert "scenario_control" not in logged_assistant_turns[0]
-    assert "叶瑄抬起眼睛。" in logged_assistant_turns[0]
+    assert "Companion抬起眼睛。" in logged_assistant_turns[0]
 
 
 # ── Test 11: New ScenarioCore fields isolated from hidden state / impression ──
@@ -1045,7 +1045,7 @@ def test_control_block_ignores_next_stage_key():
     from core.dream.dream_pipeline import _extract_scenario_control
 
     raw = (
-        "叶瑄抬眼看她。\n"
+        "Companion抬眼看她。\n"
         "<scenario_control>\n"
         '{"progress_signal": "satisfied", "matched_exit_signs": [], "blocked_events": [],'
         ' "next_stage": "negotiation"}\n'
@@ -1128,7 +1128,7 @@ def test_sandbox_dream_turn_not_affected_by_scenario_logic(sandbox):
     assert r.get("ok") is True
 
     llm_response = (
-        "叶瑄安静地看着她。\n"
+        "Companion安静地看着她。\n"
         "<scenario_control>\n"
         '{"progress_signal": "satisfied", "matched_exit_signs": [], "blocked_events": []}\n'
         "</scenario_control>"
@@ -1146,7 +1146,7 @@ def test_sandbox_dream_turn_not_affected_by_scenario_logic(sandbox):
         patch("core.dream.body_projection.project_body_for_yexuan",
               return_value={"d5_text": "", "yexuan_tension": 0.0}),
         patch("core.narrative_parser.parse_narrative_segments",
-              return_value={"segments": [], "content": "叶瑄安静地看着她。"}),
+              return_value={"segments": [], "content": "Companion安静地看着她。"}),
     ):
         result = asyncio.run(dream_turn(_UID, "你好"))
 
@@ -1185,13 +1185,13 @@ def test_advance_to_stage_dict_excludes_isolation_fields():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _SATISFIED_REPLY = (
-    "叶瑄沉默地看着她。\n"
+    "Companion沉默地看着她。\n"
     "<scenario_control>\n"
     '{"progress_signal": "satisfied", "matched_exit_signs": ["她说出了自己的名字"], "blocked_events": []}\n'
     "</scenario_control>"
 )
 _NOT_CLOSE_REPLY = (
-    "叶瑄没有回应。\n"
+    "Companion没有回应。\n"
     "<scenario_control>\n"
     '{"progress_signal": "not_close", "matched_exit_signs": [], "blocked_events": []}\n'
     "</scenario_control>"
@@ -1213,7 +1213,7 @@ def _run_dream_turn(uid: str, fake_pipeline, llm_response: str) -> dict:
         patch("core.dream.body_projection.project_body_for_yexuan",
               return_value={"d5_text": "", "yexuan_tension": 0.0}),
         patch("core.narrative_parser.parse_narrative_segments",
-              return_value={"segments": [], "content": "叶瑄回复了"}),
+              return_value={"segments": [], "content": "Companion回复了"}),
     ):
         return asyncio.run(dream_turn(uid, "你好"))
 

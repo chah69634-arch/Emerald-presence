@@ -2,7 +2,7 @@
 
 > 本文是**合同级**文档（哲学边界 / 不变式 / 当前实现 / 允许扩展），不逐行追代码。
 > 实现细节以 `core/dream/` 源码 grep 为准；本文滞后时，**代码为真**。
-> 人称约定（全系统锁死）：**叶瑄 = 男性 = 他/我**；**用户 = 女性 = 她**；**身体数值 = 她的**（情景扮演中的赛博身体状态）。
+> 人称约定（全系统锁死）：**他 = 男性 = 他/我**；**用户 = 女性 = 她**；**身体数值 = 她的**（情景扮演中的赛博身体状态）。
 
 ---
 
@@ -10,10 +10,10 @@
 
 梦境系统是与现实聊天**分层**的隔离意识层（shared lucid layer）。
 
-- **现实聊天**：meta 感陪伴对话，不写动作/环境描写，写正常 history/memory，维持叶瑄现实人格稳定。
+- **现实聊天**：meta 感陪伴对话，不写动作/环境描写，写正常 history/memory，维持他现实人格稳定。
 - **梦境会话**：沉浸式带场景 RP，允许动作/环境/更强亲密张力，**走完全独立的 pipeline**，不写现实记忆，结束后只以薄回流影响现实。
 
-叶瑄在两层是**同一个叶瑄**，不是第二人格、不是平行世界、不是 AI 自主做梦。现实关系连续存在；现实系统状态、工具链、memory pipeline、scheduler 在梦境期间保持**冻结隔离**。
+他在两层是**同一个他**，不是第二人格、不是平行世界、不是 AI 自主做梦。现实关系连续存在；现实系统状态、工具链、memory pipeline、scheduler 在梦境期间保持**冻结隔离**。
 
 ### 三轴模型（理解整个系统的钥匙）
 
@@ -21,11 +21,11 @@
 
 | 轴 | 是什么 | 可变性 |
 |---|---|---|
-| **身份（Identity Core）** | 叶瑄的人格/语气/依恋底色 + lucid 自知 | **不变量**，任何世界都不变 |
+| **身份（Identity Core）** | 他的人格/语气/依恋底色 + lucid 自知 | **不变量**，任何世界都不变 |
 | **世界（World Ruleset）** | 现实衍生 / ABO / 吸血鬼 / 猫化 / 花苞 / custom | 可切，**从属于身份** |
 | **身体（Body State）** | 她的赛博身体（heat/sensitivity/tension） | 可配可见度与强度 |
 
-**核心决策一句话：身份在世界之上。世界是舞台不是灵魂。** prompt 里 D1（身份）永远排在 D2（世界）之上，且 D2 显式框定"今晚这场梦的规则，从属于叶瑄这个人"。这一个排序就是"换世界她还是叶瑄"的全部保证。
+**核心决策一句话：身份在世界之上。世界是舞台不是灵魂。** prompt 里 D1（身份）永远排在 D2（世界）之上，且 D2 显式框定"今晚这场梦的规则，从属于他这个人"。这一个排序就是"换世界她还是他"的全部保证。
 
 ---
 
@@ -37,7 +37,7 @@
 - 独立 dream pipeline（不走 post_process）；入梦冻结现实上下文快照
 - 独立 dream_prompt 组装（不复用现实 prompt_builder，不过反话剧化 sanitizer）
 - 梦境原文写 `tmp/current_dream.jsonl`，退出转 `archive/`
-- 软退出（可被叶瑄挽留）+ 硬退出（绝对穿透）
+- 软退出（可被他挽留）+ 硬退出（绝对穿透）
 - dream_summary + 短 TTL afterglow loader（Phase 7：现实层 `dream_afterglow_soft_hint` 已接线，`_format_afterglow_soft_hint()` 只读注入软提示）
 - 隔离合同测试
 
@@ -45,8 +45,8 @@
 - `memory_access` 三档：`card_only` / `relationship_summary` / `full_snapshot`（全冻结只读）
 - D0–D10 梦境 prompt 层栈，D1 固定在 D2 之上
 - `body_state`：她的赛博身体，三轴各 0–100，dream-local，梦关即清
-- `body_tracker`：独立分析器（仿 detect_emotion），**叶瑄永远拿不到原始数值**
-- `body_projection`：4 档可见度 + 叶瑄情绪张力（yexuan_tension）耦合
+- `body_tracker`：独立分析器（仿 detect_emotion），**他永远拿不到原始数值**
+- `body_projection`：4 档可见度 + 他情绪张力（yexuan_tension）耦合
 - 前端 BodyState 类型 + 她的赛博感知侧栏面板
 
 **印象回流（impression v1 + patch）**
@@ -64,8 +64,8 @@
 
 **高强度档（v2）**
 - `threshold_break`：关掉 body_state 强度上限（数值可达全程 0–100）
-- `numbers_visible`：该档把真实数值喂进叶瑄上下文
-- `non_lucid`：叶瑄在虚构内不点破"这是梦"，但系统层 + dream_state 仍标记 dream
+- `numbers_visible`：该档把真实数值喂进他上下文
+- `non_lucid`：他在虚构内不点破"这是梦"，但系统层 + dream_state 仍标记 dream
 - 全开档污染矩阵测试
 
 **Mirror 模式（v0.1）**
@@ -202,8 +202,8 @@
 | 层 | 内容 | 轴 / 控制 |
 |---|---|---|
 | `D0_jailbreak` | 破限预设（梦境独立源） | — |
-| `D1_identity_core` | **不变量**：叶瑄人格 + lucid 自知 | 轴1，永不可关 |
-| `D2_world_ruleset` | 今晚世界规则，显式框"从属于叶瑄" | 轴2，world_layer |
+| `D1_identity_core` | **不变量**：他人格 + lucid 自知 | 轴1，永不可关 |
+| `D2_world_ruleset` | 今晚世界规则，显式框"从属于他" | 轴2，world_layer |
 | `D3_dream_mes_example` | 世界对应 few-shot（与现实卡物理分离） | 轴2 |
 | `D4_frozen_reality` | 冻结现实上下文（只读） | memory_access |
 | `D4.5_hidden_state` | 用户隐性状态 bucket 只读快照（tag-gated，Phase 4）**Scenario Mode 下永远禁用** | tag: body_intimate / physical_closeness；`dream_mode != "scenario"` |
@@ -343,7 +343,7 @@ REALITY_CHAT → DREAM_ENTRANCE_AVAILABLE → DREAM_ACTIVE → DREAM_CLOSING →
 
 ### dream_state.json 字段
 
-`user_id` / `status` / `dream_id` / `frozen_world` / `lucid_mode` / `context_snapshot` / `body_state{heat,sensitivity,tension}` / `emotional_tension`(叶瑄的，0–1)
+`user_id` / `status` / `dream_id` / `frozen_world` / `lucid_mode` / `context_snapshot` / `body_state{heat,sensitivity,tension}` / `emotional_tension`(他的，0–1)
 
 ### dream_settings.json 字段（UI 设置页对应）
 
@@ -360,13 +360,13 @@ REALITY_CHAT → DREAM_ENTRANCE_AVAILABLE → DREAM_ACTIVE → DREAM_CLOSING →
 
 ### Emerald-client 当前接线
 
-同级项目 `D:\ai\Emerald-client` 已把 Dream 作为正式 overlay 接入，不再是 mock preview：
+同级项目 `<desktop-client-root>` 已把 Dream 作为正式 overlay 接入，不再是 mock preview：
 
 - React API：`src/shared/api/dream.ts` 通过 Tauri invoke 调用 Dream 端点；
 - Rust bridge：`src-tauri/src/lib.rs` 提供 `dream_get_state` / `dream_enter` / `dream_chat` /
   `dream_exit` / `dream_get_settings` / `dream_update_settings`；
 - UI：`src/windows/dream/` 提供入梦、梦内聊天、WAKE / Esc 硬退出、状态侧栏、偏好和帮助窗；
-- 状态轮询：`GET /dream/state` 每 8 秒刷新，显示她的 body 数值、叶瑄梦内张力、场景和象征锚；
+- 状态轮询：`GET /dream/state` 每 8 秒刷新，显示她的 body 数值、他梦内张力、场景和象征锚；
 - 本地外观：聊天字号、主题字号、动态字体包、RGB 主题色、聊天背景导入裁切和模糊度只存客户端；
 - 后端偏好：memory access、感知边界、世界层、清明模式、dream lorebook 走 `/dream/settings`。
 
@@ -383,7 +383,7 @@ REALITY_CHAT → DREAM_ENTRANCE_AVAILABLE → DREAM_ACTIVE → DREAM_CLOSING →
 5. **生成时剥离**：场景 / 世界 / 身体在回流产物**生成时**结构性剥掉，下游就没有可泄漏的东西。
 6. **三层回流，各有独立 store**：死 archive / 短 afterglow / 低权印象，现实记忆链都不读。
 7. **反假绿铁律**：凡"X 不在 Y 里"的合同断言，**必配**"X 在 Y 里"的正样本对照，防空库 / stub 伪装成验证。（这条是踩坑踩出来的——空库断言曾两次伪装成洗白验证。）
-8. **有界耦合**：叶瑄情绪耦合 dream-local、单轮封顶（≤0.15）、梦关即清，永不写现实 mood_state。
+8. **有界耦合**：他情绪耦合 dream-local、单轮封顶（≤0.15）、梦关即清，永不写现实 mood_state。
 9. **D7 粗粒度张力桶**：`yexuan_tension`（float 0–1）在进入 D7 prompt 前经 `_bucket_tension()` 映射为四档语义标签（`< 0.25` → 低位 / `< 0.5` → 上升中 / `< 0.75` → 高位 / `≥ 0.75` → 临界），**绝不向 LLM 暴露精确百分比**，避免过拟合数值细节。HUD / UI 若需显示原始数值，走独立读路径，与 prompt 注入完全解耦。sandbox / mirror / scenario 共享同一分桶逻辑；`yexuan_tension` 本体、HUD 存储、ScenarioCore、hidden_state 均不受影响。
 
 ---
@@ -394,10 +394,10 @@ REALITY_CHAT → DREAM_ENTRANCE_AVAILABLE → DREAM_ACTIVE → DREAM_CLOSING →
 - 现实记忆冻结只读；梦内绝不回写现实（含 mood_state 一字节不碰）
 - impression/afterglow store 物理隔离（reflect/consolidate/retrieve 无读取路径）
 - body_state 始终 dream-local、梦关即清；threshold_break 只解**数值上限**，不解生命周期/隔离/逃生
-- 数值只在 `numbers_visible+` 进叶瑄上下文
+- 数值只在 `numbers_visible+` 进他上下文
 - `hard_exit` 绝对：任何档位 / non_lucid / 叙事挽留 / config 都不能削弱
 - 身份在世界之上；世界入梦冻结、整场不可切
-- non_lucid 只改叶瑄虚构内自知；系统层仍标记 dream，墙 + 逃生不变
+- non_lucid 只改他虚构内自知；系统层仍标记 dream，墙 + 逃生不变
 
 ### CURRENT（当前实现）
 见第二节功能清单。三轴 + 四档 + 六世界 + 软硬双出口已落地；Mirror v0.1 已落地（只读镜子，MirrorCore 入梦冻结，DM 层注入，无写回）；三层产物均会生成，
@@ -426,7 +426,7 @@ import（它只传递预加载文本给 prompt，不读 dream 数据）。
 
 ## 十、已知边界 / 技术债
 
-- **F1 虚构场景**：叶瑄读 6g 印象后，可能在现实回合**编造**一个梦场景，被正常 capture 当事实。靠 6g 文案约束缓解，**非结构性防御**。低危（明确框成梦），可接受。
+- **F1 虚构场景**：他读 6g 印象后，可能在现实回合**编造**一个梦场景，被正常 capture 当事实。靠 6g 文案约束缓解，**非结构性防御**。低危（明确框成梦），可接受。
 - **vocab_strip 是手维护黑名单**：新世界/新术语忘填 `vocab.json` 会静默漏。但因承重墙是 store 隔离，仅在 F1 边界才有影响，不致命。**任何人不得把它当墙用。**
 - **身份稳定性测试是弱代理**：只断言人称正确 + 依恋关键词在场，真验证靠实际游玩。
 - **DREAM_LOCKED 预留未实现**：无系统级软退锁。

@@ -93,7 +93,7 @@ def _setup_pipeline_send(monkeypatch, owner_id="owner1", char_id="yexuan", pipel
 
     monkeypatch.setattr(
         "core.config_loader.get_config",
-        lambda: {"scheduler": {"owner_id": owner_id}, "character": {"name": "叶瑄"}},
+        lambda: {"scheduler": {"owner_id": owner_id}, "character": {"name": "Companion"}},
     )
     monkeypatch.setattr(_loop, "_active_char_id_or_none", lambda: char_id)
     monkeypatch.setattr(
@@ -349,7 +349,7 @@ async def test_duplicate_scheduler_event_no_llm_no_post_process(monkeypatch):
 
     monkeypatch.setattr(
         "core.config_loader.get_config",
-        lambda: {"scheduler": {"owner_id": "owner7"}, "character": {"name": "叶瑄"}},
+        lambda: {"scheduler": {"owner_id": "owner7"}, "character": {"name": "Companion"}},
     )
     monkeypatch.setattr(_loop, "_active_char_id_or_none", lambda: "yexuan")
     monkeypatch.setattr("core.scheduler.triggers.birthday._is_birthday_period", lambda: False)

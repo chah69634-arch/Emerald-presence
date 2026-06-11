@@ -7,7 +7,7 @@ Covers:
 1.  新 enqueue payload 包含 scope 字段
 2.  新 enqueue payload 同时保留 uid 和 char_id（向后兼容）
 3.  handler 优先从 payload["scope"] 读取 uid / char_id
-4.  scope=hongcha vs char_id=yexuan 冲突时，handler 以 scope 为准
+4.  scope=character_b vs char_id=yexuan 冲突时，handler 以 scope 为准
 5.  scope domain 非 reality → fail-loud ValueError
 6.  scope 缺 character_id（如 global scope）→ fail-loud，不 fallback yexuan
 7.  旧 payload 有 char_id、无 scope → 仍兼容
@@ -39,11 +39,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -84,8 +84,8 @@ def _write_active(sandbox, char_id: str):
 @pytest.mark.asyncio
 async def test_new_payload_contains_scope_field(chars_tree, monkeypatch, sandbox, registry):
     """post_process 入队的每个携带 char_id 的 payload 都应有 scope 字段。"""
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[tuple[str, dict]] = []
     import core.post_process.slow_queue as sq
@@ -113,8 +113,8 @@ async def test_new_payload_contains_scope_field(chars_tree, monkeypatch, sandbox
 @pytest.mark.asyncio
 async def test_new_payload_retains_uid_and_char_id(chars_tree, monkeypatch, sandbox, registry):
     """新 payload 在加入 scope 的同时，仍应保留 uid 和 char_id 字段（向后兼容）。"""
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[tuple[str, dict]] = []
     import core.post_process.slow_queue as sq
@@ -136,7 +136,7 @@ async def test_new_payload_retains_uid_and_char_id(chars_tree, monkeypatch, sand
         assert "uid" in payload, f"{task_type!r} payload 缺少 uid"
         assert "char_id" in payload, f"{task_type!r} payload 缺少 char_id（需向后兼容）"
         assert payload["uid"] == "u42", f"{task_type!r} uid 应为 'u42'"
-        assert payload["char_id"] == "hongcha", f"{task_type!r} char_id 应为 'hongcha'"
+        assert payload["char_id"] == "character_b", f"{task_type!r} char_id 应为 'character_b'"
 
 
 # ── Test 3: handler 优先从 scope 读取 uid / char_id ─────────────────────────
@@ -152,13 +152,13 @@ async def test_handler_reads_uid_char_id_from_scope(sandbox):
     def _spy_append(uid, summary, tags=None, mid_id=None, source_turn_id=None, *, char_id="yexuan"):
         captured.append((uid, char_id))
 
-    scope = MemoryScope.reality_scope("u_scope", "hongcha").to_payload()
+    scope = MemoryScope.reality_scope("u_scope", "character_b").to_payload()
     payload = {
         "turn_id": "t1",
         "uid": "u_scope",
         "user_content": "msg",
         "reply": "rep",
-        "char_id": "hongcha",
+        "char_id": "character_b",
         "scope": scope,
     }
 
@@ -170,25 +170,25 @@ async def test_handler_reads_uid_char_id_from_scope(sandbox):
         from core.memory.fixation_pipeline import _get_scope_from_payload
         result_scope = _get_scope_from_payload(payload, "test")
         assert result_scope.uid == "u_scope"
-        assert result_scope.character_id == "hongcha"
+        assert result_scope.character_id == "character_b"
         assert result_scope.domain == "reality"
 
 
 # ── Test 4: scope 与 char_id 冲突时 scope 优先 ──────────────────────────────
 
 def test_scope_wins_over_char_id_field():
-    """payload 同时有 scope=hongcha 和 char_id=yexuan 时，_get_scope_from_payload 应采用 scope。"""
+    """payload 同时有 scope=character_b 和 char_id=yexuan 时，_get_scope_from_payload 应采用 scope。"""
     from core.memory.fixation_pipeline import _get_scope_from_payload
 
-    scope_payload = MemoryScope.reality_scope("u99", "hongcha").to_payload()
+    scope_payload = MemoryScope.reality_scope("u99", "character_b").to_payload()
     payload = {
         "uid": "u99",
         "char_id": "yexuan",    # 与 scope 冲突
         "scope": scope_payload,
     }
     result = _get_scope_from_payload(payload, "conflict_test")
-    assert result.character_id == "hongcha", (
-        f"scope 应优先于 char_id，期望 hongcha，实际: {result.character_id!r}"
+    assert result.character_id == "character_b", (
+        f"scope 应优先于 char_id，期望 character_b，实际: {result.character_id!r}"
     )
     assert result.uid == "u99"
 
@@ -240,10 +240,10 @@ def test_legacy_payload_with_char_id_no_scope():
     """旧 payload 没有 scope 字段但有 char_id，_get_scope_from_payload 应正常返回对应 scope。"""
     from core.memory.fixation_pipeline import _get_scope_from_payload
 
-    payload = {"uid": "u_legacy", "char_id": "hongcha"}
+    payload = {"uid": "u_legacy", "char_id": "character_b"}
     scope = _get_scope_from_payload(payload, "legacy_test")
     assert scope.uid == "u_legacy"
-    assert scope.character_id == "hongcha"
+    assert scope.character_id == "character_b"
     assert scope.domain == "reality"
 
 
@@ -298,7 +298,7 @@ async def test_handler_capture_turn_retry_uses_scope_char_id(sandbox):
                           envelope, char_id):
         captured_char_ids.append(char_id)
 
-    scope = MemoryScope.reality_scope("u1", "hongcha").to_payload()
+    scope = MemoryScope.reality_scope("u1", "character_b").to_payload()
     payload = {
         "uid": "u1",
         "char_id": "yexuan",   # 旧字段，scope 应覆盖
@@ -318,8 +318,8 @@ async def test_handler_capture_turn_retry_uses_scope_char_id(sandbox):
         mock_lock.return_value.__aexit__ = AsyncMock(return_value=False)
         await handler_capture_turn_retry(payload)
 
-    assert captured_char_ids == ["hongcha"], (
-        f"capture_turn_retry 应用 scope.character_id='hongcha'，实际: {captured_char_ids}"
+    assert captured_char_ids == ["character_b"], (
+        f"capture_turn_retry 应用 scope.character_id='character_b'，实际: {captured_char_ids}"
     )
 
 
@@ -335,7 +335,7 @@ async def test_handler_summarize_to_midterm_uses_scope_char_id(sandbox):
     async def _spy_summarize(turn_id, uid, user_msg, reply, tags, emotion, *, char_id):
         captured.append((uid, char_id))
 
-    scope = MemoryScope.reality_scope("u2", "hongcha").to_payload()
+    scope = MemoryScope.reality_scope("u2", "character_b").to_payload()
     payload = {
         "turn_id": "t2",
         "uid": "u2",
@@ -348,7 +348,7 @@ async def test_handler_summarize_to_midterm_uses_scope_char_id(sandbox):
     with patch("core.memory.fixation_pipeline.summarize_to_midterm", side_effect=_spy_summarize):
         await handler_summarize_to_midterm(payload)
 
-    assert captured == [("u2", "hongcha")], f"期望 [('u2','hongcha')]，实际: {captured}"
+    assert captured == [("u2", "character_b")], f"期望 [('u2','character_b')]，实际: {captured}"
 
 
 # ── Test 11: handler_reflect_to_episodic 使用 scope 中的 char_id ─────────────
@@ -363,7 +363,7 @@ async def test_handler_reflect_to_episodic_uses_scope_char_id(sandbox):
     async def _spy_reflect(uid, mid_ids, trigger, *, char_id):
         captured.append((uid, char_id))
 
-    scope = MemoryScope.reality_scope("u3", "hongcha").to_payload()
+    scope = MemoryScope.reality_scope("u3", "character_b").to_payload()
     payload = {
         "uid": "u3",
         "mid_ids": ["m1"],
@@ -375,7 +375,7 @@ async def test_handler_reflect_to_episodic_uses_scope_char_id(sandbox):
     with patch("core.memory.fixation_pipeline.reflect_to_episodic", side_effect=_spy_reflect):
         await handler_reflect_to_episodic(payload)
 
-    assert captured == [("u3", "hongcha")], f"期望 [('u3','hongcha')]，实际: {captured}"
+    assert captured == [("u3", "character_b")], f"期望 [('u3','character_b')]，实际: {captured}"
 
 
 # ── Test 12: handler_user_profile_update 使用 scope 中的 char_id ─────────────
@@ -390,7 +390,7 @@ async def test_handler_user_profile_update_uses_scope_char_id(sandbox):
     async def _spy_extract(uid, recent, *, char_id):
         captured.append((uid, char_id))
 
-    scope = MemoryScope.reality_scope("u4", "hongcha").to_payload()
+    scope = MemoryScope.reality_scope("u4", "character_b").to_payload()
     payload = {
         "uid": "u4",
         "recent": "some text",
@@ -406,7 +406,7 @@ async def test_handler_user_profile_update_uses_scope_char_id(sandbox):
         mock_lock.return_value.__aexit__ = AsyncMock(return_value=False)
         await _handler_user_profile_update(payload)
 
-    assert captured == [("u4", "hongcha")], f"期望 [('u4','hongcha')]，实际: {captured}"
+    assert captured == [("u4", "character_b")], f"期望 [('u4','character_b')]，实际: {captured}"
 
 
 # ── Test 13: handler_consolidate_to_identity 使用 scope 中的 char_id ──────────
@@ -421,7 +421,7 @@ async def test_handler_consolidate_to_identity_uses_scope_char_id(sandbox):
     async def _spy_consolidate(uid, llm_client, *, char_id):
         captured.append((uid, char_id))
 
-    scope = MemoryScope.reality_scope("u5", "hongcha").to_payload()
+    scope = MemoryScope.reality_scope("u5", "character_b").to_payload()
     payload = {
         "uid": "u5",
         "char_id": "yexuan",
@@ -431,7 +431,7 @@ async def test_handler_consolidate_to_identity_uses_scope_char_id(sandbox):
     with patch("core.memory.fixation_pipeline.consolidate_to_identity", side_effect=_spy_consolidate):
         await handler_consolidate_to_identity(payload)
 
-    assert captured == [("u5", "hongcha")], f"期望 [('u5','hongcha')]，实际: {captured}"
+    assert captured == [("u5", "character_b")], f"期望 [('u5','character_b')]，实际: {captured}"
 
 
 # ── Test 14: 新 payload 不改变 char_id 字段（regression：char_scope 仍全绿）──
@@ -439,8 +439,8 @@ async def test_handler_consolidate_to_identity_uses_scope_char_id(sandbox):
 @pytest.mark.asyncio
 async def test_new_payload_char_id_field_unchanged(chars_tree, monkeypatch, sandbox, registry):
     """新 payload 中 char_id 字段值与 scope.character_id 一致，不影响原有读取逻辑。"""
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[tuple[str, dict]] = []
     import core.post_process.slow_queue as sq
@@ -478,7 +478,7 @@ async def test_new_payload_char_id_field_unchanged(chars_tree, monkeypatch, sand
 
 def test_memory_scope_roundtrip_reality():
     """MemoryScope.reality_scope().to_payload() → from_payload() 应完整还原。"""
-    original = MemoryScope.reality_scope("u_rt", "hongcha")
+    original = MemoryScope.reality_scope("u_rt", "character_b")
     raw = original.to_payload()
     restored = MemoryScope.from_payload(raw)
     assert restored == original

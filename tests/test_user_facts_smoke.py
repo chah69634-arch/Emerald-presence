@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 # ─────────────────────────────────────────────────────────────────────────────
 
 OWNER_UID = "1234567890"
-CHARACTERS = ["yexuan", "hongcha", "yexuanJ-5412"]
+CHARACTERS = ["yexuan", "character_b", "yexuanJ-5412"]
 
 TEST_FACTS = {
     "preferred_language": "Chinese",
@@ -87,7 +87,7 @@ def _apply_build_stubs(monkeypatch):
     monkeypatch.setattr(_cl, "get_config", lambda: {"chat": {}})
 
 
-def _make_character(name: str = "叶瑄"):
+def _make_character(name: str = "Companion"):
     from core.character_loader import Character
     return Character(name=name)
 
@@ -183,9 +183,9 @@ class TestFieldGuard:
 # ─────────────────────────────────────────────────────────────────────────────
 
 CHAR_NAMES = {
-    "yexuan": "叶瑄",
-    "hongcha": "红茶",
-    "yexuanJ-5412": "叶瑄J",
+    "yexuan": "Companion",
+    "character_b": "DemoUser",
+    "yexuanJ-5412": "CompanionJ",
 }
 
 

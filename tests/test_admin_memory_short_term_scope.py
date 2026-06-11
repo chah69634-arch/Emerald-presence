@@ -2,9 +2,9 @@
 tests/test_admin_memory_short_term_scope.py — P1-0C: ShortTermMemory char_id scope
 
 Covers:
-1.  ShortTermMemory.load(user_id, char_id="hongcha") reads hongcha bucket, not yexuan.
-2.  ShortTermMemory.clear(user_id, char_id="hongcha") only clears hongcha bucket.
-3.  admin GET short-term with no char_id uses active character (active=hongcha).
+1.  ShortTermMemory.load(user_id, char_id="character_b") reads character_b bucket, not yexuan.
+2.  ShortTermMemory.clear(user_id, char_id="character_b") only clears character_b bucket.
+3.  admin GET short-term with no char_id uses active character (active=character_b).
 4.  admin DELETE short-term with no char_id only clears active character bucket.
 5.  admin GET/DELETE with explicit char_id uses that char (not active).
 6.  active_character missing/empty → admin GET returns 503, no load called.
@@ -27,15 +27,15 @@ from core.asset_registry import AssetRegistry
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree with yexuan + hongcha."""
+    """Minimal characters/ tree with yexuan + character_b."""
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -64,46 +64,46 @@ def _seed_active(sandbox, char_id: str):
 
 # ── 1 & 2: ShortTermMemory class method char_id isolation ─────────────────────
 
-def test_stm_load_reads_hongcha_bucket_not_yexuan(sandbox):
-    """ShortTermMemory.load with char_id=hongcha reads hongcha bucket only."""
+def test_stm_load_reads_character_b_bucket_not_yexuan(sandbox):
+    """ShortTermMemory.load with char_id=character_b reads character_b bucket only."""
     from core.memory.short_term import ShortTermMemory, append
 
     uid = "u_stm_load"
-    SENTINEL = "草莓大福-hongcha-load"
+    SENTINEL = "草莓大福-character_b-load"
 
-    # Write to hongcha bucket, leave yexuan empty
-    append(uid, "user", SENTINEL, char_id="hongcha")
+    # Write to character_b bucket, leave yexuan empty
+    append(uid, "user", SENTINEL, char_id="character_b")
 
     stm = ShortTermMemory()
-    hongcha_history = stm.load(uid, char_id="hongcha")
+    character_b_history = stm.load(uid, char_id="character_b")
     yexuan_history = stm.load(uid, char_id="yexuan")
 
-    assert any(SENTINEL in m.get("content", "") for m in hongcha_history), (
-        f"hongcha bucket should contain sentinel; got {hongcha_history}"
+    assert any(SENTINEL in m.get("content", "") for m in character_b_history), (
+        f"character_b bucket should contain sentinel; got {character_b_history}"
     )
     assert not any(SENTINEL in m.get("content", "") for m in yexuan_history), (
-        f"yexuan bucket must not contain hongcha sentinel; got {yexuan_history}"
+        f"yexuan bucket must not contain character_b sentinel; got {yexuan_history}"
     )
 
 
-def test_stm_clear_clears_hongcha_bucket_not_yexuan(sandbox):
-    """ShortTermMemory.clear with char_id=hongcha only empties the hongcha bucket."""
+def test_stm_clear_clears_character_b_bucket_not_yexuan(sandbox):
+    """ShortTermMemory.clear with char_id=character_b only empties the character_b bucket."""
     from core.memory.short_term import ShortTermMemory, append
 
     uid = "u_stm_clear"
-    SENTINEL_H = "草莓大福-hongcha-clear"
+    SENTINEL_H = "草莓大福-character_b-clear"
     SENTINEL_Y = "草莓大福-yexuan-clear"
 
-    append(uid, "user", SENTINEL_H, char_id="hongcha")
+    append(uid, "user", SENTINEL_H, char_id="character_b")
     append(uid, "user", SENTINEL_Y, char_id="yexuan")
 
     stm = ShortTermMemory()
-    stm.clear(uid, char_id="hongcha")
+    stm.clear(uid, char_id="character_b")
 
-    hongcha_history = stm.load(uid, char_id="hongcha")
+    character_b_history = stm.load(uid, char_id="character_b")
     yexuan_history = stm.load(uid, char_id="yexuan")
 
-    assert hongcha_history == [], f"hongcha bucket must be empty after clear; got {hongcha_history}"
+    assert character_b_history == [], f"character_b bucket must be empty after clear; got {character_b_history}"
     assert any(SENTINEL_Y in m.get("content", "") for m in yexuan_history), (
         f"yexuan bucket must be untouched; got {yexuan_history}"
     )
@@ -112,22 +112,22 @@ def test_stm_clear_clears_hongcha_bucket_not_yexuan(sandbox):
 # ── 3: admin GET uses active character when char_id omitted ───────────────────
 
 def test_admin_get_uses_active_char_when_omitted(sandbox, registry, monkeypatch):
-    """GET short-term with no char_id resolves to active_character (hongcha)."""
+    """GET short-term with no char_id resolves to active_character (character_b)."""
     from core.memory import short_term as _st
     from admin.routers.memory import get_short_term
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     uid = "u_admin_get_active"
     SENTINEL = "草莓大福-admin-get"
-    _st.append(uid, "user", SENTINEL, char_id="hongcha")
+    _st.append(uid, "user", SENTINEL, char_id="character_b")
 
     result = asyncio.run(get_short_term(uid, char_id=None, auth="dummy"))
 
-    assert result["char_id"] == "hongcha", f"expected char_id=hongcha, got {result['char_id']!r}"
+    assert result["char_id"] == "character_b", f"expected char_id=character_b, got {result['char_id']!r}"
     contents = [m.get("content", "") for m in result["history"]]
     assert any(SENTINEL in c for c in contents), (
-        f"hongcha sentinel must appear in history; got {contents}"
+        f"character_b sentinel must appear in history; got {contents}"
     )
 
 
@@ -138,33 +138,33 @@ def test_admin_delete_only_clears_active_char(sandbox, registry, monkeypatch):
     from core.memory import short_term as _st
     from admin.routers.memory import clear_short_term
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     uid = "u_admin_delete_active"
-    SENTINEL_H = "草莓大福-delete-hongcha"
+    SENTINEL_H = "草莓大福-delete-character_b"
     SENTINEL_Y = "草莓大福-delete-yexuan"
 
-    _st.append(uid, "user", SENTINEL_H, char_id="hongcha")
+    _st.append(uid, "user", SENTINEL_H, char_id="character_b")
     _st.append(uid, "user", SENTINEL_Y, char_id="yexuan")
 
     result = asyncio.run(clear_short_term(uid, char_id=None, auth="dummy"))
 
-    assert result["char_id"] == "hongcha"
-    assert _st.load(uid, char_id="hongcha") == [], "hongcha bucket must be empty"
+    assert result["char_id"] == "character_b"
+    assert _st.load(uid, char_id="character_b") == [], "character_b bucket must be empty"
     yexuan_history = _st.load(uid, char_id="yexuan")
     assert any(SENTINEL_Y in m.get("content", "") for m in yexuan_history), (
-        "yexuan bucket must be untouched after delete of hongcha"
+        "yexuan bucket must be untouched after delete of character_b"
     )
 
 
 # ── 5: admin GET/DELETE with explicit char_id uses that char ──────────────────
 
 def test_admin_get_explicit_char_id(sandbox, registry, monkeypatch):
-    """GET short-term with explicit char_id=yexuan reads yexuan, not active (hongcha)."""
+    """GET short-term with explicit char_id=yexuan reads yexuan, not active (character_b)."""
     from core.memory import short_term as _st
     from admin.routers.memory import get_short_term
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     uid = "u_admin_get_explicit"
     SENTINEL_Y = "草莓大福-explicit-yexuan"
@@ -180,26 +180,26 @@ def test_admin_get_explicit_char_id(sandbox, registry, monkeypatch):
 
 
 def test_admin_delete_explicit_char_id(sandbox, registry, monkeypatch):
-    """DELETE short-term with explicit char_id=yexuan clears yexuan, not active (hongcha)."""
+    """DELETE short-term with explicit char_id=yexuan clears yexuan, not active (character_b)."""
     from core.memory import short_term as _st
     from admin.routers.memory import clear_short_term
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     uid = "u_admin_delete_explicit"
     SENTINEL_H = "草莓大福-explicit-h"
     SENTINEL_Y = "草莓大福-explicit-y"
 
-    _st.append(uid, "user", SENTINEL_H, char_id="hongcha")
+    _st.append(uid, "user", SENTINEL_H, char_id="character_b")
     _st.append(uid, "user", SENTINEL_Y, char_id="yexuan")
 
     result = asyncio.run(clear_short_term(uid, char_id="yexuan", auth="dummy"))
 
     assert result["char_id"] == "yexuan"
     assert _st.load(uid, char_id="yexuan") == [], "yexuan bucket must be empty"
-    hongcha_history = _st.load(uid, char_id="hongcha")
-    assert any(SENTINEL_H in m.get("content", "") for m in hongcha_history), (
-        "hongcha bucket must be untouched"
+    character_b_history = _st.load(uid, char_id="character_b")
+    assert any(SENTINEL_H in m.get("content", "") for m in character_b_history), (
+        "character_b bucket must be untouched"
     )
 
 
@@ -294,18 +294,18 @@ def test_load_for_prompt_char_id_passthrough(sandbox):
 
     uid = "u_reg_prompt"
     SENTINEL = "草莓大福-load_for_prompt"
-    append(uid, "user", SENTINEL, char_id="hongcha")
+    append(uid, "user", SENTINEL, char_id="character_b")
 
-    result = load_for_prompt(uid, char_id="hongcha")
+    result = load_for_prompt(uid, char_id="character_b")
     contents = [m.get("content", "") for m in result]
     assert any(SENTINEL in c for c in contents), (
-        f"load_for_prompt(char_id=hongcha) must read hongcha bucket; got {contents}"
+        f"load_for_prompt(char_id=character_b) must read character_b bucket; got {contents}"
     )
 
     result_y = load_for_prompt(uid, char_id="yexuan")
     contents_y = [m.get("content", "") for m in result_y]
     assert not any(SENTINEL in c for c in contents_y), (
-        "load_for_prompt(char_id=yexuan) must not see hongcha content"
+        "load_for_prompt(char_id=yexuan) must not see character_b content"
     )
 
 
@@ -315,10 +315,10 @@ def test_append_char_id_passthrough(sandbox):
 
     uid = "u_reg_append"
     SENTINEL = "草莓大福-append"
-    append(uid, "assistant", SENTINEL, char_id="hongcha")
+    append(uid, "assistant", SENTINEL, char_id="character_b")
 
-    assert any(SENTINEL in m.get("content", "") for m in load(uid, char_id="hongcha")), (
-        "append(char_id=hongcha) must write to hongcha bucket"
+    assert any(SENTINEL in m.get("content", "") for m in load(uid, char_id="character_b")), (
+        "append(char_id=character_b) must write to character_b bucket"
     )
     assert not any(SENTINEL in m.get("content", "") for m in load(uid, char_id="yexuan")), (
         "yexuan bucket must remain clean"

@@ -29,7 +29,7 @@ def _day_block(time_str: str, user_text: str, reply_text: str, turn_id: str, int
         f"## {time_str}\n"
         f"**用户**：{user_text}\n"
         f"> turn_id:{turn_id}\n"
-        f"**叶瑄**：{reply_text}\n"
+        f"**Companion**：{reply_text}\n"
         f"> emotion:neutral intensity:{intensity} turn_id:{turn_id}\n"
         "---\n"
     )

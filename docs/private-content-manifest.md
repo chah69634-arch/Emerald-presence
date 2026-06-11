@@ -10,7 +10,7 @@
 
 | 路径 | 说明 |
 |------|------|
-| `docs/templates/character_template.json` | 角色卡空模板（已从 characters/ 移出，不再出现在 admin UI 列表中） |
+| `examples/character_template.json` | 角色卡空模板（在 examples/ 下，不再出现在 admin UI 列表中） |
 | `characters/dream_worlds/*/lorebook.yaml` | 内置梦世界 lorebook（6 个世界） |
 | `characters/dream_worlds/*/ruleset.md` | 梦世界规则文本 |
 | `characters/dream_worlds/*/mes_example.md` | 梦世界对话示例 |
@@ -52,8 +52,8 @@
 
 | 路径 | 说明 |
 |------|------|
-| `characters/叶瑄.json` | 角色卡主体（SillyTavern JSON 格式） |
-| `characters/叶瑄.txt` | 角色卡文本版 |
+| `characters/他.json` | 角色卡主体（SillyTavern JSON 格式） |
+| `characters/他.txt` | 角色卡文本版 |
 | `characters/yexuan_author_notes.json` | 当前 author notes 池（同 2a fallback） |
 | `characters/yexuan_author_notes - 副本.json` | author notes 备份副本 |
 | `characters/dream_presets/custom.md` | 自定义梦境预设 |

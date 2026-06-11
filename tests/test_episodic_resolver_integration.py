@@ -10,9 +10,9 @@ Covers:
 4.  memory_index 物理路径与旧路径完全一致
 5.  char_id=None → fail-loud（ValueError），不 fallback yexuan
 6.  char_id="" → fail-loud（ValueError），不 fallback yexuan
-7.  yexuan / hongcha 两个 episodic bucket 内容互不污染
-8.  hongcha retrieve 不含 yexuan bucket 唯一词
-9.  写入 hongcha memory_index，不写 yexuan memory_index
+7.  yexuan / character_b 两个 episodic bucket 内容互不污染
+8.  character_b retrieve 不含 yexuan bucket 唯一词
+9.  写入 character_b memory_index，不写 yexuan memory_index
 10. 回归：memory_path_resolver 核心断言（episodic/memory_index layout）
 """
 
@@ -187,19 +187,19 @@ def test_index_write_file_empty_char_id_raises(sandbox):
 
 
 # ---------------------------------------------------------------------------
-# 7. yexuan / hongcha 两个 episodic bucket 内容互不污染
+# 7. yexuan / character_b 两个 episodic bucket 内容互不污染
 # ---------------------------------------------------------------------------
 
-def test_yexuan_hongcha_episodic_buckets_isolated(sandbox):
+def test_yexuan_character_b_episodic_buckets_isolated(sandbox):
     uid = "u1"
     ep_y = _ep("ep_y1", "叶萱独有的记忆片段", tags=["叶萱专属"])
-    ep_h = _ep("ep_h1", "红茶独有的记忆片段", tags=["红茶专属"])
+    ep_h = _ep("ep_h1", "DemoUser独有的记忆片段", tags=["DemoUser专属"])
 
     write_episode(uid, ep_y, char_id="yexuan")
-    write_episode(uid, ep_h, char_id="hongcha")
+    write_episode(uid, ep_h, char_id="character_b")
 
     mems_y = _load_memories(uid, char_id="yexuan")
-    mems_h = _load_memories(uid, char_id="hongcha")
+    mems_h = _load_memories(uid, char_id="character_b")
 
     ids_y = {m["id"] for m in mems_y}
     ids_h = {m["id"] for m in mems_h}
@@ -211,38 +211,38 @@ def test_yexuan_hongcha_episodic_buckets_isolated(sandbox):
 
 
 # ---------------------------------------------------------------------------
-# 8. hongcha retrieve 不含 yexuan bucket 唯一词
+# 8. character_b retrieve 不含 yexuan bucket 唯一词
 # ---------------------------------------------------------------------------
 
-def test_hongcha_retrieve_does_not_surface_yexuan_content(sandbox):
+def test_character_b_retrieve_does_not_surface_yexuan_content(sandbox):
     uid = "u2"
     unique_word = "叶萱唯一词汇XYZ"
     ep_y = _ep("ep_y2", f"{unique_word}只在叶萱桶里", tags=["叶萱独享"])
-    ep_h = _ep("ep_h2", "红茶自己的回忆", tags=["红茶回忆"])
+    ep_h = _ep("ep_h2", "DemoUser自己的回忆", tags=["DemoUser回忆"])
 
     write_episode(uid, ep_y, char_id="yexuan")
-    write_episode(uid, ep_h, char_id="hongcha")
+    write_episode(uid, ep_h, char_id="character_b")
 
-    results = retrieve(uid, topic="叶萱独享", top_k=5, char_id="hongcha")
+    results = retrieve(uid, topic="叶萱独享", top_k=5, char_id="character_b")
     summaries = " ".join(m.get("narrative_summary", "") for m in results)
     assert unique_word not in summaries
 
 
 # ---------------------------------------------------------------------------
-# 9. 写入 hongcha memory_index 不写 yexuan memory_index
+# 9. 写入 character_b memory_index 不写 yexuan memory_index
 # ---------------------------------------------------------------------------
 
-def test_rebuild_index_hongcha_does_not_touch_yexuan_index(sandbox):
+def test_rebuild_index_character_b_does_not_touch_yexuan_index(sandbox):
     uid = "u3"
-    ep_h = _ep("ep_h3", "红茶的片段", tags=["标签A"])
+    ep_h = _ep("ep_h3", "DemoUser的片段", tags=["标签A"])
     memories_h = [ep_h]
 
-    _rebuild_index(uid, memories_h, char_id="hongcha")
+    _rebuild_index(uid, memories_h, char_id="character_b")
 
     idx_y_path = resolve_path(_scope(uid, "yexuan"), "memory_index")
-    assert not idx_y_path.exists(), "写入 hongcha index 不应创建 yexuan index 文件"
+    assert not idx_y_path.exists(), "写入 character_b index 不应创建 yexuan index 文件"
 
-    idx_h = _load_index(uid, char_id="hongcha")
+    idx_h = _load_index(uid, char_id="character_b")
     assert "标签A" in idx_h
     assert "ep_h3" in idx_h["标签A"]
 
@@ -265,8 +265,8 @@ def test_write_episode_creates_file_in_correct_location(sandbox):
 
 
 def test_retrieve_reads_from_correct_path(sandbox):
-    uid, char_id = "u5", "hongcha"
-    ep = _ep("ep_rt2", "红茶的独特记忆", tags=["独特"])
+    uid, char_id = "u5", "character_b"
+    ep = _ep("ep_rt2", "DemoUser的独特记忆", tags=["独特"])
     write_episode(uid, ep, char_id=char_id)
 
     results = retrieve(uid, topic="独特", top_k=3, char_id=char_id)

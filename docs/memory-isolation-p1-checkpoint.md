@@ -173,7 +173,7 @@ per-character fact isolation is needed or whether global is correct.
 
 Result: `copy=0 conflict=0`. All active uid data is already under the yexuan v1
 scoped paths (`runtime/memory/yexuan/{uid}/`). No actual file migration is needed.
-hongcha and j5412 have no legacy data to migrate (empty histories).
+character_b and j5412 have no legacy data to migrate (empty histories).
 
 ### Optional / future
 
@@ -196,7 +196,7 @@ hongcha and j5412 have no legacy data to migrate (empty histories).
 - **Do not read `config.default` as runtime source of truth** for character identity.
 - **Do not re-read `active` char during Dream close/summary/impression/afterglow** — scope
   is fixed at Dream open.
-- **Do not copy yexuan memories to hongcha or other characters** — isolation is
+- **Do not copy yexuan memories to character_b or other characters** — isolation is
   per-character; backfill requires an explicit P2 migration script.
 
 ---
@@ -281,7 +281,7 @@ For each uid × artifact combination it classifies the entry as one of:
 | copy | 0 |
 | conflict | 0 |
 | skip | — (all active uids already v1) |
-| missing | — (hongcha / j5412 empty) |
+| missing | — (character_b / j5412 empty) |
 
 All active user data was already written to v1 scoped paths by the live runtime since
 P1-2 shipped. No legacy-tree files exist for any active uid.
@@ -289,6 +289,6 @@ P1-2 shipped. No legacy-tree files exist for any active uid.
 ### Implications
 
 - **No copy/move/rollback implementation required.** There is nothing to migrate.
-- **hongcha and j5412** have no legacy data; their v1 histories remain empty.
+- **character_b and j5412** have no legacy data; their v1 histories remain empty.
 - **character_growth** was not included in the script scope — see §4.1 and §7.
 - **Do not implement** copy, rollback, or delete logic on top of this script.

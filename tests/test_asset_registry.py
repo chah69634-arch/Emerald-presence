@@ -4,12 +4,12 @@ tests/test_asset_registry.py
 Unit tests for core/asset_registry.py — P1 asset id/label/filename separation.
 
 Tests cover:
-1. yexuan id resolves to yexuan.json with label 叶瑄
+1. yexuan id resolves to yexuan.json with label Companion
 2. active config stores id, not label/filename
 3. PATCH with label/filename is rejected
 4. hidden/template/example assets excluded from UI list
 5. unknown asset id fails loud
-6. legacy config "叶瑄" / "叶瑄.json" / "yexuan.json" normalizes to "yexuan"
+6. legacy config "Companion" / "Companion.json" / "yexuan.json" normalizes to "yexuan"
 7. dream preset entries: ASCII ids visible; Chinese filenames get stable ASCII ids
 8. dream preset legacy normalization: Chinese filename/label → ASCII id
 """
@@ -33,7 +33,7 @@ def fake_characters(tmp_path):
 
     # Real character card
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test"}), encoding="utf-8"
+        json.dumps({"name": "Companion", "description": "test"}), encoding="utf-8"
     )
 
     # Template / example — should be hidden
@@ -83,7 +83,7 @@ def registry(fake_characters, monkeypatch):
 def test_yexuan_resolves_to_filename_and_label(registry):
     entry = registry.resolve("yexuan", "character")
     assert entry.filename == "yexuan.json"
-    assert entry.label == "叶瑄"
+    assert entry.label == "Companion"
     assert entry.id == "yexuan"
     assert entry.kind == "character"
     assert not entry.hidden
@@ -212,11 +212,11 @@ def test_normalize_legacy_filename_to_id(registry):
 
 
 def test_normalize_legacy_chinese_label_to_id(registry):
-    assert registry.normalize_legacy("叶瑄", "character") == "yexuan"
+    assert registry.normalize_legacy("Companion", "character") == "yexuan"
 
 
 def test_normalize_legacy_chinese_label_with_extension(registry):
-    assert registry.normalize_legacy("叶瑄.json", "character") == "yexuan"
+    assert registry.normalize_legacy("Companion.json", "character") == "yexuan"
 
 
 # ── 7. Dream preset: ASCII ids; Chinese filenames get stable ASCII ids ────────

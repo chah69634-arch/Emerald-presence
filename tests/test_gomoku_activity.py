@@ -20,7 +20,7 @@ Gomoku Activity P0 验收测试（20 用例）
 14. 胜利后不允许继续落子
 15. move_history 顺序正确
 16. uid + char_id 隔离
-17. yexuan/hongcha 不共用 session
+17. yexuan/character_b 不共用 session
 18. 不写 short_term / history / user_hidden_state
 19. 非法 session_id 不能路径逃逸
 20. close 后 state 不再返回 active session
@@ -315,7 +315,7 @@ def test_move_history_order(sandbox):
 def test_uid_char_id_isolation(sandbox):
     s1 = G.start_game("user1", "yexuan")
     s2 = G.start_game("user2", "yexuan")
-    s3 = G.start_game("user1", "hongcha")
+    s3 = G.start_game("user1", "character_b")
 
     # 三个 session_id 互不相同
     assert len({s1.session_id, s2.session_id, s3.session_id}) == 3
@@ -323,7 +323,7 @@ def test_uid_char_id_isolation(sandbox):
     # find_active_session 按 char_id + uid 返回各自的 session
     a1 = G.get_active_session("user1", "yexuan")
     a2 = G.get_active_session("user2", "yexuan")
-    a3 = G.get_active_session("user1", "hongcha")
+    a3 = G.get_active_session("user1", "character_b")
 
     assert a1 is not None and a1.session_id == s1.session_id
     assert a2 is not None and a2.session_id == s2.session_id
@@ -331,22 +331,22 @@ def test_uid_char_id_isolation(sandbox):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# T17 — yexuan/hongcha 不共用 session
+# T17 — yexuan/character_b 不共用 session
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_yexuan_hongcha_independent_sessions(sandbox):
+def test_yexuan_character_b_independent_sessions(sandbox):
     sy = G.start_game("owner", "yexuan")
-    sh = G.start_game("owner", "hongcha")
+    sh = G.start_game("owner", "character_b")
 
     assert sy.char_id == "yexuan"
-    assert sh.char_id == "hongcha"
+    assert sh.char_id == "character_b"
     assert sy.session_id != sh.session_id
 
-    # 对 yexuan 落子，不影响 hongcha
+    # 对 yexuan 落子，不影响 character_b
     _move("owner", "yexuan", sy.session_id, 7, 7)
 
     loaded_y = activity_store.load_session("yexuan", "owner", "gomoku", sy.session_id)
-    loaded_h = activity_store.load_session("hongcha", "owner", "gomoku", sh.session_id)
+    loaded_h = activity_store.load_session("character_b", "owner", "gomoku", sh.session_id)
 
     assert loaded_y.state["board"][7][7] == "black"
     assert loaded_h.state["board"][7][7] is None

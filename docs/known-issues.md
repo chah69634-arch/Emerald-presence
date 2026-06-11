@@ -112,7 +112,7 @@ R8-E3 已落地（2026-06-10）：`character_growth.py` 模块 docstring 及 `lo
 `format_tool_capability_note()` helper 已加入 `tool_dispatcher.py`，供 prompt 注入工具
 名称时从 registry 派生，防止手写不存在的工具名。
 
-**剩余工作**（memory 工具完整接入超出 R5 范围）：若要让叶瑄在对话中真正自动触发
+**剩余工作**（memory 工具完整接入超出 R5 范围）：若要让他在对话中真正自动触发
 memory 类工具，需在 `run_llm()` 或对话循环中接入 tools schema + 执行回合。
 
 ---
@@ -136,13 +136,13 @@ urgency 的进一步对齐、旧兼容代码清理。
 
 ---
 
-### D7：叶瑄日记尚未反向进入长期认知
+### D7：他日记尚未反向进入长期认知
 
 **状态**：`boundary-doc-needed`
 
 **位置**：`data/runtime/characters/{char_id}/inner/diary/`
 
-叶瑄每日写的日记目前只作为 prompt 层 6e 注入，尚未参与 user identity、trait tracker
+他每日写的日记目前只作为 prompt 层 6e 注入，尚未参与 user identity、trait tracker
 或 mood_state 的长期更新。
 
 **待设计**：决定它应影响角色长期认知，还是只保留为短期内省材料。

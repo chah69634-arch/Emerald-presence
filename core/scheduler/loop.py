@@ -228,8 +228,21 @@ def _owner_id() -> str:
 
 
 def _char_name() -> str:
-    from core.config_loader import get_config
-    return get_config().get("character", {}).get("name", "他")
+    """角色显示名。始终从 pipeline_registry 的活跃 character card 取。
+    pipeline 未注册或 character 属性缺失时 fail-loud（不读 config）。
+    """
+    from core import pipeline_registry
+    pl = pipeline_registry.get()
+    if pl is not None:
+        char = getattr(pl, "character", None)
+        if char is not None:
+            name = getattr(char, "name", None)
+            if name:
+                return name
+    raise RuntimeError(
+        "[scheduler] _char_name(): pipeline 未注册或 character 未加载；"
+        "scheduler 触发器在 pipeline 初始化前不应运行"
+    )
 
 
 async def _send(content: str, behavior: dict | None = None):
@@ -346,7 +359,10 @@ async def _pipeline_send(
         if _is_birthday_period():
             prompt = prompt + "\n（今天是她的生日，4月24日）"
         _states = ["在思考", "在翻阅她的日记", "在想她说过的话", "在看窗外", "在灵体出游", "在家里"]
-        prompt = prompt + f"\n（{_char_name()}此刻{random.choice(_states)}）"
+        try:
+            prompt = prompt + f"\n（{_char_name()}此刻{random.choice(_states)}）"
+        except RuntimeError as _cn_err:
+            logger.warning("[scheduler._pipeline_send] 角色名不可用，跳过状态提示: %s", _cn_err)
 
         # ── N1: turn-level scope freeze ──────────────────────────────────────
         # Resolve active character exactly once per trigger turn; fetch_context /

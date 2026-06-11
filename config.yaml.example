@@ -39,8 +39,8 @@ vision:
 
 # ── 角色 ──────────────────────────────────────────────────────────────────────
 character:
-  default: 叶瑄.json
-  name: 叶瑄
+  default: Companion.json
+  name: Companion
   consistency_check_every_n: 15
 
 # ── 管理端 ────────────────────────────────────────────────────────────────────

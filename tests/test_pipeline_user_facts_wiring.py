@@ -7,7 +7,7 @@ Covers:
 1.  fetch_context calls user_facts.format_for_prompt(uid)
 2.  fetch_context returns "user_facts_text" key in context dict
 3.  build_prompt passes user_facts_text from context to prompt_builder.build()
-4.  yexuan and hongcha with same uid see the same user_facts (uid-only global)
+4.  yexuan and character_b with same uid see the same user_facts (uid-only global)
 5.  scoped profile and identity still use char_id (isolation unchanged)
 6.  user_facts injection does NOT require char_id
 7.  no user_facts on disk → user_facts_text = '' → layer 5.1 absent, no error
@@ -48,11 +48,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -211,7 +211,7 @@ def test_build_prompt_passes_user_facts_text(chars_tree, sandbox, registry, monk
     assert received["user_facts_text"] == "device_os: Windows"
 
 
-# ── 4. yexuan and hongcha same uid → same user_facts ─────────────────────────
+# ── 4. yexuan and character_b same uid → same user_facts ─────────────────────────
 
 def test_same_uid_both_chars_get_same_facts(sandbox):
     """format_for_prompt(uid) returns same text regardless of which char is active."""
@@ -232,13 +232,13 @@ def test_profile_path_scoped_by_char_id(sandbox):
     from core.memory.path_resolver import resolve_path
 
     scope_y = MemoryScope.reality_scope("u1", "yexuan")
-    scope_h = MemoryScope.reality_scope("u1", "hongcha")
+    scope_h = MemoryScope.reality_scope("u1", "character_b")
     p_y = str(resolve_path(scope_y, "profile")).replace("\\", "/")
     p_h = str(resolve_path(scope_h, "profile")).replace("\\", "/")
 
     assert p_y != p_h
     assert "yexuan" in p_y
-    assert "hongcha" in p_h
+    assert "character_b" in p_h
 
 
 # ── 6. user_facts injection does NOT require char_id ─────────────────────────
@@ -327,7 +327,7 @@ def test_user_facts_path_is_global_no_char_id(sandbox):
     p = str(resolve_path(scope, "user_facts")).replace("\\", "/")
 
     assert "yexuan" not in p
-    assert "hongcha" not in p
+    assert "character_b" not in p
     assert "u_global" in p
     # Confirm it ends with user_facts.json
     assert p.endswith("user_facts.json")

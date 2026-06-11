@@ -120,33 +120,33 @@ tts:
   ref_free: false
   if_freeze: false
   if_sr: false
-  ref_audio: content/characters/yexuan/voice/温柔.wav  # 相对于项目根目录；也接受绝对路径；缺失时 TTS 静默降级
+  ref_audio: content/characters/demo_character/voice/温柔.wav  # 相对于项目根目录；也接受绝对路径；缺失时 TTS 静默降级
   prompt_text: ''                # 参考音频对应的文字（可留空）
   speed: 1.0
   emotion_enabled: true          # 是否按情绪切换参考音频
   emotions:
     neutral:
-      ref_audio: content/characters/yexuan/voice/温柔.wav
+      ref_audio: content/characters/demo_character/voice/温柔.wav
       prompt_text: ''
       speed: 1
     happy:
-      ref_audio: content/characters/yexuan/voice/温柔.wav
+      ref_audio: content/characters/demo_character/voice/温柔.wav
       prompt_text: ''
       speed: 1.1
     sad:
-      ref_audio: content/characters/yexuan/voice/温柔.wav
+      ref_audio: content/characters/demo_character/voice/温柔.wav
       prompt_text: ''
       speed: 0.9
     gentle:
-      ref_audio: content/characters/yexuan/voice/温柔.wav
+      ref_audio: content/characters/demo_character/voice/温柔.wav
       prompt_text: ''
       speed: 0.95
     surprised:
-      ref_audio: content/characters/yexuan/voice/生气.wav
+      ref_audio: content/characters/demo_character/voice/生气.wav
       prompt_text: ''
       speed: 1.05
     angry:
-      ref_audio: content/characters/yexuan/voice/生气.wav
+      ref_audio: content/characters/demo_character/voice/生气.wav
       prompt_text: ''
       speed: 1.1
 

@@ -115,7 +115,7 @@ cp config.example.yaml config.yaml
 
 按 [AA1先看说明书正式版README.md](AA1先看说明书正式版README.md) 和 `config.example.yaml` 填写必填项：LLM API Key、QQ 号、管理面板密钥。
 
-在 `characters/` 目录放入角色卡文件；当前 loader 支持 `.json`（SillyTavern）、`.txt` 和 `.md`，可参考 `characters/character_template.json`。
+在 `characters/` 目录放入角色卡文件；当前 loader 支持 `.json`（SillyTavern）、`.txt` 和 `.md`，可参考 `examples/character_template.json`。
 
 **运行**
 
@@ -164,10 +164,13 @@ python run_test.py
 - 需自备 LLM API Key（推荐 DeepSeek，国内直连）
 - 角色卡需自行准备，`characters/` 目录有格式示例
 - 本项目不包含任何角色版权素材
-- 本项目以叶瑄为示例角色。常用角色名可在 `config.yaml` 的 `character.name` 中调整；部分默认值、兼容路径和文档仍保留 `yexuan` / “叶瑄”命名。
+- 本项目以他为示例角色。常用角色名可在 `config.yaml` 的 `character.name` 中调整；部分默认值、兼容路径和文档仍保留 `yexuan` / “他”命名。
 
 ---
 
 ## License
 
-MIT
+
+This project is licensed under the PolyForm Noncommercial License 1.0.0.
+
+Noncommercial use is permitted. Commercial use is not permitted without separate permission from the author.

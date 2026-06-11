@@ -31,11 +31,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -60,7 +60,7 @@ def _read_state(sandbox, uid):
 # ── 1. enter_dream writes char_id into dream_state ────────────────────────────
 
 def test_enter_dream_writes_char_id(sandbox):
-    """enter_dream(uid, char_id='hongcha') must persist char_id in dream_state JSON."""
+    """enter_dream(uid, char_id='character_b') must persist char_id in dream_state JSON."""
     from core.dream.dream_pipeline import enter_dream
     from core.dream.dream_state import DreamStatus
 
@@ -77,14 +77,14 @@ def test_enter_dream_writes_char_id(sandbox):
             "mid_term_context": "",
             "profile_impression": "",
         })):
-            return await enter_dream(_UID, entry_reason="test", char_id="hongcha")
+            return await enter_dream(_UID, entry_reason="test", char_id="character_b")
 
     result = asyncio.run(run())
     assert result.get("ok"), f"enter_dream failed: {result}"
 
     state = _read_state(sandbox, _UID)
-    assert state.get("char_id") == "hongcha", (
-        f"dream_state must have char_id='hongcha', got {state.get('char_id')!r}"
+    assert state.get("char_id") == "character_b", (
+        f"dream_state must have char_id='character_b', got {state.get('char_id')!r}"
     )
     assert state.get("status") == DreamStatus.DREAM_ACTIVE.value
 
@@ -128,7 +128,7 @@ def test_admin_dream_enter_passes_active_char_id(sandbox, chars_tree, monkeypatc
         return {"ok": True, "dream_id": "mock_dream_id"}
 
     mock_pipeline = MagicMock()
-    mock_pipeline._active_character_id = "hongcha"
+    mock_pipeline._active_character_id = "character_b"
 
     _mock_cfg = {"scheduler": {"owner_id": _UID}}
     with patch("core.pipeline_registry.get", return_value=mock_pipeline), \
@@ -147,8 +147,8 @@ def test_admin_dream_enter_passes_active_char_id(sandbox, chars_tree, monkeypatc
 
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
     assert len(captured_char_id) == 1
-    assert captured_char_id[0] == "hongcha", (
-        f"Production admin route must pass active char_id='hongcha', got {captured_char_id[0]!r}"
+    assert captured_char_id[0] == "character_b", (
+        f"Production admin route must pass active char_id='character_b', got {captured_char_id[0]!r}"
     )
 
 
@@ -166,7 +166,7 @@ def test_generate_summary_bg_uses_dream_state_char_id(sandbox):
         "user_id": _UID,
         "status": DreamStatus.DREAM_CLOSING.value,
         "dream_id": dream_id,
-        "char_id": "hongcha",
+        "char_id": "character_b",
     })
 
     captured_kwargs: list[dict] = []
@@ -189,19 +189,19 @@ def test_generate_summary_bg_uses_dream_state_char_id(sandbox):
                  patch("core.dream.dream_exit_afterglow.wire_afterglow_from_summary"), \
                  patch("core.dream.distill_impression.distill_impression", new=_mock_distill):
                 from core.dream.dream_pipeline import _generate_summary_bg
-                await _generate_summary_bg(_UID, dream_id, "soft", char_id="hongcha")
+                await _generate_summary_bg(_UID, dream_id, "soft", char_id="character_b")
 
     asyncio.run(run())
 
     assert len(captured_kwargs) >= 1, "distill_impression must be called"
-    assert captured_kwargs[0]["char_id"] == "hongcha", (
-        f"distill_impression must receive char_id='hongcha', got {captured_kwargs[0]['char_id']!r}"
+    assert captured_kwargs[0]["char_id"] == "character_b", (
+        f"distill_impression must receive char_id='character_b', got {captured_kwargs[0]['char_id']!r}"
     )
 
 
 def test_generate_summary_bg_char_id_forwarded_directly(sandbox):
     """
-    _generate_summary_bg(char_id='hongcha') must forward char_id to distill_impression.
+    _generate_summary_bg(char_id='character_b') must forward char_id to distill_impression.
     Tests the function directly without going through _do_close_dream.
     """
     from core.dream.dream_state import write_state, DreamStatus
@@ -210,7 +210,7 @@ def test_generate_summary_bg_char_id_forwarded_directly(sandbox):
     write_state(_UID, {
         "user_id": _UID,
         "status": DreamStatus.REALITY_AFTERGLOW.value,
-        "char_id": "hongcha",
+        "char_id": "character_b",
     })
 
     captured: list[str] = []
@@ -223,11 +223,11 @@ def test_generate_summary_bg_char_id_forwarded_directly(sandbox):
         with patch("core.dream.dream_summary.generate_summary", new=AsyncMock()), \
              patch("core.dream.dream_exit_afterglow.wire_afterglow_from_summary"), \
              patch("core.dream.distill_impression.distill_impression", new=_mock_distill):
-            await _generate_summary_bg(_UID, dream_id, "soft", char_id="hongcha")
+            await _generate_summary_bg(_UID, dream_id, "soft", char_id="character_b")
 
     asyncio.run(run())
-    assert captured == ["hongcha"], (
-        f"_generate_summary_bg must pass char_id='hongcha' to distill_impression, got {captured}"
+    assert captured == ["character_b"], (
+        f"_generate_summary_bg must pass char_id='character_b' to distill_impression, got {captured}"
     )
 
 
@@ -235,7 +235,7 @@ def test_generate_summary_bg_char_id_forwarded_directly(sandbox):
 
 def test_close_uses_session_char_id_not_current_active(sandbox):
     """
-    enter with char_id='yexuan', then switch active to 'hongcha', then close:
+    enter with char_id='yexuan', then switch active to 'character_b', then close:
     distill_impression must receive char_id='yexuan' (the session char_id).
     """
     from core.dream.dream_state import write_state, DreamStatus
@@ -249,7 +249,7 @@ def test_close_uses_session_char_id_not_current_active(sandbox):
         "char_id": "yexuan",  # frozen at enter time
     })
 
-    # "Switch" active character to hongcha (would normally write active_prompt_assets)
+    # "Switch" active character to character_b (would normally write active_prompt_assets)
     # dream_pipeline must NOT read active_character during close — only dream_state.char_id
 
     captured_char_id: list[str] = []
@@ -262,7 +262,7 @@ def test_close_uses_session_char_id_not_current_active(sandbox):
         with patch("core.dream.dream_summary.generate_summary", new=AsyncMock()), \
              patch("core.dream.dream_exit_afterglow.wire_afterglow_from_summary"), \
              patch("core.dream.distill_impression.distill_impression", new=_mock_distill):
-            # Pass the session char_id as stored in dream_state, even though "active" is now hongcha
+            # Pass the session char_id as stored in dream_state, even though "active" is now character_b
             await _generate_summary_bg(_UID, dream_id, "soft", char_id="yexuan")
 
     asyncio.run(run())
@@ -332,7 +332,7 @@ def test_legacy_dream_state_missing_char_id_warns_and_fallbacks(sandbox, caplog)
 
 def test_distill_impression_reads_from_char_id_archive(sandbox):
     """
-    distill_impression with char_id='hongcha' reads from hongcha archive,
+    distill_impression with char_id='character_b' reads from character_b archive,
     NOT from the yexuan archive.
     """
     from core.dream.distill_impression import distill_impression
@@ -341,41 +341,41 @@ def test_distill_impression_reads_from_char_id_archive(sandbox):
     uid = "distill_arch_scope_u1"
     dream_id = f"dream_{uid}_arch_scope"
 
-    # Write archive to hongcha path
-    hc_archive = sandbox.dreams_archive_dir(char_id="hongcha")
+    # Write archive to character_b path
+    hc_archive = sandbox.dreams_archive_dir(char_id="character_b")
     hc_archive.mkdir(parents=True, exist_ok=True)
     (hc_archive / f"dream_{dream_id}.jsonl").write_text(
-        json.dumps({"role": "user", "content": "红茶梦境内容"}) + "\n",
+        json.dumps({"role": "user", "content": "DemoUser梦境内容"}) + "\n",
         encoding="utf-8",
     )
 
     # Do NOT write to yexuan archive (verifies isolation)
     mock_result = {
-        "impression_text": "我好像在梦里有种红茶的感觉",
+        "impression_text": "我好像在梦里有种DemoUser的感觉",
         "emotional_tags": ["温热"],
         "weight": 0.3,
     }
 
     async def run():
         with patch("core.dream.distill_impression._llm_distill", new=AsyncMock(return_value=mock_result)):
-            await distill_impression(uid, dream_id, "soft", char_id="hongcha")
+            await distill_impression(uid, dream_id, "soft", char_id="character_b")
 
     asyncio.run(run())
 
-    hc_entries = load_impressions(uid, char_id="hongcha")
+    hc_entries = load_impressions(uid, char_id="character_b")
     yx_entries = load_impressions(uid, char_id="yexuan")
 
     assert len(hc_entries) == 1, (
-        f"hongcha impression bucket must have 1 entry, got {len(hc_entries)}"
+        f"character_b impression bucket must have 1 entry, got {len(hc_entries)}"
     )
-    assert "红茶" in hc_entries[0]["impression_text"]
-    assert yx_entries == [], "yexuan bucket must be empty when char_id='hongcha'"
+    assert "DemoUser" in hc_entries[0]["impression_text"]
+    assert yx_entries == [], "yexuan bucket must be empty when char_id='character_b'"
 
 
 def test_distill_impression_empty_if_wrong_archive_path(sandbox):
     """
-    If archive is at yexuan path but distill is called with char_id='hongcha',
-    the hongcha archive is empty → distill returns early with no impression written.
+    If archive is at yexuan path but distill is called with char_id='character_b',
+    the character_b archive is empty → distill returns early with no impression written.
     This verifies the archive path isolation.
     """
     from core.dream.distill_impression import distill_impression
@@ -388,19 +388,19 @@ def test_distill_impression_empty_if_wrong_archive_path(sandbox):
     yx_archive = sandbox.dreams_archive_dir(char_id="yexuan")
     yx_archive.mkdir(parents=True, exist_ok=True)
     (yx_archive / f"dream_{dream_id}.jsonl").write_text(
-        json.dumps({"role": "user", "content": "叶瑄内容"}) + "\n",
+        json.dumps({"role": "user", "content": "Companion内容"}) + "\n",
         encoding="utf-8",
     )
 
     async def run():
-        # hongcha archive is empty → distill must skip
-        await distill_impression(uid, dream_id, "soft", char_id="hongcha")
+        # character_b archive is empty → distill must skip
+        await distill_impression(uid, dream_id, "soft", char_id="character_b")
 
     asyncio.run(run())
 
-    # No entry should be written to hongcha bucket
-    assert load_impressions(uid, char_id="hongcha") == [], (
-        "When archive is missing for char_id='hongcha', no impression should be written"
+    # No entry should be written to character_b bucket
+    assert load_impressions(uid, char_id="character_b") == [], (
+        "When archive is missing for char_id='character_b', no impression should be written"
     )
 
 
@@ -408,16 +408,16 @@ def test_distill_impression_empty_if_wrong_archive_path(sandbox):
 
 def test_generate_summary_writes_char_id_into_record(sandbox):
     """
-    generate_summary(char_id='hongcha') must write a summary record that includes
-    char_id='hongcha' — T-06 afterglow integrator will use this field.
+    generate_summary(char_id='character_b') must write a summary record that includes
+    char_id='character_b' — T-06 afterglow integrator will use this field.
     """
     from core.dream.dream_summary import generate_summary
 
     uid = "summary_char_scope_u1"
     dream_id = f"dream_{uid}_sum_scope"
 
-    # Write archive at hongcha path
-    archive_dir = sandbox.dreams_archive_dir(char_id="hongcha")
+    # Write archive at character_b path
+    archive_dir = sandbox.dreams_archive_dir(char_id="character_b")
     archive_dir.mkdir(parents=True, exist_ok=True)
     (archive_dir / f"dream_{dream_id}.jsonl").write_text(
         json.dumps({"role": "user", "content": "梦境测试内容"}) + "\n",
@@ -435,42 +435,42 @@ def test_generate_summary_writes_char_id_into_record(sandbox):
 
     async def run():
         with patch("core.llm_client.chat", AsyncMock(return_value=llm_result)):
-            await generate_summary(uid, dream_id, "soft", char_id="hongcha")
+            await generate_summary(uid, dream_id, "soft", char_id="character_b")
 
     asyncio.run(run())
 
-    summaries_dir = sandbox.dreams_summaries_dir(char_id="hongcha")
+    summaries_dir = sandbox.dreams_summaries_dir(char_id="character_b")
     dest = summaries_dir / f"dream_{dream_id}.summary.json"
     assert dest.exists(), f"Summary file not created: {dest}"
 
     record = json.loads(dest.read_text(encoding="utf-8"))
-    assert record.get("char_id") == "hongcha", (
-        f"Summary record must carry char_id='hongcha' for T-06, got {record.get('char_id')!r}"
+    assert record.get("char_id") == "character_b", (
+        f"Summary record must carry char_id='character_b' for T-06, got {record.get('char_id')!r}"
     )
     # Summary must NOT land in yexuan summaries dir
     yx_dest = sandbox.dreams_summaries_dir(char_id="yexuan") / f"dream_{dream_id}.summary.json"
     assert not yx_dest.exists(), (
-        "Summary with char_id='hongcha' must NOT write to yexuan summaries dir"
+        "Summary with char_id='character_b' must NOT write to yexuan summaries dir"
     )
 
 
 def test_afterglow_payload_char_id_forwarded_to_wire(sandbox):
     """
-    wire_afterglow_from_summary called with char_id='hongcha' reads from
-    the hongcha summaries directory (not yexuan).
+    wire_afterglow_from_summary called with char_id='character_b' reads from
+    the character_b summaries directory (not yexuan).
     """
     from core.dream.dream_exit_afterglow import wire_afterglow_from_summary
 
     uid = "afterglow_char_scope_u1"
     dream_id = f"dream_{uid}_aglow_scope"
 
-    # Write summary to hongcha path
-    summaries_dir = sandbox.dreams_summaries_dir(char_id="hongcha")
+    # Write summary to character_b path
+    summaries_dir = sandbox.dreams_summaries_dir(char_id="character_b")
     summaries_dir.mkdir(parents=True, exist_ok=True)
     summary = {
         "dream_id": dream_id,
         "uid": uid,
-        "char_id": "hongcha",
+        "char_id": "character_b",
         "created_at": time.time(),
         "exit_type": "soft",
         "afterglow": "gentle_residue",
@@ -497,7 +497,7 @@ def test_afterglow_payload_char_id_forwarded_to_wire(sandbox):
     with patch("core.memory.user_hidden_state_store.save_afterglow_residue", _mock_save_residue), \
          patch("core.memory.user_hidden_state_integrator.integrate_afterglow_and_save", _mock_integrate), \
          patch("core.write_envelope.stamp_dream_afterglow", return_value=MagicMock()):
-        wire_afterglow_from_summary(uid, dream_id, "soft", char_id="hongcha")
+        wire_afterglow_from_summary(uid, dream_id, "soft", char_id="character_b")
 
     assert len(called_with) >= 1, "save_afterglow_residue must be called"
     assert called_with[0]["tone"] == "calm", (
@@ -510,8 +510,8 @@ def test_afterglow_payload_char_id_forwarded_to_wire(sandbox):
 def test_state_char_id_present(caplog):
     """_state_char_id returns the value when char_id is in state."""
     from core.dream.dream_pipeline import _state_char_id
-    result = _state_char_id({"char_id": "hongcha"}, "test_handler")
-    assert result == "hongcha"
+    result = _state_char_id({"char_id": "character_b"}, "test_handler")
+    assert result == "character_b"
     assert not any("legacy" in r.message for r in caplog.records)
 
 

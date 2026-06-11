@@ -1,7 +1,7 @@
 # 三仓库真实互动链路审计
 
 > 审计日期：2026-05-19  
-> 范围：`D:\ai\Emerald-client`、`D:\ai\yexuan_memery`、`D:\ai\qq-st-bot`  
+> 范围：`<desktop-client-root>`、`<mobile-client-root>`、`<repo-root>`
 > 限制：本文只记录代码和文档事实；未在代码中找到的步骤标为“未找到明确实现 / 待确认”。
 >
 > **2026-05-31 更新说明**：本文保留 2026-05-19 的三仓库审计快照，不作为当前接口清单。
@@ -21,9 +21,9 @@
 
 | 仓库 | 当前职责 | 证据 |
 |---|---|---|
-| `qq-st-bot` | 后端和核心真相源：QQ/HTTP/WS 入口、Pipeline、LLM、记忆、情绪、调度器、花园、通道广播。 | `D:\ai\qq-st-bot\ARCHITECTURE.md`；`D:\ai\qq-st-bot\main.py:82`；`D:\ai\qq-st-bot\admin\routers\chat.py:29` |
-| `Emerald-client` | Tauri + React 桌面客户端：聊天 UI、Tauri HTTP 桥、legacy desktop WS 订阅、桌面 sensor 发布、只读花园/日记/状态面板。 | `D:\ai\Emerald-client\ARCHITECTURE.md`；`D:\ai\Emerald-client\src-tauri\src\lib.rs:26`；`D:\ai\Emerald-client\src\shared\api\ws.ts:9` |
-| `yexuan_memery` | Flutter/Android 手机薄客户端：`mobile channel` 对话、主动消息轮询、后台通知、无障碍屏幕上下文、移动端行为 metadata 消费。 | `D:\ai\yexuan_memery\README.md`；`D:\ai\yexuan_memery\lib\main.dart:1563`；`D:\ai\yexuan_memery\android\app\src\main\kotlin\com\example\yexuan_memery\MobileNotificationService.kt:19` |
+| `qq-st-bot` | 后端和核心真相源：QQ/HTTP/WS 入口、Pipeline、LLM、记忆、情绪、调度器、花园、通道广播。 | `<repo-root>\ARCHITECTURE.md`；`<repo-root>\main.py:82`；`<repo-root>\admin\routers\chat.py:29` |
+| `Emerald-client` | Tauri + React 桌面客户端：聊天 UI、Tauri HTTP 桥、legacy desktop WS 订阅、桌面 sensor 发布、只读花园/日记/状态面板。 | `<desktop-client-root>\ARCHITECTURE.md`；`<desktop-client-root>\src-tauri\src\lib.rs:26`；`<desktop-client-root>\src\shared\api\ws.ts:9` |
+| `mobile-client` | Flutter/Android 手机薄客户端：`mobile channel` 对话、主动消息轮询、后台通知、无障碍屏幕上下文、移动端行为 metadata 消费。 | `<mobile-client-root>\README.md`；`<mobile-client-root>\lib\main.dart:1563`；`<mobile-client-root>\android\app\src\main\kotlin\com\example\mobile-client\MobileNotificationService.kt:19` |
 
 当前事实不是“三端都走同一出口”。`/desktop/chat`、`/mobile/chat`、普通 scheduler 和 `sensor_aware` 已经大量使用 `core.turn_sink.record_assistant_turn()`，但 QQ 主入口、管理面板冻结入口和重复 `/chat` 仍有绕过路径。
 
@@ -33,122 +33,122 @@
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `handle_message(message)` | QQ 消息主入口 | `D:\ai\qq-st-bot\main.py:82` |
-| `message_queue.enqueue()` / `_process_session()` | QQ 会话串行队列 | `D:\ai\qq-st-bot\core\message_queue.py:47` / `D:\ai\qq-st-bot\core\message_queue.py:68` |
-| `POST /desktop/chat` / `desktop_chat()` | 桌面客户端 HTTP 对话入口，无鉴权 | `D:\ai\qq-st-bot\admin\routers\chat.py:189` |
-| `POST /mobile/chat` / `mobile_chat()` | 手机端 HTTP 对话入口，Bearer 鉴权 | `D:\ai\qq-st-bot\admin\routers\mobile.py:40` |
-| `run_owner_chat_turn(message, channel_name)` | desktop/mobile 共用 owner 对话函数 | `D:\ai\qq-st-bot\admin\routers\chat.py:29` |
-| `POST /upload/ingest` | 三端统一文件上传入口，无鉴权 | `D:\ai\qq-st-bot\admin\routers\chat.py:207` |
-| `POST /chat` / `frontend_chat()` | 管理面板专用对话，Bearer 鉴权，冻结 | `D:\ai\qq-st-bot\admin\routers\chat.py:140` |
-| `POST /chat` / `unified_chat()` | 重复注册的对话入口，无显式鉴权 | `D:\ai\qq-st-bot\admin\routers\chat.py:322` |
-| `POST /watch/event` | Watch/快捷指令事件入口，query secret | `D:\ai\qq-st-bot\admin\routers\watch.py:174` |
-| `POST /sensor/push` | 低频手机传感器入口，无鉴权，写 user_profile | `D:\ai\qq-st-bot\admin\routers\sensor.py:81` |
-| `POST /sensor/realtime` | 实时键鼠/屏幕上下文入口，Bearer 鉴权 | `D:\ai\qq-st-bot\admin\routers\sensor.py:182` |
-| `POST /sensor/activity` | 桌宠活动快照入口，无鉴权，写 activity_snapshot | `D:\ai\qq-st-bot\admin\routers\sensor.py:248` |
-| `ws://127.0.0.1:8080/ws/desktop` | 桌面 WS 入口 | `D:\ai\qq-st-bot\admin\admin_server.py:69`；`D:\ai\Emerald-client\src\shared\api\ws.ts:60` |
+| `handle_message(message)` | QQ 消息主入口 | `<repo-root>\main.py:82` |
+| `message_queue.enqueue()` / `_process_session()` | QQ 会话串行队列 | `<repo-root>\core\message_queue.py:47` / `<repo-root>\core\message_queue.py:68` |
+| `POST /desktop/chat` / `desktop_chat()` | 桌面客户端 HTTP 对话入口，无鉴权 | `<repo-root>\admin\routers\chat.py:189` |
+| `POST /mobile/chat` / `mobile_chat()` | 手机端 HTTP 对话入口，Bearer 鉴权 | `<repo-root>\admin\routers\mobile.py:40` |
+| `run_owner_chat_turn(message, channel_name)` | desktop/mobile 共用 owner 对话函数 | `<repo-root>\admin\routers\chat.py:29` |
+| `POST /upload/ingest` | 三端统一文件上传入口，无鉴权 | `<repo-root>\admin\routers\chat.py:207` |
+| `POST /chat` / `frontend_chat()` | 管理面板专用对话，Bearer 鉴权，冻结 | `<repo-root>\admin\routers\chat.py:140` |
+| `POST /chat` / `unified_chat()` | 重复注册的对话入口，无显式鉴权 | `<repo-root>\admin\routers\chat.py:322` |
+| `POST /watch/event` | Watch/快捷指令事件入口，query secret | `<repo-root>\admin\routers\watch.py:174` |
+| `POST /sensor/push` | 低频手机传感器入口，无鉴权，写 user_profile | `<repo-root>\admin\routers\sensor.py:81` |
+| `POST /sensor/realtime` | 实时键鼠/屏幕上下文入口，Bearer 鉴权 | `<repo-root>\admin\routers\sensor.py:182` |
+| `POST /sensor/activity` | 桌宠活动快照入口，无鉴权，写 activity_snapshot | `<repo-root>\admin\routers\sensor.py:248` |
+| `ws://127.0.0.1:8080/ws/desktop` | 桌面 WS 入口 | `<repo-root>\admin\admin_server.py:69`；`<desktop-client-root>\src\shared\api\ws.ts:60` |
 
 ### 触发器/主动行为名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `_pipeline_send()` | scheduler 生成主动发言的核心函数 | `D:\ai\qq-st-bot\core\scheduler\loop.py:179` |
-| `_COOLDOWNS` | scheduler 触发器冷却注册表 | `D:\ai\qq-st-bot\core\scheduler\loop.py:24` |
-| `_HIGH_PRIORITY_TRIGGERS` | 高优先级触发器集合 | `D:\ai\qq-st-bot\core\scheduler\loop.py:83` |
-| `morning_greeting` / `night_reminder` / `random_message` / `weather_alert` / `daily_journal` / `spontaneous_recall` | 时间类主动触发器 | `D:\ai\qq-st-bot\core\scheduler\triggers\time_based.py`；`D:\ai\qq-st-bot\docs\scheduler.md` |
-| `period_reminder` | 生理期主动触发器 | `D:\ai\qq-st-bot\core\scheduler\triggers\period.py` |
-| `topic_followup` | 未完结话题追问 | `D:\ai\qq-st-bot\core\scheduler\triggers\memory.py` |
-| `hr_high` / `hr_critical` / `sleep_end` | Watch 健康触发器 | `D:\ai\qq-st-bot\core\scheduler\triggers\watch.py:8` |
-| `sensor_aware` | 实时状态主动开口触发器 | `D:\ai\qq-st-bot\core\scheduler\triggers\sensor_aware.py:286` |
-| `PRESENCE_LEFT` / `PRESENCE_RETURNED` / `LONG_FOCUS` / `FOCUS_SCATTERED` / `SILENT_TOGETHER` / `APP_CATEGORY_CHANGED` / `LATE_NIGHT_ACTIVE` / `LONG_AT_DESK` | sensor 候选事件常量 | `D:\ai\qq-st-bot\core\scheduler\sensor_events.py:15` |
-| `garden_water` / `garden_daily` / `garden_bloom` / `garden_handle_*` / `garden_vase_wilted` | 花园主动/伴生触发器 | `D:\ai\qq-st-bot\core\scheduler\loop.py:61`；`D:\ai\qq-st-bot\core\scheduler\triggers\garden_water.py`；`D:\ai\qq-st-bot\core\scheduler\triggers\garden_daily.py` |
-| `manual_trigger(name)` | 管理面板手动触发 | `D:\ai\qq-st-bot\core\scheduler\loop.py:341` |
+| `_pipeline_send()` | scheduler 生成主动发言的核心函数 | `<repo-root>\core\scheduler\loop.py:179` |
+| `_COOLDOWNS` | scheduler 触发器冷却注册表 | `<repo-root>\core\scheduler\loop.py:24` |
+| `_HIGH_PRIORITY_TRIGGERS` | 高优先级触发器集合 | `<repo-root>\core\scheduler\loop.py:83` |
+| `morning_greeting` / `night_reminder` / `random_message` / `weather_alert` / `daily_journal` / `spontaneous_recall` | 时间类主动触发器 | `<repo-root>\core\scheduler\triggers\time_based.py`；`<repo-root>\docs\scheduler.md` |
+| `period_reminder` | 生理期主动触发器 | `<repo-root>\core\scheduler\triggers\period.py` |
+| `topic_followup` | 未完结话题追问 | `<repo-root>\core\scheduler\triggers\memory.py` |
+| `hr_high` / `hr_critical` / `sleep_end` | Watch 健康触发器 | `<repo-root>\core\scheduler\triggers\watch.py:8` |
+| `sensor_aware` | 实时状态主动开口触发器 | `<repo-root>\core\scheduler\triggers\sensor_aware.py:286` |
+| `PRESENCE_LEFT` / `PRESENCE_RETURNED` / `LONG_FOCUS` / `FOCUS_SCATTERED` / `SILENT_TOGETHER` / `APP_CATEGORY_CHANGED` / `LATE_NIGHT_ACTIVE` / `LONG_AT_DESK` | sensor 候选事件常量 | `<repo-root>\core\scheduler\sensor_events.py:15` |
+| `garden_water` / `garden_daily` / `garden_bloom` / `garden_handle_*` / `garden_vase_wilted` | 花园主动/伴生触发器 | `<repo-root>\core\scheduler\loop.py:61`；`<repo-root>\core\scheduler\triggers\garden_water.py`；`<repo-root>\core\scheduler\triggers\garden_daily.py` |
+| `manual_trigger(name)` | 管理面板手动触发 | `<repo-root>\core\scheduler\loop.py:341` |
 
 ### 记忆模块名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `short_term` | 短期历史 | `D:\ai\qq-st-bot\core\memory\short_term.py`；`D:\ai\qq-st-bot\docs\memory.md` |
-| `event_log` | 每日事件流水账 | `D:\ai\qq-st-bot\core\memory\event_log.py`；`D:\ai\qq-st-bot\docs\memory.md` |
-| `mid_term` | 12 小时中期摘要 | `D:\ai\qq-st-bot\core\memory\mid_term.py`；`D:\ai\qq-st-bot\core\memory\fixation_pipeline.py:283` |
-| `episodic_memory` | 情景记忆 | `D:\ai\qq-st-bot\core\memory\episodic_memory.py`；`D:\ai\qq-st-bot\core\memory\fixation_pipeline.py:343` |
-| `character_growth` | 角色对用户的长期认知 | `D:\ai\qq-st-bot\core\memory\character_growth.py`；`D:\ai\qq-st-bot\core\memory\fixation_pipeline.py:540` |
-| `capture_turn` / `summarize_to_midterm` / `reflect_to_episodic` / `consolidate_to_identity` | 信息固化四 job | `D:\ai\qq-st-bot\core\memory\fixation_pipeline.py:240` / `:283` / `:343` / `:540` |
-| `user_profile` | 用户画像、低频传感器摘要、心率/睡眠片段 | `D:\ai\qq-st-bot\core\memory\user_profile.py`；`D:\ai\qq-st-bot\admin\routers\sensor.py:27`；`D:\ai\qq-st-bot\admin\routers\watch.py:14` |
-| `pending_perception` | 桌面动作失败感知暂存 | `D:\ai\qq-st-bot\core\memory\pending_perception.py`；`D:\ai\qq-st-bot\core\pipeline.py:216` |
-| `realtime_state` | 实时 sensor 内存快照，不持久化 | `D:\ai\qq-st-bot\core\memory\realtime_state.py:18` |
+| `short_term` | 短期历史 | `<repo-root>\core\memory\short_term.py`；`<repo-root>\docs\memory.md` |
+| `event_log` | 每日事件流水账 | `<repo-root>\core\memory\event_log.py`；`<repo-root>\docs\memory.md` |
+| `mid_term` | 12 小时中期摘要 | `<repo-root>\core\memory\mid_term.py`；`<repo-root>\core\memory\fixation_pipeline.py:283` |
+| `episodic_memory` | 情景记忆 | `<repo-root>\core\memory\episodic_memory.py`；`<repo-root>\core\memory\fixation_pipeline.py:343` |
+| `character_growth` | 角色对用户的长期认知 | `<repo-root>\core\memory\character_growth.py`；`<repo-root>\core\memory\fixation_pipeline.py:540` |
+| `capture_turn` / `summarize_to_midterm` / `reflect_to_episodic` / `consolidate_to_identity` | 信息固化四 job | `<repo-root>\core\memory\fixation_pipeline.py:240` / `:283` / `:343` / `:540` |
+| `user_profile` | 用户画像、低频传感器摘要、心率/睡眠片段 | `<repo-root>\core\memory\user_profile.py`；`<repo-root>\admin\routers\sensor.py:27`；`<repo-root>\admin\routers\watch.py:14` |
+| `pending_perception` | 桌面动作失败感知暂存 | `<repo-root>\core\memory\pending_perception.py`；`<repo-root>\core\pipeline.py:216` |
+| `realtime_state` | 实时 sensor 内存快照，不持久化 | `<repo-root>\core\memory\realtime_state.py:18` |
 
 ### 情绪状态模块名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `mood_state.update()` / `get_current()` / `nudge_from_memory()` | 全局情绪状态读写和召回推动 | `D:\ai\qq-st-bot\core\memory\mood_state.py`；`D:\ai\qq-st-bot\docs\memory.md` |
-| `detect_emotion()` | 每轮回复情绪检测 | `D:\ai\qq-st-bot\core\llm_client.py:325`；`D:\ai\qq-st-bot\core\pipeline.py:321` |
-| `thinking` source=`trigger` | 工具探针命中时的情绪触发 | `D:\ai\qq-st-bot\main.py:239` |
-| `sleepy` source=`schedule` | 深夜 fetch_context 时的情绪触发 | `D:\ai\qq-st-bot\core\pipeline.py:148` |
-| `yandere` source=`trigger` | 关键词 + 关系阈值触发 | `D:\ai\qq-st-bot\core\pipeline.py:19` / `:337` |
+| `mood_state.update()` / `get_current()` / `nudge_from_memory()` | 全局情绪状态读写和召回推动 | `<repo-root>\core\memory\mood_state.py`；`<repo-root>\docs\memory.md` |
+| `detect_emotion()` | 每轮回复情绪检测 | `<repo-root>\core\llm_client.py:325`；`<repo-root>\core\pipeline.py:321` |
+| `thinking` source=`trigger` | 工具探针命中时的情绪触发 | `<repo-root>\main.py:239` |
+| `sleepy` source=`schedule` | 深夜 fetch_context 时的情绪触发 | `<repo-root>\core\pipeline.py:148` |
+| `yandere` source=`trigger` | 关键词 + 关系阈值触发 | `<repo-root>\core\pipeline.py:19` / `:337` |
 
 ### 花园/植物模块名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `core.garden.manager` | 花园核心逻辑 | `D:\ai\qq-st-bot\core\garden\manager.py` |
-| `water(slot_key, reason)` | 给指定花槽浇水 | `D:\ai\qq-st-bot\core\garden\manager.py:127` |
-| `auto_water_tick()` | 根据当前 mood 自动浇水 | `D:\ai\qq-st-bot\core\garden\manager.py:170` |
-| `force_water()` | 被动浇水工具入口 | `D:\ai\qq-st-bot\core\garden\manager.py:191`；`D:\ai\qq-st-bot\core\tools\garden_tools.py:21` |
-| `daily_check()` | harvest/vase 每日生命周期扫描 | `D:\ai\qq-st-bot\core\garden\manager.py:203` |
-| `GET /garden/state` | 花园只读状态接口 | `D:\ai\qq-st-bot\admin\routers\garden.py`；`D:\ai\Emerald-client\src-tauri\src\lib.rs:64` |
+| `core.garden.manager` | 花园核心逻辑 | `<repo-root>\core\garden\manager.py` |
+| `water(slot_key, reason)` | 给指定花槽浇水 | `<repo-root>\core\garden\manager.py:127` |
+| `auto_water_tick()` | 根据当前 mood 自动浇水 | `<repo-root>\core\garden\manager.py:170` |
+| `force_water()` | 被动浇水工具入口 | `<repo-root>\core\garden\manager.py:191`；`<repo-root>\core\tools\garden_tools.py:21` |
+| `daily_check()` | harvest/vase 每日生命周期扫描 | `<repo-root>\core\garden\manager.py:203` |
+| `GET /garden/state` | 花园只读状态接口 | `<repo-root>\admin\routers\garden.py`；`<desktop-client-root>\src-tauri\src\lib.rs:64` |
 
 ### 广播/推送/客户端通信名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `record_assistant_turn()` | assistant turn 写入 + fanout 汇聚点 | `D:\ai\qq-st-bot\core\turn_sink.py:123` |
-| `channels.registry.broadcast()` | 活跃通道广播 | `D:\ai\qq-st-bot\channels\registry.py:28` |
-| `DesktopChannel.send()` | desktop 下行，WS 优先，文件降级 | `D:\ai\qq-st-bot\channels\desktop.py:40` |
-| `MobileChannel.send()` / `poll()` | mobile 下行队列写入与轮询读取 | `D:\ai\qq-st-bot\channels\mobile.py:45` / `:54` |
-| `QQChannel.send()` | QQ 下行通道 | `D:\ai\qq-st-bot\channels\qq.py:28` |
-| `desktop_ws.push_message()` / `push_action_and_wait()` | desktop legacy WS 下行 | `D:\ai\qq-st-bot\channels\desktop_ws.py:47` / `:57` |
-| `text_output.send()` | QQ 直接发送出口 | `D:\ai\qq-st-bot\core\output\text_output.py:17` |
-| `channel_message` / `action` / `ack` / `ping` / `pong` | Emerald-client 当前 legacy WS 消息类型 | `D:\ai\Emerald-client\src\shared\api\ws.ts:87` / `:91` |
-| `MobileNotificationService` | Android 后台 mobile poll + 通知服务 | `D:\ai\yexuan_memery\android\app\src\main\kotlin\com\example\yexuan_memery\MobileNotificationService.kt:19` |
+| `record_assistant_turn()` | assistant turn 写入 + fanout 汇聚点 | `<repo-root>\core\turn_sink.py:123` |
+| `channels.registry.broadcast()` | 活跃通道广播 | `<repo-root>\channels\registry.py:28` |
+| `DesktopChannel.send()` | desktop 下行，WS 优先，文件降级 | `<repo-root>\channels\desktop.py:40` |
+| `MobileChannel.send()` / `poll()` | mobile 下行队列写入与轮询读取 | `<repo-root>\channels\mobile.py:45` / `:54` |
+| `QQChannel.send()` | QQ 下行通道 | `<repo-root>\channels\qq.py:28` |
+| `desktop_ws.push_message()` / `push_action_and_wait()` | desktop legacy WS 下行 | `<repo-root>\channels\desktop_ws.py:47` / `:57` |
+| `text_output.send()` | QQ 直接发送出口 | `<repo-root>\core\output\text_output.py:17` |
+| `channel_message` / `action` / `ack` / `ping` / `pong` | Emerald-client 当前 legacy WS 消息类型 | `<desktop-client-root>\src\shared\api\ws.ts:87` / `:91` |
+| `MobileNotificationService` | Android 后台 mobile poll + 通知服务 | `<mobile-client-root>\android\app\src\main\kotlin\com\example\mobile-client\MobileNotificationService.kt:19` |
 
 ### 鉴权/安全检查名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `verify_token()` | FastAPI Bearer token 校验 | `D:\ai\qq-st-bot\admin\auth.py:14` |
-| `admin.secret_key` | 管理 token 配置字段 | `D:\ai\qq-st-bot\admin\auth.py:17` |
-| `watch_secret` / `_watch_secret()` | Watch query secret；未配置则不校验 | `D:\ai\qq-st-bot\admin\routers\watch.py:164` |
-| `HTTPBearer(auto_error=False)` | 管理面板鉴权机制 | `D:\ai\qq-st-bot\admin\auth.py:11` |
-| `reqwest::Client::builder().no_proxy()` | Emerald-client Rust HTTP 代理绕过 | `D:\ai\Emerald-client\src-tauri\src\lib.rs:27` |
-| `token = "Emerald1231"` | Android 后台服务硬编码 token | `D:\ai\yexuan_memery\android\app\src\main\kotlin\com\example\yexuan_memery\MobileNotificationService.kt:26` |
-| `_adminToken = "Emerald1231"` | Flutter 前台硬编码 token | `D:\ai\yexuan_memery\lib\main.dart:1927` |
-| `ADMIN_TOKEN = "Emerald1231"` | Emerald-client 前端硬编码 token | `D:\ai\Emerald-client\src\shared\api\backend.ts:5` |
+| `verify_token()` | FastAPI Bearer token 校验 | `<repo-root>\admin\auth.py:14` |
+| `admin.secret_key` | 管理 token 配置字段 | `<repo-root>\admin\auth.py:17` |
+| `watch_secret` / `_watch_secret()` | Watch query secret；未配置则不校验 | `<repo-root>\admin\routers\watch.py:164` |
+| `HTTPBearer(auto_error=False)` | 管理面板鉴权机制 | `<repo-root>\admin\auth.py:11` |
+| `reqwest::Client::builder().no_proxy()` | Emerald-client Rust HTTP 代理绕过 | `<desktop-client-root>\src-tauri\src\lib.rs:27` |
+| `token = "Emerald1231"` | Android 后台服务硬编码 token | `<mobile-client-root>\android\app\src\main\kotlin\com\example\mobile-client\MobileNotificationService.kt:26` |
+| `_adminToken = "Emerald1231"` | Flutter 前台硬编码 token | `<mobile-client-root>\lib\main.dart:1927` |
+| `ADMIN_TOKEN = "Emerald1231"` | Emerald-client 前端硬编码 token | `<desktop-client-root>\src\shared\api\backend.ts:5` |
 
 ### 测试/调试标记名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `run_test.py` | 后端测试模式启动，初始化 `mode="test"` sandbox | `D:\ai\qq-st-bot\run_test.py:1` / `:18` |
-| `data/test_sandbox/{session_id}` | 测试数据根 | `D:\ai\qq-st-bot\core\sandbox.py:33` |
-| `debugBackgroundDelivery` | Android 本地后台投递调试 | `D:\ai\yexuan_memery\android\app\src\main\kotlin\com\example\yexuan_memery\MainActivity.kt:139` / `:385` |
-| `pushMobileBehaviorTest()` | Flutter 写 `/mobile/push` 的主动行为测试 | `D:\ai\yexuan_memery\lib\main.dart:1703` |
-| `prompt_kind: debug_test` / `cooldown_key: debug:*` | mobile behavior test metadata | `D:\ai\yexuan_memery\lib\main.dart:1725` |
-| `sensor_aware_audit` | sensor_aware 决策 ring buffer | `D:\ai\qq-st-bot\core\scheduler\triggers\sensor_aware_audit.py` |
-| `data/debug/llm_output` | LLM 异常输出 debug 目录，当前代码直接 `Path("data/...")` | `D:\ai\qq-st-bot\core\llm_output_validator.py:8` |
+| `run_test.py` | 后端测试模式启动，初始化 `mode="test"` sandbox | `<repo-root>\run_test.py:1` / `:18` |
+| `data/test_sandbox/{session_id}` | 测试数据根 | `<repo-root>\core\sandbox.py:33` |
+| `debugBackgroundDelivery` | Android 本地后台投递调试 | `<mobile-client-root>\android\app\src\main\kotlin\com\example\mobile-client\MainActivity.kt:139` / `:385` |
+| `pushMobileBehaviorTest()` | Flutter 写 `/mobile/push` 的主动行为测试 | `<mobile-client-root>\lib\main.dart:1703` |
+| `prompt_kind: debug_test` / `cooldown_key: debug:*` | mobile behavior test metadata | `<mobile-client-root>\lib\main.dart:1725` |
+| `sensor_aware_audit` | sensor_aware 决策 ring buffer | `<repo-root>\core\scheduler\triggers\sensor_aware_audit.py` |
+| `data/debug/llm_output` | LLM 异常输出 debug 目录，当前代码直接 `Path("data/...")` | `<repo-root>\core\llm_output_validator.py:8` |
 
 ### 队列/异步任务名称
 
 | 术语 | 类型 | 来源 |
 |---|---|---|
-| `core.message_queue` | QQ 会话队列 | `D:\ai\qq-st-bot\core\message_queue.py:24` / `:47` |
-| `slow_queue` | 后处理慢任务队列，单 worker，不持久化 | `D:\ai\qq-st-bot\core\post_process\slow_queue.py:31` / `:91` |
-| `data/runtime/channel_queue.json` | desktop 普通消息文件降级队列 | `D:\ai\qq-st-bot\channels\desktop.py:61` |
-| `data/runtime/mobile_queue.json` | mobile 主动消息轮询队列 | `D:\ai\qq-st-bot\channels\mobile.py:78` |
-| `data/runtime/agent_actions.json` | 桌面 action 文件队列 | `D:\ai\qq-st-bot\channels\desktop.py:79`；`D:\ai\qq-st-bot\core\tool_dispatcher.py:183` |
-| `pending_perception/processing` | 动作失败两阶段提交目录 | `D:\ai\qq-st-bot\core\memory\pending_perception.py` |
-| `_sleep_buffer` / `_sleep_flush_task` | Watch sleep_end 合并缓冲 | `D:\ai\qq-st-bot\admin\routers\watch.py:37` / `:38` |
-| `_queue_condition` | mobile queue 长轮询唤醒条件 | `D:\ai\qq-st-bot\channels\mobile.py:19` |
+| `core.message_queue` | QQ 会话队列 | `<repo-root>\core\message_queue.py:24` / `:47` |
+| `slow_queue` | 后处理慢任务队列，单 worker，不持久化 | `<repo-root>\core\post_process\slow_queue.py:31` / `:91` |
+| `data/runtime/channel_queue.json` | desktop 普通消息文件降级队列 | `<repo-root>\channels\desktop.py:61` |
+| `data/runtime/mobile_queue.json` | mobile 主动消息轮询队列 | `<repo-root>\channels\mobile.py:78` |
+| `data/runtime/agent_actions.json` | 桌面 action 文件队列 | `<repo-root>\channels\desktop.py:79`；`<repo-root>\core\tool_dispatcher.py:183` |
+| `pending_perception/processing` | 动作失败两阶段提交目录 | `<repo-root>\core\memory\pending_perception.py` |
+| `_sleep_buffer` / `_sleep_flush_task` | Watch sleep_end 合并缓冲 | `<repo-root>\admin\routers\watch.py:37` / `:38` |
+| `_queue_condition` | mobile queue 长轮询唤醒条件 | `<repo-root>\channels\mobile.py:19` |
 
 ## 3. 三仓库职责边界表
 
@@ -156,14 +156,14 @@
 |---|---|---|---|---|
 | `qq-st-bot` | 角色核心、LLM、prompt、记忆、情绪、花园、scheduler、HTTP/WS 服务、通道 fanout。 | 不应把客户端 UI 状态当真相；不应让未鉴权客户端写真实关系记忆；不应让测试/调试事件默认进入真实记忆。 | `main.py`、`admin/routers/*.py`、`core/pipeline.py`、`core/turn_sink.py`、`core/memory/*`、`core/scheduler/*`、`channels/*` | 仍有多个绕过 `turn_sink` 的写入/发送路径；若 `watch_secret` 为空或无鉴权端口暴露，事件可写真实 profile/记忆/情绪。 |
 | `Emerald-client` | 桌面 UI、Tauri HTTP 桥、desktop WS 连接、桌面 sensor 发布、状态展示。 | 不应拥有 mood/activity/presence 的业务真值；不应伪造 action 成功；不应硬编码长期 token。 | `src/shared/api/backend.ts`、`src/shared/api/ws.ts`、`src-tauri/src/lib.rs`、`src-tauri/src/sensor/*` | `action` 立即成功 ack 但未执行；v1 协议未落地；token 仍硬编码。 |
-| `yexuan_memery` | 手机 UI、mobile chat/poll、后台通知、无障碍屏幕上下文、悬浮/锁屏确认层。 | 不应定义后端主动行为规则；不应自动升级普通消息为高危动作；不应把屏幕敏感文本默认长期化。 | `lib/main.dart`、`MobileNotificationService.kt`、`YexuanAccessibilityService.kt`、`FloatingBubbleService.kt` | 后台服务和 Flutter 均硬编码 token；debug 行为测试会写入真实 mobile queue；屏幕上下文会进入后端实时状态并参与主动发言裁决。 |
+| `mobile-client` | 手机 UI、mobile chat/poll、后台通知、无障碍屏幕上下文、悬浮/锁屏确认层。 | 不应定义后端主动行为规则；不应自动升级普通消息为高危动作；不应把屏幕敏感文本默认长期化。 | `lib/main.dart`、`MobileNotificationService.kt`、`YexuanAccessibilityService.kt`、`FloatingBubbleService.kt` | 后台服务和 Flutter 均硬编码 token；debug 行为测试会写入真实 mobile queue；屏幕上下文会进入后端实时状态并参与主动发言裁决。 |
 
 ## 4. 真实互动链路
 
 ### 用户主动发消息（desktop / mobile owner 入口）
 
 触发来源 → `Emerald-client` `sendChat()` 或 Flutter `BackendClient.sendChat()`。  
-入口文件/函数 → desktop：`D:\ai\Emerald-client\src-tauri\src\lib.rs:26` → `POST /desktop/chat` → `D:\ai\qq-st-bot\admin\routers\chat.py:189`；mobile：`D:\ai\yexuan_memery\lib\main.dart:1563` → `POST /mobile/chat` → `D:\ai\qq-st-bot\admin\routers\mobile.py:40`。  
+入口文件/函数 → desktop：`<desktop-client-root>\src-tauri\src\lib.rs:26` → `POST /desktop/chat` → `<repo-root>\admin\routers\chat.py:189`；mobile：`<mobile-client-root>\lib\main.dart:1563` → `POST /mobile/chat` → `<repo-root>\admin\routers\mobile.py:40`。
 鉴权/安全检查 → desktop 无鉴权；mobile 使用 `verify_token`。  
 事件是否被标准化 → 两者都进入 `run_owner_chat_turn(message, channel_name)`，但没有统一 envelope。  
 是否生成 AI 回复 → 是，`fetch_context()` → `build_prompt()` → `run_llm()`。  
@@ -174,7 +174,7 @@
 是否进入异步总结/反思/成长 → 是，`slow_queue.enqueue("summarize_to_midterm")`，显著情绪可 eager 反思。  
 如何广播到客户端 → `record_assistant_turn(fanout="all")` 向所有活跃通道发送。  
 当前风险 → desktop 无鉴权但写真实记忆；`fanout="all"` 可能导致用户在一个端输入，多个活跃端都收到回复。  
-证据路径 → `D:\ai\qq-st-bot\admin\routers\chat.py:29`、`:68`；`D:\ai\qq-st-bot\core\turn_sink.py:123`；`D:\ai\qq-st-bot\core\pipeline.py:287`。
+证据路径 → `<repo-root>\admin\routers\chat.py:29`、`:68`；`<repo-root>\core\turn_sink.py:123`；`<repo-root>\core\pipeline.py:287`。
 
 ### QQ 收到消息
 
@@ -190,7 +190,7 @@
 是否进入异步总结/反思/成长 → 是，由 post_process 入 slow_queue。  
 如何广播到客户端 → 只发送 QQ；不走 `channels.registry.broadcast()`，不会自动同步 desktop/mobile。  
 当前风险 → QQ 是主要未统一出口：发送、落库和广播顺序与 owner/scheduler 不一致，post_process 不 await，触发来源元数据不进入 `turn_sink`。  
-证据路径 → `D:\ai\qq-st-bot\main.py:82`、`:290`、`:308`；`D:\ai\qq-st-bot\core\output\text_output.py:17`。
+证据路径 → `<repo-root>\main.py:82`、`:290`、`:308`；`<repo-root>\core\output\text_output.py:17`。
 
 ### mobile 端触发事件
 
@@ -206,7 +206,7 @@
 是否进入异步总结/反思/成长 → `/mobile/chat` 是。  
 如何广播到客户端 → `/mobile/chat` fanout all；scheduler 或 mobile push 写 `mobile_queue.json`，手机轮询读取。  
 当前风险 → mobile queue item 缺少 `trigger/priority/is_test` 等字段；行为测试写入真实队列，靠 content/behavior 约定区分。  
-证据路径 → `D:\ai\qq-st-bot\admin\routers\mobile.py:40`、`:55`、`:68`；`D:\ai\qq-st-bot\channels\mobile.py:75`；`D:\ai\yexuan_memery\lib\main.dart:1703`。
+证据路径 → `<repo-root>\admin\routers\mobile.py:40`、`:55`、`:68`；`<repo-root>\channels\mobile.py:75`；`<mobile-client-root>\lib\main.dart:1703`。
 
 ### desktop 端触发事件
 
@@ -222,7 +222,7 @@
 是否进入异步总结/反思/成长 → chat/上传是。  
 如何广播到客户端 → `DesktopChannel.send()` 优先 `desktop_ws.push_message()`，失败写 `channel_queue.json`。  
 当前风险 → desktop action 当前客户端会 ack 成功但没有执行器；WS 没有 token；文件 fallback 当前 Emerald-client 不读。  
-证据路径 → `D:\ai\Emerald-client\src-tauri\src\lib.rs:26`、`:266`；`D:\ai\Emerald-client\src\shared\api\ws.ts:91`；`D:\ai\qq-st-bot\channels\desktop.py:40`。
+证据路径 → `<desktop-client-root>\src-tauri\src\lib.rs:26`、`:266`；`<desktop-client-root>\src\shared\api\ws.ts:91`；`<repo-root>\channels\desktop.py:40`。
 
 ### 自动/主动触发器触发
 
@@ -238,7 +238,7 @@
 是否进入异步总结/反思/成长 → 是，assistant only 也会进入 mid_term，可能进一步晋升，取决于 LLM 输出和强度。  
 如何广播到客户端 → 默认 `fanout="all"`；`sensor_aware` 二段式特殊路径见下。  
 当前风险 → 触发来源只有 `trigger_name`，缺少 `is_system_initiated/can_write_memory/priority` 等显式策略字段；`_pipeline is None` 降级直接发送时不写记忆。  
-证据路径 → `D:\ai\qq-st-bot\core\scheduler\loop.py:179`、`:226`。
+证据路径 → `<repo-root>\core\scheduler\loop.py:179`、`:226`。
 
 ### 早安/睡眠/日程类触发
 
@@ -254,7 +254,7 @@
 是否进入异步总结/反思/成长 → 是。  
 如何广播到客户端 → 默认 all。  
 当前风险 → Watch secret 未配置时 `/watch/event` 不校验；健康事件可能被外部误触发并写入 profile/主动记忆。  
-证据路径 → `D:\ai\qq-st-bot\admin\routers\watch.py:164`、`:174`；`D:\ai\qq-st-bot\core\scheduler\triggers\watch.py:8`。
+证据路径 → `<repo-root>\admin\routers\watch.py:164`、`:174`；`<repo-root>\core\scheduler\triggers\watch.py:8`。
 
 ### 心率/健康数据触发
 
@@ -270,7 +270,7 @@
 是否进入异步总结/反思/成长 → 是。  
 如何广播到客户端 → 默认 all。  
 当前风险 → 健康数据入口认证弱于 mobile/desktop Bearer；`triggered` 字段写心率 profile 时初始为 False，未见后续回写为 True（待确认）。  
-证据路径 → `D:\ai\qq-st-bot\admin\routers\watch.py:14`、`:174`、`:255`；`D:\ai\qq-st-bot\core\scheduler\triggers\watch.py:8`。
+证据路径 → `<repo-root>\admin\routers\watch.py:14`、`:174`、`:255`；`<repo-root>\core\scheduler\triggers\watch.py:8`。
 
 ### 后台状态/文件/日记类事件
 
@@ -286,7 +286,7 @@
 是否进入异步总结/反思/成长 → 上传和 sensor_aware 回复会进入。  
 如何广播到客户端 → 上传 fanout all；sensor_aware fanout desktop/mobile。  
 当前风险 → sensor realtime 的 `screen_text_hint` 会进入 sensor_judge 和 LLM prompt；若回复复述敏感屏幕内容，可能被写进 assistant 记忆链。  
-证据路径 → `D:\ai\qq-st-bot\admin\routers\sensor.py:182`；`D:\ai\qq-st-bot\core\scheduler\sensor_judge.py:88`；`D:\ai\qq-st-bot\core\scheduler\triggers\sensor_aware.py:471`。
+证据路径 → `<repo-root>\admin\routers\sensor.py:182`；`<repo-root>\core\scheduler\sensor_judge.py:88`；`<repo-root>\core\scheduler\triggers\sensor_aware.py:471`。
 
 ### debug/test/dry-run 事件
 
@@ -302,7 +302,7 @@
 是否进入异步总结/反思/成长 → behavior test 否。  
 如何广播到客户端 → `/mobile/push` 只进 mobile queue。  
 当前风险 → debug/test 标记只在 behavior payload 内，不是后端统一策略字段；生产能力页可向真实队列投递测试通知。  
-证据路径 → `D:\ai\qq-st-bot\run_test.py:18`；`D:\ai\yexuan_memery\lib\main.dart:1703`；`D:\ai\yexuan_memery\android\app\src\main\kotlin\com\example\yexuan_memery\MobileNotificationService.kt:58`。
+证据路径 → `<repo-root>\run_test.py:18`；`<mobile-client-root>\lib\main.dart:1703`；`<mobile-client-root>\android\app\src\main\kotlin\com\example\mobile-client\MobileNotificationService.kt:58`。
 
 ## 5. 当前统一出口/核心收口点
 

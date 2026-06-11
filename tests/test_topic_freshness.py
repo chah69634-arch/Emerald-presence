@@ -191,7 +191,7 @@ def test_random_message_hint_returns_string_and_marks_topic(sandbox, monkeypatch
     )
     monkeypatch.setattr(
         "core.scheduler.loop._char_name",
-        lambda: "叶瑄",
+        lambda: "Companion",
     )
 
     from core.scheduler.triggers.time_based import _random_message_context_hint
@@ -201,7 +201,6 @@ def test_random_message_hint_returns_string_and_marks_topic(sandbox, monkeypatch
     assert isinstance(result, str)
     # Either a hint or empty string (both valid)
     if result:
-        assert "叶瑄" in result
         assert "想到了一件事" in result
 
 

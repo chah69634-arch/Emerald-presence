@@ -33,8 +33,8 @@ import pytest
 _UID = "mirror_test_user"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄是圣塞西尔学院的老师"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion是圣塞西尔学院的老师"
 
 _EMPTY_SNAPSHOT: dict[str, Any] = {
     "created_at": time.time(),

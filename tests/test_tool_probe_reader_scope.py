@@ -5,10 +5,10 @@ Verifies that the probe path in handle_message reads user_profile using the
 active character's bucket (not the default "yexuan" fallback).
 
 Covers:
-  1. probe calls user_profile.load with char_id="hongcha"
-  2. active switches yexuan → hongcha; second probe reads hongcha bucket
+  1. probe calls user_profile.load with char_id="character_b"
+  2. active switches yexuan → character_b; second probe reads character_b bucket
   3. active invalid → fail-loud, user_profile.load never called
-  4. Content isolation: hongcha active → yexuan profile sentinel absent from probe context
+  4. Content isolation: character_b active → yexuan profile sentinel absent from probe context
   5. Regression: original probe path unbroken when active character is valid
 """
 
@@ -80,7 +80,7 @@ def _patch_env(monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 1. probe calls user_profile.load with char_id="hongcha"
+# 1. probe calls user_profile.load with char_id="character_b"
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def test_probe_passes_active_char_id(sandbox, monkeypatch):
@@ -88,7 +88,7 @@ async def test_probe_passes_active_char_id(sandbox, monkeypatch):
     import core.memory.user_profile as _up
 
     _patch_env(monkeypatch)
-    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("hongcha"))
+    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("character_b"))
 
     up_calls: list[dict] = []
 
@@ -102,13 +102,13 @@ async def test_probe_passes_active_char_id(sandbox, monkeypatch):
 
     probe_calls = [c for c in up_calls if c]  # filter empty-kw calls if any
     assert probe_calls, "user_profile.load should have been called in the probe path"
-    assert probe_calls[0].get("char_id") == "hongcha", (
-        f"expected char_id='hongcha', got {probe_calls[0]}"
+    assert probe_calls[0].get("char_id") == "character_b", (
+        f"expected char_id='character_b', got {probe_calls[0]}"
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 2. active switches yexuan → hongcha; second probe reads hongcha bucket
+# 2. active switches yexuan → character_b; second probe reads character_b bucket
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def test_char_switch_probe_follows_new_bucket(sandbox, monkeypatch):
@@ -128,13 +128,13 @@ async def test_char_switch_probe_follows_new_bucket(sandbox, monkeypatch):
     monkeypatch.setattr(_main, "_pipeline", _make_pipeline("yexuan"))
     await _main.handle_message(_MSG)
 
-    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("hongcha"))
+    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("character_b"))
     await _main.handle_message(_MSG)
 
     assert len(received) >= 2, f"expected at least 2 load calls, got {received}"
     assert received[0] == "yexuan", f"first probe expected yexuan, got {received[0]}"
-    assert received[1] == "hongcha", (
-        f"second probe expected hongcha (not yexuan), got {received[1]}"
+    assert received[1] == "character_b", (
+        f"second probe expected character_b (not yexuan), got {received[1]}"
     )
 
 
@@ -164,7 +164,7 @@ async def test_invalid_active_char_probe_aborts(sandbox, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 4. Content isolation: hongcha active → yexuan profile sentinel absent from probe
+# 4. Content isolation: character_b active → yexuan profile sentinel absent from probe
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def test_content_isolation_yexuan_sentinel_not_in_probe(sandbox, monkeypatch):
@@ -190,14 +190,14 @@ async def test_content_isolation_yexuan_sentinel_not_in_probe(sandbox, monkeypat
         return ""
 
     monkeypatch.setattr(_td, "get_probe_prompt", _capture_probe_prompt)
-    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("hongcha"))
+    monkeypatch.setattr(_main, "_pipeline", _make_pipeline("character_b"))
 
     await _main.handle_message(_MSG)
 
     assert probe_locations, "get_probe_prompt should have been called"
     loc = probe_locations[0]
     assert YEXUAN_SENTINEL not in loc, (
-        f"yexuan profile sentinel leaked into hongcha probe context: {loc!r}"
+        f"yexuan profile sentinel leaked into character_b probe context: {loc!r}"
     )
 
 

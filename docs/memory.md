@@ -25,9 +25,9 @@
 | `dream_pipeline` 入梦时冻结 `dream_state.char_id`；close/summary/impression/afterglow 均使用 session char_id，不读 active_character | T-05.5 / test_dream_session_char_scope.py |
 | `hidden_state_store` / `afterglow_residue` / `integrate_afterglow_and_save` 均按 char_id 路由 | T-06 / test_hidden_state_char_scope.py |
 | `_refresh_character_if_needed()` fail-loud：active_character 缺失/空/非法 → 抛 ValueError；character 保持原值；不写 short_term/event_log；不入队 slow_queue；不更新 mood | T-07 / test_active_character_fail_loud.py |
-| 内容级隔离 A/B：yexuan 写入内容不出现在 hongcha fetch_context 返回值，反之亦然 | P0 Final / test_memory_isolation_p0_final.py |
-| 内容级隔离 C：yexuan afterglow 不污染 hongcha hidden_state bucket | P0 Final / test_memory_isolation_p0_final.py |
-| 内容级隔离 D：入梦 active=yexuan → 切 active=hongcha → close → summary/impression 仍写 yexuan 桶 | P0 Final / test_memory_isolation_p0_final.py |
+| 内容级隔离 A/B：yexuan 写入内容不出现在 character_b fetch_context 返回值，反之亦然 | P0 Final / test_memory_isolation_p0_final.py |
+| 内容级隔离 C：yexuan afterglow 不污染 character_b hidden_state bucket | P0 Final / test_memory_isolation_p0_final.py |
+| 内容级隔离 D：入梦 active=yexuan → 切 active=character_b → close → summary/impression 仍写 yexuan 桶 | P0 Final / test_memory_isolation_p0_final.py |
 
 ### P0 Final 审计调用点分类（2026-06-04，状态核对 2026-06-11）
 
@@ -194,7 +194,7 @@ short_term_rounds（默认 20）= 注入预算，喂给 prompt 多少 turn-group
 short_term_disk_rounds（默认 50）= 磁盘保留，append() 写时 trim 上限。
 磁盘存得多、注入按预算加权选子集。改其一不影响其二。
 
-裁剪单位是 turn-group，不是 entry。按 _turn_id 分组：正常对 = 同 id 的 {user, assistant}；触发消息（叶瑄主动发话）= 单条 {assistant}，是正常分支不是特例；legacy 无 _turn_id 的行退回按 role 序列贪心配对。整组增删，绝不拆出孤儿 user/assistant。同一 _turn_id 非相邻重复出现会记 warning 再按相邻兜底，不静默合并。
+裁剪单位是 turn-group，不是 entry。按 _turn_id 分组：正常对 = 同 id 的 {user, assistant}；触发消息（他主动发话）= 单条 {assistant}，是正常分支不是特例；legacy 无 _turn_id 的行退回按 role 序列贪心配对。整组增删，绝不拆出孤儿 user/assistant。同一 _turn_id 非相邻重复出现会记 warning 再按相邻兜底，不静默合并。
 流程（load_for_prompt）：load()（已 sanitize）→ _group_turns → 近场最后 NEAR_K(=5) 组无条件保留 → 远场逐组 _score_turn_group 打分、按总分降序填满剩余预算 → 选中集按原始时间顺序重排 flatten。len(groups) <= budget 时走快路径原样返回。权重必须算在 sanitize 之后，否则话剧腔长动作描写会因"长度长"反得高分——这一步顺带淘汰话剧腔轮次，不用单独写规则。
 打分信号（全部命名常量 + 独立打分函数，可解释，无魔数）：长度、具体名词/实体（结构化后缀类别 + 大写串，不枚举具体专名）、问句、数字/日期、tag_rules 命中、情绪（复用 get_tags 的 emotion.* 命中，不自建情绪词表）。emotion.* 命中有意双算（既进 tag 分又进 emotion 分，情绪轮次双重重要），故单组总分 clamp 到 TURN_SCORE_CAP(=5.0) 防多信号叠加碾压；clamp 只截 total，parts 分项保真供观测。
 调试：每组打一行 [short_term_weight] debug 日志（uid / turn_id / total / 分项 parts / selected），对齐 [layer_size]。
@@ -262,7 +262,7 @@ score = intensity * decay + relevance
   "emotion_texture": "像是被什么东西轻轻压着，说不清是担心还是不舍",
   "emotion_arc": "从担心到平静",
   "user_state": "tired_and_struggling",
-  "narrative_summary": "用户说最近失眠严重，叶瑄陪他聊到很晚",
+  "narrative_summary": "用户说最近失眠严重，他陪他聊到很晚",
   "strength": 0.85,
   "is_core": false,
   "retrieval_count": 2,
@@ -347,7 +347,7 @@ score = strength × decay + emotion_bonus + relevance_bonus
 - `emotion_texture` 缺失时跳过相似度惩罚，不影响入选
 
 **emotion_bonus 来源**：
-- 记忆的 `emotion_peak` == 叶瑄当前情绪（从 `mood_state.get_current()` 读）→ `+0.15 + intensity×0.15`
+- 记忆的 `emotion_peak` == 他当前情绪（从 `mood_state.get_current()` 读）→ `+0.15 + intensity×0.15`
 - 否则 → `+0`
 
 **浮起阈值**：score < 0.15 的记忆过滤掉，宁可不注入也不强行关联。
@@ -371,8 +371,8 @@ episodic_result = format_for_prompt(
 
 输出格式：
 ```
-叶瑄脑海里浮现的片段：
-- 【重要】今天，用户说最近失眠严重，叶瑄陪他聊到很晚，像是被什么东西轻轻压着
+他脑海里浮现的片段：
+- 【重要】今天，用户说最近失眠严重，他陪他聊到很晚，像是被什么东西轻轻压着
 - 前几天，两人因误解吵了一架，后来又和好了（从争执到释然）
 ```
 
@@ -443,7 +443,7 @@ LLM 异常时降级 warning，不阻塞主流程。
 
 `summarize_turn` 内部：当 `len(user_msg) + len(reply) < 8`（合计字数）才走 `_rule_fallback`，
 否则一律调 LLM 压缩。fallback 也会同时利用 `user_msg` 和 `reply`，产出
-"用户：xxx；叶瑄：yyy" 形式，避免把用户原话直接写成"摘要"。
+"用户：xxx；他：yyy" 形式，避免把用户原话直接写成"摘要"。
 （早期版本只看 user_msg < 10 字，并且 fallback 完全忽略 reply，
 导致角色扮演里的短动作描写被当成 summary 写入，等于无效记忆，已修复。）
 
@@ -563,7 +563,7 @@ trait 统计逻辑（R8-B 起）由独立的 `trait_tracker_update` slow_queue t
 
 legacy `character_growth.update()` 内的 trait 写路径已于 R8-E2 随函数删除一并消除。
 
-author_note_rotator 每次选 note 时读取此文件，命中 underrepresented 特质的 note 权重×2，让叶瑄近期较少展现的性格侧面更容易出现。
+author_note_rotator 每次选 note 时读取此文件，命中 underrepresented 特质的 note 权重×2，让他近期较少展现的性格侧面更容易出现。
 
 **维护要点**：`data/yexuan_traits.yaml` 里的 trait `id` 必须和 `characters/yexuan_author_notes.json` 里 note 的 `trait_ids` 精确一致，否则权重翻倍静默失效。
 
@@ -600,7 +600,7 @@ author_note_rotator 每次选 note 时读取此文件，命中 underrepresented 
 
 ### 漂移规则
 
-每轮 `post_process` 里，LLM 检测叶瑄回复的情绪后调用 `update()`：
+每轮 `post_process` 里，LLM 检测他回复的情绪后调用 `update()`：
 
 - `update(emotion, source="detect")` — source 可选值：`detect`（post_process 检测）、`trigger`（关键词触发，如 yandere）、`schedule`（时间触发，如深夜 sleepy）
 
@@ -624,7 +624,7 @@ author_note_rotator 每次选 note 时读取此文件，命中 underrepresented 
 ### prompt 注入形态
 
 mood_text 输出**不是独立的 prompt 层**，而是直接拼入层 1（system_prompt）的 `## 当前感知` 区块之前。格式：
-叶瑄此刻：{情绪描述}。[pending 时追加：但有什么东西好像在悄悄变得不一样。]
+他此刻：{情绪描述}。[pending 时追加：但有什么东西好像在悄悄变得不一样。]
 
 每个情绪 × 3档强度（<0.4 / 0.4-0.7 / >0.7）对应不同描述，例：
 - `gentle` 低：淡淡的平静 / 中：平静，带一点轻盈 / 高：很平静，像静水
@@ -739,7 +739,7 @@ consolidate_to_identity
 ```
 
 
-## 六、叶瑄日记（yexuan_inner_diary）
+## 六、他日记（yexuan_inner_diary）
 
 **触发**：调度器每日 23:00，由 `_check_daily_journal()` 生成
 
@@ -753,7 +753,7 @@ HH:MM 发生了什么（客观事实，分析器视角）
 HH:MM 发生了什么
 
 今日感受
-叶瑄第一人称的心理活动和感受……
+他第一人称的心理活动和感受……
 
 **注入方式**（prompt 层 6e，读昨天的文件）：
 - 事件层：必注入，取前 200 字

@@ -38,8 +38,8 @@ from core.memory.user_hidden_state import (
 NOW = "2026-06-03T00:00:00Z"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄是圣塞西尔学院的老师"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion是圣塞西尔学院的老师"
 
 _NEUTRAL_SNAPSHOT: dict[str, Any] = {
     "sensitivity": "mid",

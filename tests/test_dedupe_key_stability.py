@@ -294,7 +294,7 @@ async def test_desktop_wake_with_last_seen_in_body_deduped(monkeypatch):
     llm_calls = [0]
 
     class _FakePipeline:
-        character = type("C", (), {"name": "叶瑄"})()
+        character = type("C", (), {"name": "Companion"})()
 
         async def fetch_context(self, uid, prompt, *a, **kw):
             return {}

@@ -12,8 +12,8 @@ Covers:
 5.  Physical path identical to legacy user_memory_root / profile.json (P0 parity)
 6.  char_id=None → ValueError (fail-loud, no fallback yexuan)
 7.  char_id="" → ValueError (fail-loud, no fallback yexuan)
-8.  yexuan / hongcha profile buckets are isolated
-9.  period info reads hongcha bucket, not yexuan bucket
+8.  yexuan / character_b profile buckets are isolated
+9.  period info reads character_b bucket, not yexuan bucket
 """
 from __future__ import annotations
 
@@ -37,16 +37,16 @@ _UID = "p1_2c_integ_u1"
 def test_load_profile_reads_from_resolver_path(sandbox):
     import core.memory.user_profile as _up
 
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     expected_path = resolve_path(scope, "profile")
     expected_path.parent.mkdir(parents=True, exist_ok=True)
     expected_path.write_text(
-        json.dumps({"name": "红茶-sentinel", "occupation": "数媒艺设"}),
+        json.dumps({"name": "DemoUser-sentinel", "occupation": "数媒艺设"}),
         encoding="utf-8",
     )
 
-    result = _up.load(_UID, char_id="hongcha")
-    assert result["name"] == "红茶-sentinel"
+    result = _up.load(_UID, char_id="character_b")
+    assert result["name"] == "DemoUser-sentinel"
     assert result["occupation"] == "数媒艺设"
 
 
@@ -57,10 +57,10 @@ def test_load_profile_reads_from_resolver_path(sandbox):
 def test_save_profile_writes_to_resolver_path(sandbox):
     import core.memory.user_profile as _up
 
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     expected_path = resolve_path(scope, "profile")
 
-    _up.save(_UID, {"name": "save-test", "location": "杭州"}, char_id="hongcha")
+    _up.save(_UID, {"name": "save-test", "location": "杭州"}, char_id="character_b")
 
     assert expected_path.exists(), "save() must write to resolver path"
     data = json.loads(expected_path.read_text(encoding="utf-8"))
@@ -75,15 +75,15 @@ def test_save_profile_writes_to_resolver_path(sandbox):
 def test_clear_profile_resets_resolver_path(sandbox):
     import core.memory.user_profile as _up
 
-    _up.save(_UID, {"name": "before-clear", "location": "诸暨"}, char_id="hongcha")
+    _up.save(_UID, {"name": "before-clear", "location": "诸暨"}, char_id="character_b")
 
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     expected_path = resolve_path(scope, "profile")
     assert expected_path.exists()
 
-    _up.clear(_UID, char_id="hongcha")
+    _up.clear(_UID, char_id="character_b")
 
-    reloaded = _up.load(_UID, char_id="hongcha")
+    reloaded = _up.load(_UID, char_id="character_b")
     assert reloaded["name"] is None
     assert reloaded["location"] is None
 
@@ -95,7 +95,7 @@ def test_clear_profile_resets_resolver_path(sandbox):
 def test_get_period_info_reads_from_resolver_path(sandbox):
     import core.memory.user_profile as _up
 
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     expected_path = resolve_path(scope, "profile")
     expected_path.parent.mkdir(parents=True, exist_ok=True)
     expected_path.write_text(
@@ -103,7 +103,7 @@ def test_get_period_info_reads_from_resolver_path(sandbox):
         encoding="utf-8",
     )
 
-    info = _up.get_period_info(_UID, char_id="hongcha")
+    info = _up.get_period_info(_UID, char_id="character_b")
     assert info["last_period_date"] == "2026-06-01"
 
 
@@ -112,9 +112,9 @@ def test_get_period_info_reads_from_resolver_path(sandbox):
 # ---------------------------------------------------------------------------
 
 def test_profile_path_equals_legacy_sandbox_path(sandbox):
-    scope = MemoryScope.reality_scope(_UID, "hongcha")
+    scope = MemoryScope.reality_scope(_UID, "character_b")
     resolver_path = resolve_path(scope, "profile")
-    legacy_path = sandbox.user_memory_root(_UID, char_id="hongcha") / "profile.json"
+    legacy_path = sandbox.user_memory_root(_UID, char_id="character_b") / "profile.json"
     assert resolver_path == legacy_path, (
         f"Resolver path diverged from legacy:\n  resolver: {resolver_path}\n  legacy:   {legacy_path}"
     )
@@ -180,55 +180,55 @@ def test_clear_profile_empty_char_id_raises(sandbox):
 
 
 # ---------------------------------------------------------------------------
-# 8. yexuan / hongcha profile buckets are isolated
+# 8. yexuan / character_b profile buckets are isolated
 # ---------------------------------------------------------------------------
 
-def test_yexuan_hongcha_profile_isolated(sandbox):
+def test_yexuan_character_b_profile_isolated(sandbox):
     import core.memory.user_profile as _up
 
-    _up.save(_UID, {"name": "叶瑄专属"}, char_id="yexuan")
-    _up.save(_UID, {"name": "红茶专属"}, char_id="hongcha")
+    _up.save(_UID, {"name": "Companion专属"}, char_id="yexuan")
+    _up.save(_UID, {"name": "DemoUser专属"}, char_id="character_b")
 
     y = _up.load(_UID, char_id="yexuan")
-    h = _up.load(_UID, char_id="hongcha")
+    h = _up.load(_UID, char_id="character_b")
 
-    assert y["name"] == "叶瑄专属"
-    assert h["name"] == "红茶专属"
+    assert y["name"] == "Companion专属"
+    assert h["name"] == "DemoUser专属"
 
     y_path = sandbox.user_memory_root(_UID, char_id="yexuan") / "profile.json"
-    h_path = sandbox.user_memory_root(_UID, char_id="hongcha") / "profile.json"
+    h_path = sandbox.user_memory_root(_UID, char_id="character_b") / "profile.json"
     assert y_path.exists()
     assert h_path.exists()
     assert y_path != h_path
 
 
-def test_clear_hongcha_does_not_affect_yexuan(sandbox):
+def test_clear_character_b_does_not_affect_yexuan(sandbox):
     import core.memory.user_profile as _up
 
-    _up.save(_UID, {"name": "叶瑄不动"}, char_id="yexuan")
-    _up.save(_UID, {"name": "红茶清除"}, char_id="hongcha")
+    _up.save(_UID, {"name": "Companion不动"}, char_id="yexuan")
+    _up.save(_UID, {"name": "DemoUser清除"}, char_id="character_b")
 
-    _up.clear(_UID, char_id="hongcha")
+    _up.clear(_UID, char_id="character_b")
 
     y = _up.load(_UID, char_id="yexuan")
-    assert y["name"] == "叶瑄不动", "yexuan bucket must survive hongcha clear"
+    assert y["name"] == "Companion不动", "yexuan bucket must survive character_b clear"
 
 
 # ---------------------------------------------------------------------------
-# 9. period info reads hongcha bucket, not yexuan bucket
+# 9. period info reads character_b bucket, not yexuan bucket
 # ---------------------------------------------------------------------------
 
 def test_period_info_isolation(sandbox):
     import core.memory.user_profile as _up
 
     _up.save(_UID, {"last_period_date": "2026-01-01"}, char_id="yexuan")
-    _up.save(_UID, {"last_period_date": "2026-06-01"}, char_id="hongcha")
+    _up.save(_UID, {"last_period_date": "2026-06-01"}, char_id="character_b")
 
     y_info = _up.get_period_info(_UID, char_id="yexuan")
-    h_info = _up.get_period_info(_UID, char_id="hongcha")
+    h_info = _up.get_period_info(_UID, char_id="character_b")
 
     assert y_info["last_period_date"] == "2026-01-01"
     assert h_info["last_period_date"] == "2026-06-01"
     assert y_info["last_period_date"] != h_info["last_period_date"], (
-        "period info must be isolated between yexuan and hongcha buckets"
+        "period info must be isolated between yexuan and character_b buckets"
     )

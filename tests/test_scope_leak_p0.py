@@ -4,25 +4,25 @@ tests/test_scope_leak_p0.py
 Scope Leak P0 — 5 真实 D 类风险验收测试
 
 1. test_prompt_builder_mood_isolation
-   yexuan mood="愤怒"，hongcha mood="困倦"；用 hongcha build prompt，断言含 hongcha mood，
+   yexuan mood="愤怒"，character_b mood="困倦"；用 character_b build prompt，断言含 character_b mood，
    不含 yexuan mood。
 
 2. test_prompt_builder_activity_isolation
-   yexuan activity_snapshot="在打游戏"，hongcha 无 snapshot；用 hongcha build prompt，
+   yexuan activity_snapshot="在打游戏"，character_b 无 snapshot；用 character_b build prompt，
    断言 prompt 不含 "打游戏"。
 
 3. test_prompt_builder_style_hint_isolation
-   yexuan observations.jsonl 含触发 style hint 的内容，hongcha observations 为空；
-   用 hongcha build prompt，断言 style hint 不来自 yexuan observations。
+   yexuan observations.jsonl 含触发 style hint 的内容，character_b observations 为空；
+   用 character_b build prompt，断言 style hint 不来自 yexuan observations。
 
 4. test_scheduler_obs_compaction_scoped
-   yexuan + hongcha 各自 observations.jsonl 超过 max_raw；
+   yexuan + character_b 各自 observations.jsonl 超过 max_raw；
    只存在这两个文件；_all_observation_paths 应返回两个 path；
    compact_observations 对两个独立路径分别调用，互不覆盖。
 
 5. test_sensor_write_scoped
-   设置 active_character="hongcha"，调用 receive_activity_snapshot；
-   断言写入 hongcha activity_snapshot，yexuan 文件无变化。
+   设置 active_character="character_b"，调用 receive_activity_snapshot；
+   断言写入 character_b activity_snapshot，yexuan 文件无变化。
 
 6. test_sensor_write_no_active_char_skips
    active_prompt_assets 中 active_character 为空；
@@ -82,7 +82,7 @@ def _write_observations(sandbox, char_id: str, lines: list[str]):
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _minimal_character(name: str = "叶瑄") -> MagicMock:
+def _minimal_character(name: str = "Companion") -> MagicMock:
     char = MagicMock()
     char.name = name
     char.system_prompt = "你是{name}。\n## 当前感知（实时，非记忆）\n{perception_block}"
@@ -114,24 +114,24 @@ def _build_prompt(char_id: str, character=None):
 # ── 1. mood isolation ─────────────────────────────────────────────────────────
 
 def test_prompt_builder_mood_isolation(sandbox):
-    """hongcha build must inject hongcha mood text, not yexuan mood text.
+    """character_b build must inject character_b mood text, not yexuan mood text.
 
     MOOD_TEXT keys are English (angry, sleepy). intensity=0.8 selects the third bucket.
     angry  @ 0.8 → "很紧，克制着"
     sleepy @ 0.8 → "撑不住了，快睡着了"
     """
     _write_mood(sandbox, "yexuan", "angry", intensity=0.8)   # 很紧，克制着
-    _write_mood(sandbox, "hongcha", "sleepy", intensity=0.8)  # 撑不住了，快睡着了
+    _write_mood(sandbox, "character_b", "sleepy", intensity=0.8)  # 撑不住了，快睡着了
 
     with (
         patch("core.author_note_rotator.get_current_note", return_value=""),
         patch("core.presence.get_last_seen_text", return_value=""),
         patch("core.activity_manager.get_prompt_fragment", return_value=""),
     ):
-        content = _build_prompt("hongcha")
+        content = _build_prompt("character_b")
 
     assert "撑不住了" in content, (
-        f"prompt must contain hongcha mood text '撑不住了': {content[:600]}"
+        f"prompt must contain character_b mood text '撑不住了': {content[:600]}"
     )
     assert "很紧，克制着" not in content, (
         f"prompt must NOT contain yexuan mood text '很紧，克制着': {content[:600]}"
@@ -141,16 +141,16 @@ def test_prompt_builder_mood_isolation(sandbox):
 # ── 2. activity snapshot isolation ───────────────────────────────────────────
 
 def test_prompt_builder_activity_isolation(sandbox):
-    """hongcha build must not read yexuan activity_snapshot."""
+    """character_b build must not read yexuan activity_snapshot."""
     _write_activity(sandbox, "yexuan", "打游戏")
-    # hongcha has no activity_snapshot
+    # character_b has no activity_snapshot
 
     with (
         patch("core.author_note_rotator.get_current_note", return_value=""),
         patch("core.presence.get_last_seen_text", return_value=""),
         patch("core.activity_manager.get_prompt_fragment", return_value=""),
     ):
-        content = _build_prompt("hongcha")
+        content = _build_prompt("character_b")
 
     assert "打游戏" not in content, (
         f"prompt must NOT contain yexuan activity '打游戏': {content[:500]}"
@@ -160,20 +160,20 @@ def test_prompt_builder_activity_isolation(sandbox):
 # ── 3. style hint isolation ───────────────────────────────────────────────────
 
 def test_prompt_builder_style_hint_isolation(sandbox):
-    """hongcha build must not pick up yexuan observations style hint."""
+    """character_b build must not pick up yexuan observations style hint."""
     # yexuan has observations that would trigger "轻柔" hint
     yexuan_obs = [
         json.dumps({"text": "用户最近很忙，压力很大", "inserted_at": "2026-06-01T10:00:00"}),
     ]
     _write_observations(sandbox, "yexuan", yexuan_obs)
-    # hongcha has no observations
+    # character_b has no observations
 
     with (
         patch("core.author_note_rotator.get_current_note", return_value=""),
         patch("core.presence.get_last_seen_text", return_value=""),
         patch("core.activity_manager.get_prompt_fragment", return_value=""),
     ):
-        content = _build_prompt("hongcha")
+        content = _build_prompt("character_b")
 
     assert "轻柔" not in content, (
         f"prompt must NOT contain yexuan style hint '轻柔': {content[:800]}"
@@ -193,26 +193,26 @@ def test_scheduler_obs_compaction_scoped(sandbox):
         for i in range(5)
     ]
     _write_observations(sandbox, "yexuan", entries)
-    _write_observations(sandbox, "hongcha", entries)
+    _write_observations(sandbox, "character_b", entries)
 
-    # Record original hongcha content before compacting only yexuan
-    hongcha_path = sandbox.observations(char_id="hongcha")
-    hongcha_before = hongcha_path.read_text(encoding="utf-8")
+    # Record original character_b content before compacting only yexuan
+    character_b_path = sandbox.observations(char_id="character_b")
+    character_b_before = character_b_path.read_text(encoding="utf-8")
 
     # _all_observation_paths should see both files
     paths = _all_observation_paths()
     path_strs = [str(p) for p in paths]
     assert any("yexuan" in s for s in path_strs), "must include yexuan observations"
-    assert any("hongcha" in s for s in path_strs), "must include hongcha observations"
+    assert any("character_b" in s for s in path_strs), "must include character_b observations"
 
     # Compact only yexuan (simulate single-char maintenance)
     yexuan_path = sandbox.observations(char_id="yexuan")
     compact_observations(yexuan_path, max_raw=3)
 
-    # hongcha must be untouched
-    hongcha_after = hongcha_path.read_text(encoding="utf-8")
-    assert hongcha_before == hongcha_after, (
-        "hongcha observations must be unchanged after compacting yexuan"
+    # character_b must be untouched
+    character_b_after = character_b_path.read_text(encoding="utf-8")
+    assert character_b_before == character_b_after, (
+        "character_b observations must be unchanged after compacting yexuan"
     )
 
     # Verify yexuan was actually compacted
@@ -235,21 +235,21 @@ def test_all_observation_paths_returns_per_char(sandbox):
     paths_1 = _all_observation_paths()
     assert len(paths_1) == 1
 
-    _write_observations(sandbox, "hongcha", [json.dumps({"text": "b"})])
+    _write_observations(sandbox, "character_b", [json.dumps({"text": "b"})])
     paths_2 = _all_observation_paths()
     assert len(paths_2) == 2
 
     names = {p.parent.parent.name for p in paths_2}  # runtime/characters/{char_id}/inner/obs.jsonl
     assert "yexuan" in names
-    assert "hongcha" in names
+    assert "character_b" in names
 
 
 # ── 5. sensor write scoped ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_sensor_write_scoped(sandbox):
-    """POST /sensor/activity with active_character=hongcha must write hongcha path only."""
-    _write_active(sandbox, "hongcha")
+    """POST /sensor/activity with active_character=character_b must write character_b path only."""
+    _write_active(sandbox, "character_b")
 
     from admin.routers.sensor import receive_activity_snapshot
 
@@ -257,15 +257,15 @@ async def test_sensor_write_scoped(sandbox):
     result = await receive_activity_snapshot(payload)
 
     assert result.get("status") == "ok"
-    assert result.get("char_id") == "hongcha"
+    assert result.get("char_id") == "character_b"
 
-    hongcha_path = sandbox.activity_snapshot(char_id="hongcha")
+    character_b_path = sandbox.activity_snapshot(char_id="character_b")
     yexuan_path  = sandbox.activity_snapshot(char_id="yexuan")
 
-    assert hongcha_path.exists(), "hongcha activity_snapshot must be written"
+    assert character_b_path.exists(), "character_b activity_snapshot must be written"
     assert not yexuan_path.exists(), "yexuan activity_snapshot must NOT be written"
 
-    data = json.loads(hongcha_path.read_text(encoding="utf-8"))
+    data = json.loads(character_b_path.read_text(encoding="utf-8"))
     assert data["current"]["category"] == "coding"
 
 
@@ -288,6 +288,6 @@ async def test_sensor_write_no_active_char_skips(sandbox):
     assert result.get("status") == "skipped"
 
     yexuan_path = sandbox.activity_snapshot(char_id="yexuan")
-    hongcha_path = sandbox.activity_snapshot(char_id="hongcha")
+    character_b_path = sandbox.activity_snapshot(char_id="character_b")
     assert not yexuan_path.exists(), "yexuan activity_snapshot must NOT be written on skip"
-    assert not hongcha_path.exists(), "hongcha activity_snapshot must NOT be written on skip"
+    assert not character_b_path.exists(), "character_b activity_snapshot must NOT be written on skip"

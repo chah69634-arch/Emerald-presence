@@ -4,7 +4,18 @@ from types import SimpleNamespace
 from datetime import date, datetime
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+
+@pytest.fixture(autouse=True)
+def _mock_pipeline_for_char_name(monkeypatch):
+    """Provide a minimal pipeline so trigger _char_name() doesn't raise in these tests."""
+    import core.pipeline_registry as _pr
+    mock_char = MagicMock()
+    mock_char.name = "test_char"
+    mock_pl = MagicMock()
+    mock_pl.character = mock_char
+    monkeypatch.setattr(_pr, "get", lambda: mock_pl)
 
 
 async def _run_dry(proposal):
@@ -62,7 +73,7 @@ async def test_native_proposal_executes_dryrun_for_each_registered_trigger(monke
     monkeypatch.setattr(timenode, "_get_timenode", lambda today=None: "monday")
     monkeypatch.setattr(festival, "_get_today_festival", lambda today=None: ("x", "（节日 prompt）"))
     monkeypatch.setattr(festival, "_is_holiday_period", lambda today=None: True)
-    monkeypatch.setattr(memory, "_char_name", lambda: "叶瑄")
+    monkeypatch.setattr(memory, "_char_name", lambda: "Companion")
     _write_event_log(
         sandbox,
         "u1",
@@ -71,7 +82,7 @@ async def test_native_proposal_executes_dryrun_for_each_registered_trigger(monke
 ## 14:30
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -320,7 +331,7 @@ async def test_topic_followup_execute_dryrun_writes_shadow_only(monkeypatch, san
 ## 14:30
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -357,7 +368,7 @@ async def test_topic_followup_dryrun_shadow_blocks_second_propose(monkeypatch, s
 ## 14:30
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -399,7 +410,7 @@ async def test_topic_followup_execute_live_writes_followed_topics(monkeypatch, s
 ## 14:30
 **用户**：我准备继续改实习材料
 > turn_id:t1
-**叶瑄**：我记得。
+**Companion**：我记得。
 > emotion:gentle intensity:1 turn_id:t1
 ---
 """,
@@ -465,7 +476,7 @@ async def test_legacy_random_message_marks_recent_topics(monkeypatch, sandbox):
     monkeypatch.setattr(time_based, "_is_ready", lambda name: True)
     monkeypatch.setattr(time_based, "_cfg", lambda: {"random_message": True})
     monkeypatch.setattr(time_based, "_owner_id", lambda: "u1")
-    monkeypatch.setattr(time_based, "_char_name", lambda: "叶瑄")
+    monkeypatch.setattr(time_based, "_char_name", lambda: "Companion")
     monkeypatch.setattr(
         "core.memory.event_log.get_highlights",
         lambda oid, days: "在写实习材料",  # single item → deterministic pick

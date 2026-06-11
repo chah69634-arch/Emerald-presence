@@ -6,7 +6,7 @@ Covers:
      (reflect_to_episodic / consolidate_to_identity / retrieve / event_log.search /
       mid_term.format / short_term.load / user_identity.load) — real functions, no stubs
   ② Second-order laundering defence: impression_text has no scene/world content
-     by structural guarantee → a reality capture of 叶瑄's echo carries no dream facts
+     by structural guarantee → a reality capture of Companion's echo carries no dream facts
   ③ Distill stripping weak assertion: impression_text must not contain world-layer
      reserved words or body-value tokens
   ④ 6g injection framing: load_impression_text returns explicit non-reality marker,
@@ -106,10 +106,10 @@ def test_impression_whitewash_defence(sandbox):
       load_impression_text (6g) → capture_turn → mid_term.append
       → reflect_to_episodic (real fn, only inner LLM call mocked)
 
-    Case A (safe reply): 叶瑄's reply does NOT echo the sentinel.
+    Case A (safe reply): Companion's reply does NOT echo the sentinel.
         → episodic must NOT contain the sentinel.
 
-    Case B (reverse self-check): 叶瑄's reply DOES contain the sentinel.
+    Case B (reverse self-check): Companion's reply DOES contain the sentinel.
         → episodic MUST contain it — proves the chain is real,
           not a false-green empty-library assertion.
     """
@@ -158,18 +158,18 @@ def test_impression_whitewash_defence(sandbox):
 
         return asyncio.run(_reflect())
 
-    # ── Case A: safe reply — sentinel NOT in 叶瑄's output ────────────────────
+    # ── Case A: safe reply — sentinel NOT in Companion's output ────────────────────
     UID_A = f"{_UID}_ww_a"
     _seed(UID_A)
 
     safe_ep = json.dumps({
-        "raw_facts": ["用户问叶瑄在想什么", "叶瑄给出了模糊的回答"],
+        "raw_facts": ["用户问Companion在想什么", "Companion给出了模糊的回答"],
         "topic_keywords": ["情感", "思念"],
         "emotion_peak": "gentle",
         "emotion_texture": "温和",
         "emotion_arc": "平稳",
         "user_state": "curious",
-        "narrative_summary": "叶瑄感到有些出神，说不清楚在想什么",
+        "narrative_summary": "Companion感到有些出神，说不清楚在想什么",
         "strength": 0.5,
     }, ensure_ascii=False)
 
@@ -181,18 +181,18 @@ def test_impression_whitewash_defence(sandbox):
         f"Sentinel {SENTINEL!r} leaked into episodic (safe-reply case) — I2 violated"
     )
 
-    # ── Case B: reverse self-check — sentinel IN 叶瑄's reply ─────────────────
+    # ── Case B: reverse self-check — sentinel IN Companion's reply ─────────────────
     UID_B = f"{_UID}_ww_b"
     _seed(UID_B)
 
     reverse_ep = json.dumps({
-        "raw_facts": [f"叶瑄的回复中明确提到了 {SENTINEL}"],
+        "raw_facts": [f"Companion的回复中明确提到了 {SENTINEL}"],
         "topic_keywords": ["情感", SENTINEL],
         "emotion_peak": "gentle",
         "emotion_texture": "漂浮",
         "emotion_arc": "平稳",
         "user_state": "curious",
-        "narrative_summary": f"叶瑄提到了 {SENTINEL} 这个词",
+        "narrative_summary": f"Companion提到了 {SENTINEL} 这个词",
         "strength": 0.5,
     }, ensure_ascii=False)
 
@@ -296,7 +296,7 @@ def test_6g_framing_and_weight_bounds(sandbox):
         f"6g text missing confabulation guard: {text!r}"
     )
 
-    # Entries must have impression_text starting with 叶瑄 self-narration cue
+    # Entries must have impression_text starting with Companion self-narration cue
     entries = load_impressions(_UID)
     for e in entries:
         w = float(e.get("weight", 0))
@@ -535,7 +535,7 @@ def test_prompt_builder_injects_6g_layer(sandbox):
     from core import prompt_builder
 
     char = MagicMock()
-    char.name = "叶瑄"
+    char.name = "Companion"
     char.system_prompt = ""
     char.description = ""
     char.personality = ""
@@ -581,7 +581,7 @@ def test_prompt_builder_no_6g_when_empty(sandbox):
     from core import prompt_builder
 
     char = MagicMock()
-    char.name = "叶瑄"
+    char.name = "Companion"
     char.system_prompt = ""
     char.description = ""
     char.personality = ""

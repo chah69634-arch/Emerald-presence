@@ -33,8 +33,8 @@ _DEFAULT_MES_PHRASE = "你来了"
 
 # ── Minimal fakes ─────────────────────────────────────────────────────────────
 _FAKE_CHAR = MagicMock()
-_FAKE_CHAR.name = "叶瑄"
-_FAKE_CHAR.description = "叶瑄是圣塞西尔学院的老师"
+_FAKE_CHAR.name = "Companion"
+_FAKE_CHAR.description = "Companion是圣塞西尔学院的老师"
 
 
 def _call(world_id: str, lore_entries=None):
@@ -129,7 +129,7 @@ def test_per_field_fallback_ruleset_default_mes_own(tmp_worlds):
     """
     world_dir = tmp_worlds / "abo"
     world_dir.mkdir()
-    custom_mes = "自定义梦境示例：叶瑄轻声说，这是只属于我们的空间。"
+    custom_mes = "自定义梦境示例：Companion轻声说，这是只属于我们的空间。"
     (world_dir / "mes_example.md").write_text(custom_mes, encoding="utf-8")
     (world_dir / "vocab.json").write_text("[]", encoding="utf-8")
     # intentionally NO ruleset.md

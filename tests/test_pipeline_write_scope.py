@@ -9,7 +9,7 @@ Covers:
 3.  pipeline.post_process() passes active char_id to capture_turn
 4.  Active character switch: post_process uses the new char_id after switch
 5.  Invalid active_character: post_process raises, short_term/event_log never called
-6.  Content-level isolation: yexuan and hongcha writes land in different buckets
+6.  Content-level isolation: yexuan and character_b writes land in different buckets
 7.  T-01 regression: fetch_context read paths still use active char_id
 """
 
@@ -28,16 +28,16 @@ from core.asset_registry import AssetRegistry
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal characters/ tree with yexuan + hongcha."""
+    """Minimal characters/ tree with yexuan + character_b."""
     chars = tmp_path / "characters"
     chars.mkdir()
 
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
 
@@ -76,7 +76,7 @@ def _write_active(sandbox, char_id: str):
 # ── 1. capture_turn passes char_id to short_term.append ──────────────────────
 
 def test_capture_turn_passes_char_id_to_short_term(sandbox):
-    """capture_turn(char_id='hongcha') must forward char_id to short_term.append."""
+    """capture_turn(char_id='character_b') must forward char_id to short_term.append."""
     import core.memory.short_term as _st
     import core.memory.event_log as _el
     from core.memory.fixation_pipeline import capture_turn
@@ -96,18 +96,18 @@ def test_capture_turn_passes_char_id_to_short_term(sandbox):
         patch.object(_st, "append", side_effect=_spy_st),
         patch.object(_el, "append", return_value=True),
     ):
-        capture_turn("u1", "你好", "在的", char_id="hongcha", envelope=env)
+        capture_turn("u1", "你好", "在的", char_id="character_b", envelope=env)
 
     assert st_char_ids, "short_term.append must be called"
-    assert all(c == "hongcha" for c in st_char_ids), (
-        f"short_term.append must receive char_id='hongcha', got {st_char_ids}"
+    assert all(c == "character_b" for c in st_char_ids), (
+        f"short_term.append must receive char_id='character_b', got {st_char_ids}"
     )
 
 
 # ── 2. capture_turn passes char_id to event_log.append ───────────────────────
 
 def test_capture_turn_passes_char_id_to_event_log(sandbox):
-    """capture_turn(char_id='hongcha') must forward char_id to event_log.append."""
+    """capture_turn(char_id='character_b') must forward char_id to event_log.append."""
     import core.memory.short_term as _st
     import core.memory.event_log as _el
     from core.memory.fixation_pipeline import capture_turn
@@ -125,11 +125,11 @@ def test_capture_turn_passes_char_id_to_event_log(sandbox):
         patch.object(_st, "append", return_value=True),
         patch.object(_el, "append", side_effect=_spy_el),
     ):
-        capture_turn("u1", "你好", "在的", char_id="hongcha", envelope=env)
+        capture_turn("u1", "你好", "在的", char_id="character_b", envelope=env)
 
     assert el_char_ids, "event_log.append must be called"
-    assert all(c == "hongcha" for c in el_char_ids), (
-        f"event_log.append must receive char_id='hongcha', got {el_char_ids}"
+    assert all(c == "character_b" for c in el_char_ids), (
+        f"event_log.append must receive char_id='character_b', got {el_char_ids}"
     )
 
 
@@ -140,8 +140,8 @@ async def test_post_process_passes_active_char_id_to_capture_turn(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """post_process() must pass self._active_character_id as char_id to capture_turn."""
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     captured_char_ids: list[str] = []
 
@@ -175,8 +175,8 @@ async def test_post_process_passes_active_char_id_to_capture_turn(
         )
 
     assert captured_char_ids, "capture_turn must be called"
-    assert captured_char_ids[0] == "hongcha", (
-        f"post_process must pass char_id='hongcha', got {captured_char_ids[0]!r}"
+    assert captured_char_ids[0] == "character_b", (
+        f"post_process must pass char_id='character_b', got {captured_char_ids[0]!r}"
     )
 
 
@@ -219,13 +219,13 @@ async def test_post_process_uses_new_char_id_after_switch(
             f"First turn must use yexuan, got {captured_char_ids[-1]!r}"
         )
 
-        # Switch to hongcha
-        _write_active(sandbox, "hongcha")
+        # Switch to character_b
+        _write_active(sandbox, "character_b")
 
-        # Second turn: must now use hongcha
+        # Second turn: must now use character_b
         await pipeline.post_process("u1", "今天怎样", "挺好的", envelope=env)
-        assert captured_char_ids[-1] == "hongcha", (
-            f"After switch, post_process must use hongcha, got {captured_char_ids[-1]!r}"
+        assert captured_char_ids[-1] == "character_b", (
+            f"After switch, post_process must use character_b, got {captured_char_ids[-1]!r}"
         )
 
 
@@ -276,11 +276,11 @@ async def test_post_process_invalid_active_does_not_write(
     assert el_called == [], "event_log.append must not be called on invalid active_character"
 
 
-# ── 6. Content-level isolation: yexuan and hongcha write to different buckets ──
+# ── 6. Content-level isolation: yexuan and character_b write to different buckets ──
 
 def test_capture_turn_content_isolation_by_char_id(sandbox):
     """
-    capture_turn with char_id='yexuan' and char_id='hongcha' write to separate buckets.
+    capture_turn with char_id='yexuan' and char_id='character_b' write to separate buckets.
     short_term.load_for_prompt(uid, char_id=...) shows different content per bucket.
     Does NOT drain slow_queue — T-02 only tests immediate short_term writes.
     """
@@ -295,20 +295,20 @@ def test_capture_turn_content_isolation_by_char_id(sandbox):
     # Write a turn for yexuan
     capture_turn(uid, "草莓大福-T02用户", "草莓大福-T02回复", char_id="yexuan", envelope=env)
 
-    # Write a turn for hongcha
-    capture_turn(uid, "XYZ动画-T02用户", "XYZ动画-T02回复", char_id="hongcha", envelope=env)
+    # Write a turn for character_b
+    capture_turn(uid, "XYZ动画-T02用户", "XYZ动画-T02回复", char_id="character_b", envelope=env)
 
     yexuan_hist = load_for_prompt(uid, char_id="yexuan")
-    hongcha_hist = load_for_prompt(uid, char_id="hongcha")
+    character_b_hist = load_for_prompt(uid, char_id="character_b")
 
     yexuan_texts = " ".join(m.get("content", "") for m in yexuan_hist)
-    hongcha_texts = " ".join(m.get("content", "") for m in hongcha_hist)
+    character_b_texts = " ".join(m.get("content", "") for m in character_b_hist)
 
     assert "草莓大福-T02" in yexuan_texts, "yexuan bucket must contain 草莓大福-T02 turn"
-    assert "XYZ动画-T02" not in yexuan_texts, "yexuan bucket must NOT contain hongcha's turn"
+    assert "XYZ动画-T02" not in yexuan_texts, "yexuan bucket must NOT contain character_b's turn"
 
-    assert "XYZ动画-T02" in hongcha_texts, "hongcha bucket must contain XYZ动画-T02 turn"
-    assert "草莓大福-T02" not in hongcha_texts, "hongcha bucket must NOT contain yexuan's turn"
+    assert "XYZ动画-T02" in character_b_texts, "character_b bucket must contain XYZ动画-T02 turn"
+    assert "草莓大福-T02" not in character_b_texts, "character_b bucket must NOT contain yexuan's turn"
 
 
 # ── 7. T-01 regression: fetch_context read path still uses active char_id ─────
@@ -378,8 +378,8 @@ def test_fetch_context_t01_regression_char_id_still_passes(
     """
     import core.memory.short_term as _st
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_fetch_stubs(monkeypatch)
 
     captured: list[str] = []
@@ -393,6 +393,6 @@ def test_fetch_context_t01_regression_char_id_still_passes(
     asyncio.run(pipeline.fetch_context(user_id="u1", content="hello"))
 
     assert captured, "short_term.load_for_prompt must be called"
-    assert captured[0] == "hongcha", (
-        f"T-01 regression: short_term.load_for_prompt must receive char_id='hongcha', got {captured[0]!r}"
+    assert captured[0] == "character_b", (
+        f"T-01 regression: short_term.load_for_prompt must receive char_id='character_b', got {captured[0]!r}"
     )

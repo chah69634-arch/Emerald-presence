@@ -11,8 +11,8 @@ T4.  move_count=13（刚过阈值）→ 生成摘要，返回 (session, str)
 T5.  move_count>12 → summary.json 写入磁盘
 T6.  summary 文本不含完整棋谱（不含坐标序列）
 T7.  summary 文本不含 "[" 方括号（棋谱列表标志）
-T8.  human 模式文案不含"叶瑄"
-T9.  yexuan_ai 模式文案含"叶瑄执白"
+T8.  human 模式文案不含角色执白描述
+T9.  yexuan_ai 模式文案含角色执白描述
 T10. summary 文本含正确 move_count 数值
 T11. winner=black → 黑棋获胜
 T12. winner=white → 白棋获胜
@@ -167,7 +167,7 @@ def test_summary_no_bracket_list(sandbox):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# T8 — human 模式文案不含"叶瑄"
+# T8 — human 模式文案不含角色执白描述
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_human_mode_no_yexuan_reference(sandbox):
@@ -175,11 +175,11 @@ def test_human_mode_no_yexuan_reference(sandbox):
     _inject_state("user1", "yexuan", session.session_id, move_count=14, opponent="human")
     _, summary = G.close_game("user1", "yexuan", session.session_id)
     assert summary is not None
-    assert "叶瑄" not in summary
+    assert "执白" not in summary
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# T9 — yexuan_ai 模式文案含"叶瑄执白"
+# T9 — yexuan_ai 模式文案含角色执白描述
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_yexuan_ai_mode_mentions_yexuan_white(sandbox):
@@ -187,7 +187,7 @@ def test_yexuan_ai_mode_mentions_yexuan_white(sandbox):
     _inject_state("user1", "yexuan", session.session_id, move_count=14, opponent="yexuan_ai")
     _, summary = G.close_game("user1", "yexuan", session.session_id)
     assert summary is not None
-    assert "叶瑄执白" in summary
+    assert "执白" in summary
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

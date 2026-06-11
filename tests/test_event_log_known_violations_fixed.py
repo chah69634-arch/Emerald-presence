@@ -8,7 +8,7 @@ Verifies that all three event_log direct-path known violations are fixed:
   3.  core/scheduler/last_mentioned.py — _read_recent_event_log now uses MemoryScope + resolve_path
 
 Covers:
-  A. admin chat_log: no char_id → uses active_character (active=hongcha)
+  A. admin chat_log: no char_id → uses active_character (active=character_b)
   B. admin chat_log: explicit char_id=yexuan → reads yexuan event_log bucket
   C. admin chat_log: active missing/empty → HTTP 503, no yexuan fallback
   D. admin chat_log: invalid char_id → HTTP 422, no yexuan fallback
@@ -44,7 +44,7 @@ import core.memory.user_profile as _up_preimport  # noqa: F401
 
 @pytest.fixture
 def chars_tree(tmp_path):
-    """Minimal project tree: yexuan + hongcha characters + config.yaml."""
+    """Minimal project tree: yexuan + character_b characters + config.yaml."""
     (tmp_path / "config.yaml").write_text(
         "character:\n  name: 测试角色\n  default: yexuan\n"
         "scheduler:\n  owner_id: '10000'\n",
@@ -53,11 +53,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -94,36 +94,36 @@ def _seed_event_log_day(sandbox, uid: str, char_id: str, date_str: str, content:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# A. admin chat_log: no char_id → uses active_character (active=hongcha)
+# A. admin chat_log: no char_id → uses active_character (active=character_b)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _TEST_OWNER = "10000"  # fixed owner uid used across admin chat_log tests
 
 
 def test_chat_log_list_dates_uses_active_char(sandbox, registry, monkeypatch):
-    """list_dates with no char_id resolves to active_character (hongcha)."""
+    """list_dates with no char_id resolves to active_character (character_b)."""
     import admin.routers.chat_log as _cl
     monkeypatch.setattr(_cl, "_owner_qq", lambda: _TEST_OWNER)
     from admin.routers.chat_log import list_dates
 
-    _seed_active(sandbox, "hongcha")
-    _seed_event_log_day(sandbox, _TEST_OWNER, "hongcha", "2026-06-06", "## 10:00\n**用户**：test\n")
+    _seed_active(sandbox, "character_b")
+    _seed_event_log_day(sandbox, _TEST_OWNER, "character_b", "2026-06-06", "## 10:00\n**用户**：test\n")
 
     result = asyncio.run(list_dates(char_id=None, auth="dummy"))
 
     assert "2026-06-06" in result["dates"], (
-        f"hongcha event_log date must appear; got {result['dates']}"
+        f"character_b event_log date must appear; got {result['dates']}"
     )
 
 
 def test_chat_log_get_day_uses_active_char(sandbox, registry, monkeypatch):
-    """get_day with no char_id resolves to active_character (hongcha)."""
+    """get_day with no char_id resolves to active_character (character_b)."""
     import admin.routers.chat_log as _cl
     monkeypatch.setattr(_cl, "_owner_qq", lambda: _TEST_OWNER)
     from admin.routers.chat_log import get_day
 
-    _seed_active(sandbox, "hongcha")
-    _seed_event_log_day(sandbox, _TEST_OWNER, "hongcha", "2026-06-06", "## 10:00\n**用户**：你好\n")
+    _seed_active(sandbox, "character_b")
+    _seed_event_log_day(sandbox, _TEST_OWNER, "character_b", "2026-06-06", "## 10:00\n**用户**：你好\n")
 
     result = asyncio.run(get_day("2026-06-06", char_id=None, auth="dummy"))
 
@@ -136,23 +136,23 @@ def test_chat_log_get_day_uses_active_char(sandbox, registry, monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_chat_log_explicit_char_id_reads_correct_bucket(sandbox, registry, monkeypatch):
-    """list_dates with explicit char_id=yexuan reads yexuan bucket (active=hongcha)."""
+    """list_dates with explicit char_id=yexuan reads yexuan bucket (active=character_b)."""
     import admin.routers.chat_log as _cl
     monkeypatch.setattr(_cl, "_owner_qq", lambda: _TEST_OWNER)
     from admin.routers.chat_log import list_dates
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
     # Only yexuan has a log file
-    _seed_event_log_day(sandbox, _TEST_OWNER, "yexuan", "2026-06-05", "## 09:00\n**用户**：叶瑄内容\n")
+    _seed_event_log_day(sandbox, _TEST_OWNER, "yexuan", "2026-06-05", "## 09:00\n**用户**：Companion内容\n")
 
     result_yexuan = asyncio.run(list_dates(char_id="yexuan", auth="dummy"))
-    result_hongcha = asyncio.run(list_dates(char_id=None, auth="dummy"))
+    result_character_b = asyncio.run(list_dates(char_id=None, auth="dummy"))
 
     assert "2026-06-05" in result_yexuan["dates"], (
         f"yexuan bucket must contain 2026-06-05; got {result_yexuan['dates']}"
     )
-    assert "2026-06-05" not in result_hongcha["dates"], (
-        "hongcha bucket must NOT contain yexuan-only log date"
+    assert "2026-06-05" not in result_character_b["dates"], (
+        "character_b bucket must NOT contain yexuan-only log date"
     )
 
 
@@ -199,7 +199,7 @@ def test_chat_log_invalid_char_id_returns_422(sandbox, registry, monkeypatch):
     monkeypatch.setattr(_cl, "_owner_qq", lambda: _TEST_OWNER)
     from admin.routers.chat_log import list_dates
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(list_dates(char_id="ghost_char_xyz", auth="dummy"))
@@ -217,16 +217,16 @@ def test_user_talked_today_reads_resolver_path(sandbox, registry):
     from core.memory.path_resolver import resolve_path
     from core.memory.scope import MemoryScope
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     uid = "10001"
     today = datetime.now().strftime("%Y-%m-%d")
-    scope = MemoryScope.reality_scope(uid, "hongcha")
+    scope = MemoryScope.reality_scope(uid, "character_b")
     log_dir = resolve_path(scope, "event_log")
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / f"{today}.md").write_text("## 10:00\n**用户**：hello\n---\n", encoding="utf-8")
 
-    assert _user_talked_today(uid, char_id="hongcha") is True
+    assert _user_talked_today(uid, char_id="character_b") is True
 
 
 def test_user_talked_today_empty_file_returns_false(sandbox, registry):
@@ -281,12 +281,12 @@ def test_user_talked_today_explicit_char_id_bypasses_active(sandbox, registry, m
 
     uid = "10004"
     today = datetime.now().strftime("%Y-%m-%d")
-    scope = MemoryScope.reality_scope(uid, "hongcha")
+    scope = MemoryScope.reality_scope(uid, "character_b")
     log_dir = resolve_path(scope, "event_log")
     log_dir.mkdir(parents=True, exist_ok=True)
-    (log_dir / f"{today}.md").write_text("## 10:00\n**用户**：hello hongcha\n", encoding="utf-8")
+    (log_dir / f"{today}.md").write_text("## 10:00\n**用户**：hello character_b\n", encoding="utf-8")
 
-    result = _loop._user_talked_today(uid, char_id="hongcha")
+    result = _loop._user_talked_today(uid, char_id="character_b")
 
     assert result is True
     assert not active_called, "_active_char_id_or_none must not be called when char_id is explicit"
@@ -302,53 +302,53 @@ def test_recall_last_mentioned_reads_resolver_path(sandbox, registry):
     from core.memory.path_resolver import resolve_path
     from core.memory.scope import MemoryScope
 
-    _seed_active(sandbox, "hongcha")
+    _seed_active(sandbox, "character_b")
 
     uid = "20001"
     date_str = "2026-06-05"
-    # Write to hongcha resolver bucket
-    scope = MemoryScope.reality_scope(uid, "hongcha")
+    # Write to character_b resolver bucket
+    scope = MemoryScope.reality_scope(uid, "character_b")
     log_dir = resolve_path(scope, "event_log")
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / f"{date_str}.md").write_text(
-        "## 14:30\n**用户**：我想去实习一下\n**叶瑄**：加油\n> emotion:gentle intensity:1\n---\n",
+        "## 14:30\n**用户**：我想去实习一下\n**Companion**：加油\n> emotion:gentle intensity:1\n---\n",
         encoding="utf-8",
     )
 
     now = datetime(2026, 6, 6, 12, 0)
-    topic = recall_last_mentioned(uid, char_id="hongcha", now=now, days=3)
+    topic = recall_last_mentioned(uid, char_id="character_b", now=now, days=3)
 
-    assert topic is not None, "recall_last_mentioned must return a topic from hongcha bucket"
+    assert topic is not None, "recall_last_mentioned must return a topic from character_b bucket"
     assert "实习" in topic.topic or "实习" in topic.user_text, (
         f"topic must mention 实习; got topic={topic.topic!r} user_text={topic.user_text!r}"
     )
 
 
 def test_recall_last_mentioned_bucket_isolation(sandbox, registry):
-    """recall_last_mentioned for hongcha does not return yexuan-only content."""
+    """recall_last_mentioned for character_b does not return yexuan-only content."""
     from core.scheduler.last_mentioned import recall_last_mentioned
     from core.memory.path_resolver import resolve_path
     from core.memory.scope import MemoryScope
 
     uid = "20002"
     date_str = "2026-06-05"
-    YEXUAN_ONLY = "叶瑄专属事件日志内容XYZ"
+    YEXUAN_ONLY = "Companion专属事件日志内容XYZ"
 
     # Write only to yexuan bucket
     scope = MemoryScope.reality_scope(uid, "yexuan")
     log_dir = resolve_path(scope, "event_log")
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / f"{date_str}.md").write_text(
-        f"## 14:00\n**用户**：{YEXUAN_ONLY}\n**叶瑄**：好的\n> emotion:neutral intensity:0\n---\n",
+        f"## 14:00\n**用户**：{YEXUAN_ONLY}\n**Companion**：好的\n> emotion:neutral intensity:0\n---\n",
         encoding="utf-8",
     )
 
     now = datetime(2026, 6, 6, 12, 0)
-    topic_hongcha = recall_last_mentioned(uid, char_id="hongcha", now=now, days=3)
+    topic_character_b = recall_last_mentioned(uid, char_id="character_b", now=now, days=3)
 
-    # hongcha bucket has no logs → must return None
-    assert topic_hongcha is None, (
-        "recall_last_mentioned for hongcha must not read yexuan bucket"
+    # character_b bucket has no logs → must return None
+    assert topic_character_b is None, (
+        "recall_last_mentioned for character_b must not read yexuan bucket"
     )
 
 
@@ -387,19 +387,19 @@ def test_recall_last_mentioned_explicit_char_id_bypasses_active(sandbox, registr
 
     uid = "20004"
     date_str = "2026-06-05"
-    scope = MemoryScope.reality_scope(uid, "hongcha")
+    scope = MemoryScope.reality_scope(uid, "character_b")
     log_dir = resolve_path(scope, "event_log")
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / f"{date_str}.md").write_text(
-        "## 15:00\n**用户**：我要准备毕业论文了\n**叶瑄**：加油\n> emotion:gentle intensity:1\n---\n",
+        "## 15:00\n**用户**：我要准备毕业论文了\n**Companion**：加油\n> emotion:gentle intensity:1\n---\n",
         encoding="utf-8",
     )
 
     now = datetime(2026, 6, 6, 12, 0)
-    topic = _lm.recall_last_mentioned(uid, char_id="hongcha", now=now, days=3)
+    topic = _lm.recall_last_mentioned(uid, char_id="character_b", now=now, days=3)
 
     assert not active_called, "_active_char_id_or_none must not be called when char_id is explicit"
-    assert topic is not None, "explicit char_id=hongcha must find the topic"
+    assert topic is not None, "explicit char_id=character_b must find the topic"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

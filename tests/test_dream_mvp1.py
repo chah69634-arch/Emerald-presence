@@ -30,7 +30,7 @@ import pytest
 _UID = "dream_test_user"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
+_FAKE_CHARACTER.name = "Companion"
 _FAKE_CHARACTER.description = "测试角色描述"
 _FAKE_CHARACTER.jailbreak_entries = []
 

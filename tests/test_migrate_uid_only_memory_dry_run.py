@@ -22,7 +22,7 @@ Coverage:
   16. _summary counts
   17. save_report writes valid JSON
   18. run() returns ReportEntry list
-  19. hongcha / j5412 never appear in target paths
+  19. character_b / j5412 never appear in target paths
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def test_collect_v1_uids_finds_char_scoped_uid_dirs(tmp_path):
 def test_collect_v1_uids_ignores_other_chars(tmp_path):
     mem = tmp_path / "runtime" / "memory"
     (mem / _TARGET_CHAR_ID / "uid_ok").mkdir(parents=True)
-    (mem / "hongcha" / "uid_hc").mkdir(parents=True)
+    (mem / "character_b" / "uid_hc").mkdir(parents=True)
     (mem / "j5412" / "uid_j5").mkdir(parents=True)
     uids = _collect_v1_uids(tmp_path)
     assert "uid_ok" in uids
@@ -382,12 +382,12 @@ def test_run_saves_json_when_output_given(tmp_path, sandbox):
     assert data["target_char_id"] == _TARGET_CHAR_ID
 
 
-# ── 19. hongcha / j5412 never in target paths ────────────────────────────────
+# ── 19. character_b / j5412 never in target paths ────────────────────────────────
 
 def test_other_chars_never_in_target_paths(tmp_path, sandbox):
     uid = "any_uid"
     for legacy_dir, tmpl, artifact, is_dir in _ALL_LEGACY:
         e = build_entry(uid, legacy_dir, tmpl, artifact, is_dir, tmp_path)
         tgt = _s(e.target_path)
-        assert "hongcha" not in tgt, f"artifact={artifact}: hongcha in target path"
+        assert "character_b" not in tgt, f"artifact={artifact}: character_b in target path"
         assert "j5412" not in tgt,   f"artifact={artifact}: j5412 in target path"

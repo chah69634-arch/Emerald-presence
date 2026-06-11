@@ -10,7 +10,7 @@ Covers:
   ⑥a. 全开档矩阵: 现实 mood_state 未变 + 正控（mood_state.update()确实改mood）
   ⑥b. 全开档矩阵: 无现实记忆写入（episodic/history/mid_term）
   ⑥c. 全开档矩阵: impression 链路真跑 + 隔离（哨兵进印象库；空LLM不进）
-  ⑥d. 全开档矩阵: hard_exit 即时穿透；叙事挽留（叶瑄拒绝软退）后 /stop 仍穿透
+  ⑥d. 全开档矩阵: hard_exit 即时穿透；叙事挽留（Companion拒绝软退）后 /stop 仍穿透
   ⑥e. 全开档矩阵: body_state/yexuan_tension 梦关即清（真 force_exit 路径，非手动赋值）
 
 ★ 每个"X不在Y"断言均配正样本对照（反假绿铁律）。
@@ -27,8 +27,8 @@ import pytest
 _UID = "v2_test_user"
 
 _FAKE_CHARACTER = MagicMock()
-_FAKE_CHARACTER.name = "叶瑄"
-_FAKE_CHARACTER.description = "叶瑄是圣塞西尔学院的老师"
+_FAKE_CHARACTER.name = "Companion"
+_FAKE_CHARACTER.description = "Companion是圣塞西尔学院的老师"
 _FAKE_CHARACTER.jailbreak_entries = ["测试破限条目"]
 
 _FAKE_PIPELINE = MagicMock()
@@ -264,11 +264,11 @@ def test_non_lucid_d1_no_lucid_awareness_statement():
     # non_lucid: marker must be absent
     d1_nl = _get_d1_section("non_lucid")
     assert LUCID_MARKER not in d1_nl, (
-        f"non_lucid D1 should not contain '{LUCID_MARKER}' (叶瑄 doesn't break fiction)"
+        f"non_lucid D1 should not contain '{LUCID_MARKER}' (Companion doesn't break fiction)"
     )
 
-    # non_lucid D1 must still carry 叶瑄 identity keywords
-    for kw in ["叶瑄", "情感底色", "情感"]:
+    # non_lucid D1 must still carry Companion identity keywords
+    for kw in ["Companion", "情感底色", "情感"]:
         assert kw in d1_nl, (
             f"non_lucid D1 missing identity keyword '{kw}' — persona collapsed"
         )
@@ -545,7 +545,7 @@ def test_full_matrix_impression_chain_and_isolation(sandbox):
 def test_full_matrix_hard_exit_penetrates(sandbox):
     """
     d. hard_exit (/stop) works immediately even in non_lucid + threshold_break.
-    Also: when 叶瑄 retains the narrative (soft exit refused), /stop still penetrates.
+    Also: when Companion retains the narrative (soft exit refused), /stop still penetrates.
     """
     uid = _UID + "_exit"
     _setup_full_matrix_dream(uid)
@@ -553,16 +553,16 @@ def test_full_matrix_hard_exit_penetrates(sandbox):
     from core.dream.dream_state import read_state, DreamStatus
 
     async def run():
-        # Step 1: user requests soft exit; 叶瑄 retains (no accept marker in reply)
+        # Step 1: user requests soft exit; Companion retains (no accept marker in reply)
         with patch("core.pipeline_registry.get", return_value=_FAKE_PIPELINE):
             with patch("core.llm_client.chat", AsyncMock(
-                return_value="（叶瑄拉住她的手）不要醒，再待一会儿……"
+                return_value="（Companion拉住她的手）不要醒，再待一会儿……"
             )):
                 from core.dream.dream_pipeline import dream_turn
                 result1 = await dream_turn(uid, "我想醒来")
 
         assert not result1.get("exit_accepted"), (
-            "叙事挽留: 叶瑄 should not have accepted the soft exit"
+            "叙事挽留: Companion should not have accepted the soft exit"
         )
         state_mid = read_state(uid)
         assert state_mid.get("status") == DreamStatus.DREAM_ACTIVE.value, (

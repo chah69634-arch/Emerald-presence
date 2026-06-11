@@ -48,7 +48,7 @@ data/runtime/activity/reading/{char_id}/{uid}/{session_id}/
 ### char_id 隔离
 
 - `yexuan` 的 session 存在 `reading/yexuan/{uid}/...`
-- `hongcha` 的 session 存在 `reading/hongcha/{uid}/...`
+- `character_b` 的 session 存在 `reading/character_b/{uid}/...`
 - 两角色路径完全独立，`find_active_session` / `load_session_by_id` 均以 char_id 为边界。
 
 ### 文件名安全
@@ -196,7 +196,7 @@ session_id 为 `uuid4().hex`（32 位十六进制），存储前经 `safe_user_i
 
 ## LLM 接入边界（未来版本）
 
-P0 不接 LLM。未来注入叶瑄 prompt 时，只允许：
+P0 不接 LLM。未来注入他 prompt 时，只允许：
 
 - 当前书名
 - 当前页码

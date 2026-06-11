@@ -54,11 +54,11 @@ def chars_tree(tmp_path):
     chars = tmp_path / "characters"
     chars.mkdir()
     (chars / "yexuan.json").write_text(
-        json.dumps({"name": "叶瑄", "description": "test", "world_book": []}),
+        json.dumps({"name": "Companion", "description": "test", "world_book": []}),
         encoding="utf-8",
     )
-    (chars / "hongcha.json").write_text(
-        json.dumps({"name": "红茶", "description": "hongcha test", "world_book": []}),
+    (chars / "character_b.json").write_text(
+        json.dumps({"name": "DemoUser", "description": "character_b test", "world_book": []}),
         encoding="utf-8",
     )
     jb = chars / "reality" / "jailbreaks"
@@ -148,12 +148,12 @@ def test_current_reality_scope_uid_equals_user_id(chars_tree, sandbox, registry)
 # ── 2. _current_reality_scope character_id == active_char_id ─────────────────
 
 def test_current_reality_scope_character_id_equals_active(chars_tree, sandbox, registry):
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     scope = pipeline._current_reality_scope("u1")
 
-    assert scope.character_id == "hongcha", (
+    assert scope.character_id == "character_b", (
         f"scope.character_id must equal active char, got {scope.character_id!r}"
     )
 
@@ -187,13 +187,13 @@ def test_current_reality_scope_raises_on_invalid_active(chars_tree, sandbox, reg
 
 def test_fetch_context_stores_receive_scope_char_id(chars_tree, monkeypatch, sandbox, registry):
     """
-    When pipeline is active 'hongcha', fetch_context must forward
-    scope.character_id='hongcha' to short_term.load_for_prompt.
+    When pipeline is active 'character_b', fetch_context must forward
+    scope.character_id='character_b' to short_term.load_for_prompt.
     """
     import core.memory.short_term as _st
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_fetch_stubs(monkeypatch)
 
     received_char_ids: list[str] = []
@@ -207,8 +207,8 @@ def test_fetch_context_stores_receive_scope_char_id(chars_tree, monkeypatch, san
     asyncio.run(pipeline.fetch_context(user_id="u1", content="hello"))
 
     assert received_char_ids, "short_term.load_for_prompt must be called"
-    assert all(c == "hongcha" for c in received_char_ids), (
-        f"short_term must receive scope.character_id='hongcha', got {received_char_ids}"
+    assert all(c == "character_b" for c in received_char_ids), (
+        f"short_term must receive scope.character_id='character_b', got {received_char_ids}"
     )
 
 
@@ -246,8 +246,8 @@ def test_fetch_context_scope_char_id_follows_char_switch(
     chars_tree, monkeypatch, sandbox, registry
 ):
     """
-    After switching active_character to hongcha, the next fetch_context call
-    must pass scope.character_id='hongcha' to stores.
+    After switching active_character to character_b, the next fetch_context call
+    must pass scope.character_id='character_b' to stores.
     """
     import core.memory.short_term as _st
 
@@ -268,10 +268,10 @@ def test_fetch_context_scope_char_id_follows_char_switch(
         f"First call must use yexuan, got {received}"
     )
 
-    _write_active(sandbox, "hongcha")
+    _write_active(sandbox, "character_b")
     asyncio.run(pipeline.fetch_context(user_id="u1", content="hello"))
-    assert received[-1] == "hongcha", (
-        f"After switch, scope.character_id must be 'hongcha', got {received[-1]!r}"
+    assert received[-1] == "character_b", (
+        f"After switch, scope.character_id must be 'character_b', got {received[-1]!r}"
     )
 
 
@@ -287,8 +287,8 @@ async def test_post_process_enqueue_scope_payload_present(
     """
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[dict] = []
 
@@ -314,7 +314,7 @@ async def test_post_process_enqueue_scope_payload_present(
     payload = mt_payloads[0]["payload"]
     assert "scope" in payload, "payload must contain 'scope' field"
 
-    expected_scope = MemoryScope.reality_scope("u1", "hongcha").to_payload()
+    expected_scope = MemoryScope.reality_scope("u1", "character_b").to_payload()
     assert payload["scope"] == expected_scope, (
         f"payload['scope'] must equal scope.to_payload(), got {payload['scope']!r}"
     )
@@ -332,8 +332,8 @@ async def test_post_process_payload_scope_consistent_with_uid_char_id(
     """
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[dict] = []
 
@@ -383,8 +383,8 @@ async def test_post_process_capture_turn_retry_scope_payload(
     """
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[dict] = []
 
@@ -411,7 +411,7 @@ async def test_post_process_capture_turn_retry_scope_payload(
     p = retry_payloads[0]["payload"]
     assert "scope" in p, "capture_turn_retry payload must contain 'scope'"
 
-    expected = MemoryScope.reality_scope("u1", "hongcha").to_payload()
+    expected = MemoryScope.reality_scope("u1", "character_b").to_payload()
     assert p["scope"] == expected, (
         f"capture_turn_retry scope must match active char scope, got {p['scope']!r}"
     )
@@ -429,8 +429,8 @@ async def test_post_process_user_profile_update_scope_payload(
     """
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     enqueued: list[dict] = []
 
@@ -458,8 +458,8 @@ async def test_post_process_user_profile_update_scope_payload(
 
     p = up_payloads[0]["payload"]
     assert "scope" in p, "user_profile_update payload must contain 'scope'"
-    assert p["scope"]["character_id"] == "hongcha", (
-        f"user_profile_update scope.character_id must be 'hongcha', got "
+    assert p["scope"]["character_id"] == "character_b", (
+        f"user_profile_update scope.character_id must be 'character_b', got "
         f"{p['scope']['character_id']!r}"
     )
 
@@ -512,8 +512,8 @@ def test_regression_fetch_context_char_id_forwarding(
     """Regression guard: existing T-01 read-path char_id forwarding still works."""
     import core.memory.user_profile as _up
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
     _apply_fetch_stubs(monkeypatch)
 
     received: list[str] = []
@@ -526,8 +526,8 @@ def test_regression_fetch_context_char_id_forwarding(
 
     asyncio.run(pipeline.fetch_context(user_id="u1", content="hello"))
 
-    assert received and received[0] == "hongcha", (
-        f"Regression: user_profile.load must receive char_id='hongcha', got {received}"
+    assert received and received[0] == "character_b", (
+        f"Regression: user_profile.load must receive char_id='character_b', got {received}"
     )
 
 
@@ -541,8 +541,8 @@ async def test_regression_post_process_char_id_forwarding(
     import core.memory.fixation_pipeline as _fp
     from core.write_envelope import WriteEnvelope, SourceType
 
-    pipeline = _make_pipeline("hongcha", registry)
-    _write_active(sandbox, "hongcha")
+    pipeline = _make_pipeline("character_b", registry)
+    _write_active(sandbox, "character_b")
 
     captured: list[str] = []
 
@@ -563,6 +563,6 @@ async def test_regression_post_process_char_id_forwarding(
     ):
         await pipeline.post_process(user_id="u1", content="hello", reply="hi", envelope=env)
 
-    assert captured and captured[0] == "hongcha", (
-        f"Regression: capture_turn must receive char_id='hongcha', got {captured}"
+    assert captured and captured[0] == "character_b", (
+        f"Regression: capture_turn must receive char_id='character_b', got {captured}"
     )
