@@ -259,7 +259,14 @@ async def record_assistant_turn(
                 from core.narrative_parser import parse_narrative_segments
                 _parsed = parse_narrative_segments(assistant_text)
                 _say_segs = [s for s in _parsed["segments"] if s.get("type") == "say"]
-                _say_content = " ".join(s.get("text", "") for s in _say_segs).strip() or _parsed["content"]
+                # Join with "\n" (NOT " ") so paragraph boundaries survive.  The desktop
+                # client splits channel_message content by \n+ into one bubble per
+                # paragraph and maps message_segments content onto those bubbles by
+                # index.  A space-join collapses a multi-paragraph reply into a single
+                # part, so bubble #0's segmentedContent became the WHOLE message while
+                # later bubbles kept their raw paragraph — rendering duplicated text
+                # that looked like a double-send for multi-paragraph trigger messages.
+                _say_content = "\n".join(s.get("text", "") for s in _say_segs).strip() or _parsed["content"]
                 await _dws.push_segments(_say_content, _say_segs, msg_id=_ws_msg_id)
         except Exception:
             logger.debug("[turn_sink] message_segments fanout failed", exc_info=True)
