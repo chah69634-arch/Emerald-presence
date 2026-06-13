@@ -139,6 +139,8 @@ def test_registered_triggers_match_assistant_turn_surface():
         "garden_handle_self",
         "garden_vase_wilted",
         "reminders",
+        "overflow",
+        "letter_writer",
     }
 
     assert registered_trigger_names() == expected

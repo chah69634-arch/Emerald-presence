@@ -62,6 +62,8 @@ def _ensure_builtins_loaded() -> None:
         "core.scheduler.triggers.memory",
         "core.scheduler.triggers.garden_water",
         "core.scheduler.triggers.garden_daily",
+        "core.scheduler.triggers.overflow",
+        "core.scheduler.triggers.letter_writer",
     ):
         module = import_module(module_name)
         if module_name in sys.modules and hasattr(module, "_register_proposers"):

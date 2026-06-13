@@ -74,6 +74,17 @@ proxy:
   http: http://127.0.0.1:7897   # 代理地址，改成你本地代理的端口
   https: http://127.0.0.1:7897
 
+mail:
+  enabled: false                 # true 后才会真正发送角色来信
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  smtp_user: your@gmail.com
+  smtp_password: app-password-here
+  from_addr: your@gmail.com
+  from_name: 角色名
+  to_addr: recipient@example.com
+  subject_prefix: 【来信】
+
 tools:
   get_time:
     enabled: true

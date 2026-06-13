@@ -228,6 +228,12 @@ POLICY_TABLE: dict[str, TriggerPolicy] = {
         active_window_behavior="drop",
         mark_on_drop=True,
     ),
+    "letter_writer": TriggerPolicy(
+        trigger_id="letter_writer",
+        priority="filler",
+        active_window_behavior="drop",
+        mark_on_drop=False,
+    ),
 }
 
 

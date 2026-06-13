@@ -57,11 +57,11 @@ class TestPolicyWiredToRuntime:
         )
 
     def test_policy_table_entries_count(self):
-        """POLICY_TABLE 仍有 25 条记录（R2-B 只改值不增删）。"""
+        """POLICY_TABLE includes all currently policy-managed speaking triggers."""
         from core.scheduler.policy import POLICY_TABLE
 
-        assert len(POLICY_TABLE) == 25, (
-            f"POLICY_TABLE 条目数变化：期望 25，实际 {len(POLICY_TABLE)}。"
+        assert len(POLICY_TABLE) == 26, (
+            f"POLICY_TABLE 条目数变化：期望 26，实际 {len(POLICY_TABLE)}。"
             "如需增删，先更新此测试并记录原因。"
         )
 
@@ -514,7 +514,7 @@ class TestMigratedTriggersSnapshot:
         "festival", "holiday_boost", "spontaneous_recall",
         "garden_bloom", "garden_harvest_expired", "garden_handle_ask",
         "garden_handle_gift", "garden_handle_self", "garden_vase_wilted",
-        "reminders",
+        "reminders", "overflow", "letter_writer",
     })
 
     def test_migrated_triggers_matches_snapshot(self):

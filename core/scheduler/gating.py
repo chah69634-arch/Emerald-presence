@@ -44,6 +44,8 @@ MIGRATED_TRIGGERS: frozenset[str] = frozenset({
     "garden_handle_self",
     "garden_vase_wilted",
     "reminders",
+    "overflow",
+    "letter_writer",
 })
 
 
@@ -121,7 +123,13 @@ async def decide_and_execute_event(
 
 
 def _build_context(uid: str) -> dict:
-    return {"uid": uid, "now_ts": time.time()}
+    from core.scheduler.loop import _active_char_id_or_none
+
+    return {
+        "uid": uid,
+        "now_ts": time.time(),
+        "char_id": _active_char_id_or_none(),
+    }
 
 
 def _collect_native_proposals(ctx: dict) -> list[TriggerProposal]:

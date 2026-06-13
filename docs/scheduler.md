@@ -13,6 +13,7 @@ core/scheduler/execution.py      ← proposal dry-run/live 执行收口，成功
 core/scheduler/defer_queue.py    ← defer 队列（内存态）：age 跟踪 + 过期 force_send/drop
 core/scheduler/proposer_registry.py ← 原生 proposer 注册表
 core/scheduler/rhythm.py         ← presence、逻辑日、时间窗比例等节律 helper
+core/scheduler/overflow_bucket.py ← Overflow 五类只读信号与加权分数
 core/scheduler/triggers/         ← 各触发器独立文件
     time_based.py                早安 / 晚安 / 随机消息 / 天气 / 日记 / 记忆衰减
     diary.py                     日记相关触发
@@ -28,6 +29,8 @@ core/scheduler/triggers/         ← 各触发器独立文件
     watch.py                     Apple Watch 心率 / 睡眠事件
     reminders.py                 到点备忘录 proposer
     sensor_aware.py              sensor 实时状态 → 主动开口（默认关闭）
+    overflow.py                  多种真实理由累计溢出后主动联系
+    letter_writer.py             情感事件驱动的真实邮件来信
     dnd.py                       请勿打扰状态（已实现，R2-D 已接入 main.py）
 ```
 
@@ -78,6 +81,20 @@ conversation_lock(uid)
 
 ---
 
+## Overflow 主动互动
+
+`core/scheduler/overflow_bucket.py` 每个 tick 只读计算五类 `0~1` 信号：
+距上次对话时长、高强度且三天未召回的 episodic、hidden state 高需求、
+六小时内 fresh harvest、强度超过 `0.75` 的 mood。单个信号读取失败只贡献 `0`，
+不会阻断其余信号。
+
+加权分数为 `time_gap*0.6 + episodic*0.5 + hidden_need*0.4 + garden*0.3 + mood*0.4`。
+分数达到 `1.6`（每次判断带 `±15%` jitter）时，`overflow` proposer 才报名；
+最高加权信号会成为 prompt 的具体缘由。proposal 仅允许在 `QUIET` 状态发送，
+成功发送后进入三小时冷却。`scheduler.overflow_trigger=false` 可完全关闭。
+
+---
+
 ## 触发状态机（Phase 2 Step 1）
 
 `core/scheduler/state_machine.py` 维护每个 uid 的三态：
@@ -119,7 +136,7 @@ conversation_lock(uid)
 
 已迁移 proposer 覆盖：watch（`hr_critical/hr_high/sleep_end`）、生日四档、`period_reminder`、
 time_based 的早晚安/随机/天气/日记/主动回忆、diary 两档、`timenode`、`festival/holiday_boost`、
-`reminders`、`topic_followup`、花园伴生事件（bloom/harvest/handle/vase）。`garden_water`、
+`reminders`、`topic_followup`、`overflow`、`letter_writer`、花园伴生事件（bloom/harvest/handle/vase）。`garden_water`、
 `garden_daily` 扫描本体、`episodic_sweep`、`episodic_decay`、`dlq_monitor`、`sensor_aware`
 仍只走 legacy 真实检查或事件驱动路径。
 
@@ -537,6 +554,8 @@ window 拦截、LLM 空回复或发送前异常时，不调用 execute 的 `afte
 | `hr_high` | 30min | 低 | watch | 心率>100 提醒 |
 | `hr_critical` | 1h | **高** | watch | 心率>120 告警 |
 | `sleep_end` | 2h | 低 | watch | 睡眠结束感知；`admin/routers/watch.py` 合并睡眠片段后回到 `watch.on_watch_event("sleep_end", ...)` |
+| `overflow` | 3h | 低 | overflow | 对话间隔、旧记忆牵引、隐性需求、花园事件、强情绪累计超过阈值后主动联系 |
+| `letter_writer` | 7天 | 低 | letter_writer | 梦境、久未对话、强记忆、纪念日前夕或 hidden state 溢出时，经质量与相似度门控后发送真实邮件 |
 | ~~`sleep_report`~~ | 20h | 低 | watch | 睡眠报告（未实现，已移除冷却位） |
 | reminders（备忘录） | 无冷却 | 低 | loop.py内联 | 到点即发，发完标记完成 |
 
