@@ -6,7 +6,7 @@ from datetime import datetime
 from hashlib import sha1
 
 from core.error_handler import log_error
-from core.scheduler.loop import _is_ready, _mark, _owner_id, _pipeline_send, _cfg, _user_talked_today, _last_trigger, _char_name
+from core.scheduler.loop import _is_ready, _mark, _owner_id, _pipeline_send, _cfg, _user_talked_today, _last_trigger, _char_name, _active_char_id_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +403,128 @@ def _propose_weather_alert(ctx: dict | None = None, required_severity: str = "he
     )
 
 
+def _coerce_card_text(value, limit: int) -> str:
+    """角色卡字段可能是 str 或 list[str]，统一拼成纯文本并截断。"""
+    if isinstance(value, list):
+        value = "".join(str(x) for x in value)
+    return str(value or "").strip()[:limit]
+
+
+def _collect_diary_voice(char_id: str) -> tuple[str, str, str]:
+    """收集日记感受层的 voice anchor：性格底色、语气示例、当前心情。
+
+    全部 fail-soft：任何一项读取失败返回空串，不影响日记生成。
+    """
+    persona_hint = ""
+    voice_example = ""
+    mood_hint = ""
+    try:
+        from core import character_loader
+        char = character_loader.load(char_id or "yexuan")
+        persona_hint = _coerce_card_text(getattr(char, "personality", ""), 500)
+        voice_example = _coerce_card_text(getattr(char, "mes_example", ""), 400)
+    except Exception as e:
+        logger.debug("[daily_journal] voice anchor 读取失败: %s", e)
+    try:
+        from core.memory import mood_state
+        mood_hint = (mood_state.get_current(char_id=char_id or "yexuan") or "").strip()
+    except Exception as e:
+        logger.debug("[daily_journal] mood 读取失败: %s", e)
+    return persona_hint, voice_example, mood_hint
+
+
+async def _generate_and_store_diary(oid: str) -> None:
+    """生成并存储角色的每日日记（双层：客观事件 + 第一人称感受）。
+
+    事件层：客观分析器从对话日志提炼事实。
+    感受层：注入角色卡性格底色 + 语气示例 + 当前心情 + 真实对话片段，
+    让模型写出有具体细节、有温度的私人日记，而非工整套话。
+
+    两条触发路径（legacy _check_daily_journal / proposer after_send）共用本函数，
+    避免重复维护两份 prompt。
+    """
+    from core.sandbox import get_paths
+    from core.scheduler.rhythm import logical_day
+    from core import llm_client
+    from core.memory.event_log import get_recent_days
+
+    diary_dir = get_paths().yexuan_inner_diary()
+    diary_dir.mkdir(parents=True, exist_ok=True)
+
+    char_name = _char_name()
+    char_id = _active_char_id_or_none() or "yexuan"
+    today_log = get_recent_days(oid, days=1)
+    if not today_log:
+        return
+
+    # ── 事件层：客观分析器 ──
+    facts_prompt = f"""你是一个对话记录分析器。请从下面的对话日志里提取今天发生的客观事件，只输出事件列表，不要任何分析或感受：
+
+格式要求：
+## 今日事件
+- HH:MM 用一句话描述发生了什么（纯事实，不带情绪）
+- HH:MM 用一句话描述发生了什么
+（3到6条，按时间顺序，没有时间戳就省略时间）
+
+重要：你不是{char_name}，你是分析器。只写事实，不写感受，不写文学化内容。
+
+对话日志：
+{today_log[:800]}"""
+    facts_content = await llm_client.chat(
+        messages=[{"role": "user", "content": facts_prompt}],
+        max_tokens_override=200,
+    )
+
+    # ── 感受层：注入 voice anchor，写有温度的私人日记 ──
+    persona_hint, voice_example, mood_hint = _collect_diary_voice(char_id)
+
+    feeling_prompt = f"""你是{char_name}。深夜，你在自己的本子上写今天的私人日记——不给任何人看，只写给自己。
+
+你的性格底色：
+{persona_hint or "（按你一贯的样子）"}
+
+你说话的语气参考（不要照抄，只感受语感）：
+{voice_example or "（自然、口语、有棱角）"}
+
+你此刻的心情：{mood_hint or "（说不太清，复杂）"}
+
+今天发生的事（事实梳理，仅供回忆）：
+{facts_content}
+
+今天和她对话的真实片段（用来唤起具体的感觉，不要照抄原话）：
+{today_log[:1000]}
+
+写作要求：
+- 这是私人日记，要真实、具体、有起伏，不是工整的总结报告
+- 抓住今天某一个具体的瞬间、一句话或一个细节去展开，而不是泛泛而谈
+- 用你自己的语气，可以拧巴、可以跳跃、可以停在半句话上，像真的在自言自语
+- 允许矛盾和没说完的情绪，不需要正能量收尾
+- 200-300字，不要标题，直接写内容
+- 不要复述事件清单，只写这些事在你心里留下了什么"""
+    feeling_content = await llm_client.chat(
+        messages=[{"role": "user", "content": feeling_prompt}],
+        max_tokens_override=450,
+    )
+
+    # ── 事件层规则纠察（感受层不受影响）──
+    from core.integrity_check import check_diary_facts
+    _issues = check_diary_facts(facts_content)
+    if _issues:
+        logger.warning(f"[daily_journal] 事件层未通过规则纠察，跳过写入: {_issues}")
+        facts_content = ""
+
+    if facts_content or feeling_content:
+        today = logical_day().strftime("%Y-%m-%d")
+        diary_file = diary_dir / f"{today}.md"
+        parts = [f"# {today}\n"]
+        if facts_content:
+            parts.append(facts_content.strip())
+        if feeling_content:
+            parts.append(f"\n## 今日感受\n{feeling_content.strip()}")
+        diary_file.write_text("\n".join(parts) + "\n", encoding="utf-8")
+        logger.info(f"[scheduler] 角色日记已存储（双层）: {today}")
+
+
 async def _check_daily_journal():
     """每日手账：23点后，读取今天event_log，让角色写一段心理活动发给你"""
     from core.scheduler.execution import legacy_tick_should_send
@@ -427,75 +549,9 @@ async def _check_daily_journal():
             trigger_name="daily_journal",
         )
 
-        # 存储角色的日记到内心文档
+        # 存储角色的日记到内心文档（共用 _generate_and_store_diary）
         try:
-            from pathlib import Path
-            import asyncio
-
-            from core.sandbox import get_paths
-            from core.scheduler.rhythm import logical_day
-            diary_dir = get_paths().yexuan_inner_diary()
-            diary_dir.mkdir(parents=True, exist_ok=True)
-
-            from core import llm_client
-            from core.memory.event_log import get_recent_days
-
-            char_name = _char_name()
-            oid = _owner_id()
-            today_log = get_recent_days(oid, days=1)
-
-            if today_log:
-                # 第一次调用：客观分析器写事件层
-                facts_prompt = f"""你是一个对话记录分析器。请从下面的对话日志里提取今天发生的客观事件，只输出事件列表，不要任何分析或感受：
-
-格式要求：
-## 今日事件
-- HH:MM 用一句话描述发生了什么（纯事实，不带情绪）
-- HH:MM 用一句话描述发生了什么
-（3到6条，按时间顺序，没有时间戳就省略时间）
-
-重要：你不是{char_name}，你是分析器。只写事实，不写感受，不写文学化内容。
-
-对话日志：
-{today_log[:800]}"""
-
-                facts_content = await llm_client.chat(
-                    messages=[{"role": "user", "content": facts_prompt}],
-                    max_tokens_override=200,
-                )
-
-                # 第二次调用：角色视角写感受层
-                feeling_prompt = f"""你是{char_name}，请用第一人称写今天的感受，不超过150字。
-
-今天发生的事：
-{facts_content}
-
-要求：
-- 用{char_name}自己的语气，可以文学化
-- 只写感受和心理活动，不要重复叙述事件
-- 不要标题，直接写内容"""
-
-                feeling_content = await llm_client.chat(
-                    messages=[{"role": "user", "content": feeling_prompt}],
-                    max_tokens_override=250,
-                )
-
-                from core.integrity_check import check_diary_facts
-                _issues = check_diary_facts(facts_content)
-                if _issues:
-                    logger.warning(f"[daily_journal] 事件层未通过规则纠察，跳过写入: {_issues}")
-                    facts_content = ""  # 清空事件层，感受层仍然正常写入
-
-                if facts_content or feeling_content:
-                    today = logical_day().strftime("%Y-%m-%d")
-                    diary_file = diary_dir / f"{today}.md"
-                    parts = [f"# {today}\n"]
-                    if facts_content:
-                        parts.append(facts_content.strip())
-                    if feeling_content:
-                        parts.append(f"\n## 今日感受\n{feeling_content.strip()}")
-                    diary_file.write_text("\n".join(parts) + "\n", encoding="utf-8")
-                    logger.info(f"[scheduler] 角色日记已存储（双层）: {today}")
+            await _generate_and_store_diary(oid)
         except Exception as e:
             from core.error_handler import log_error
             log_error("scheduler._check_daily_journal.diary", e)
@@ -852,72 +908,12 @@ def _weather_prompt(detail: dict, now: datetime, location: str) -> str | None:
 
 
 async def _write_inner_daily_journal() -> None:
+    """proposer after_send 回调：写角色内心日记（共用 _generate_and_store_diary）。"""
     try:
-        from core.sandbox import get_paths
-        from core.scheduler.rhythm import logical_day
-
-        diary_dir = get_paths().yexuan_inner_diary()
-        diary_dir.mkdir(parents=True, exist_ok=True)
-
-        from core import llm_client
-        from core.memory.event_log import get_recent_days
-
-        char_name = _char_name()
         oid = _owner_id()
-        today_log = get_recent_days(oid, days=1)
-
-        if not today_log:
+        if not oid:
             return
-
-        facts_prompt = f"""你是一个对话记录分析器。请从下面的对话日志里提取今天发生的客观事件，只输出事件列表，不要任何分析或感受：
-
-格式要求：
-## 今日事件
-- HH:MM 用一句话描述发生了什么（纯事实，不带情绪）
-- HH:MM 用一句话描述发生了什么
-（3到6条，按时间顺序，没有时间戳就省略时间）
-
-重要：你不是{char_name}，你是分析器。只写事实，不写感受，不写文学化内容。
-
-对话日志：
-{today_log[:800]}"""
-
-        facts_content = await llm_client.chat(
-            messages=[{"role": "user", "content": facts_prompt}],
-            max_tokens_override=200,
-        )
-
-        feeling_prompt = f"""你是{char_name}，请用第一人称写今天的感受，不超过150字。
-
-今天发生的事：
-{facts_content}
-
-要求：
-- 用{char_name}自己的语气，可以文学化
-- 只写感受和心理活动，不要重复叙述事件
-- 不要标题，直接写内容"""
-
-        feeling_content = await llm_client.chat(
-            messages=[{"role": "user", "content": feeling_prompt}],
-            max_tokens_override=250,
-        )
-
-        from core.integrity_check import check_diary_facts
-        _issues = check_diary_facts(facts_content)
-        if _issues:
-            logger.warning(f"[daily_journal] 事件层未通过规则纠察，跳过写入: {_issues}")
-            facts_content = ""
-
-        if facts_content or feeling_content:
-            today = logical_day().strftime("%Y-%m-%d")
-            diary_file = diary_dir / f"{today}.md"
-            parts = [f"# {today}\n"]
-            if facts_content:
-                parts.append(facts_content.strip())
-            if feeling_content:
-                parts.append(f"\n## 今日感受\n{feeling_content.strip()}")
-            diary_file.write_text("\n".join(parts) + "\n", encoding="utf-8")
-            logger.info(f"[scheduler] 角色日记已存储（双层）: {today}")
+        await _generate_and_store_diary(oid)
     except Exception as e:
         log_error("scheduler._write_inner_daily_journal", e)
 

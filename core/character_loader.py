@@ -31,6 +31,11 @@ class Character:
     first_mes: str = ""          # 首次发言
     system_prompt: str = ""      # 全局 system 提示
     world_book: list[dict] = field(default_factory=list)  # 世界书条目
+    # 角色私人日期（S6 多角色化：从全局 config 迁入角色卡）。
+    # None = 该卡未迁移此字段 → festival 回落读全局 config（向后兼容）；
+    # [] / {} = 已迁移、该角色无此类日期（不回落，避免认领别的角色的纪念日）。
+    anniversaries: list[dict] | None = None   # 角色专属纪念日
+    birthday: dict | None = None              # 角色生日 {month, day, prompt}
 
 
 def load(filename_or_id: str) -> Character:
@@ -85,6 +90,10 @@ def load(filename_or_id: str) -> Character:
         first_mes=data.get("first_mes", ""),
         system_prompt=data.get("system_prompt", ""),
         world_book=data.get("world_book", []),
+        # .get(key) without default → None when the card hasn't been migrated,
+        # which festival uses to decide between card and legacy-config fallback.
+        anniversaries=data.get("anniversaries"),
+        birthday=data.get("birthday"),
     )
     for field_name in ("system_prompt", "description", "personality", "scenario"):
         val = getattr(char, field_name)

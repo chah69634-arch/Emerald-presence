@@ -14,6 +14,19 @@ from core.scheduler.loop import _is_ready, _mark, _owner_id, _pipeline_send, _cf
 logger = logging.getLogger(__name__)
 
 
+def _active_character_card():
+    """当前活跃角色卡（与 _char_name 同源：pipeline_registry 的 character）。
+    pipeline 未注册或无 character 时返回 None，调用方据此回落读全局 config。"""
+    try:
+        from core import pipeline_registry
+        pl = pipeline_registry.get()
+        if pl is not None:
+            return getattr(pl, "character", None)
+    except Exception:
+        pass
+    return None
+
+
 def _easter(year: int) -> date:
     """高斯算法计算复活节日期"""
     a = year % 19
@@ -50,8 +63,12 @@ def _get_today_festival(today: date | None = None) -> tuple[str, str] | None:
     year = today.year
     char = _char_name()
 
-    # 从config读取纪念日
-    cfg_anniversaries = _cfg().get("anniversaries", [])
+    # 角色私人日期（生日/纪念日）来自当前活跃角色卡（S6 多角色化）。
+    # 卡未迁移该字段（值为 None）时回落读全局 config，保持向后兼容。
+    # 真实世界节日（万圣节/复活节/Steam 促销等）与角色无关，仍硬编码在下方。
+    _card = _active_character_card()
+    _card_ann = getattr(_card, "anniversaries", None) if _card is not None else None
+    cfg_anniversaries = _card_ann if _card_ann is not None else _cfg().get("anniversaries", [])
     for ann in cfg_anniversaries:
         if m == ann.get("month") and d == ann.get("day"):
             year_start = ann.get("year_start", year)
@@ -65,8 +82,9 @@ def _get_today_festival(today: date | None = None) -> tuple[str, str] | None:
             if prompt:
                 return (ann.get("key", "anniversary"), prompt)
 
-    # 从config读取角色生日
-    bday = _cfg().get("character_birthday", {})
+    # 角色生日：同样优先从活跃角色卡读，未迁移回落 config。
+    _card_bday = getattr(_card, "birthday", None) if _card is not None else None
+    bday = _card_bday if _card_bday is not None else _cfg().get("character_birthday", {})
     if bday and m == bday.get("month") and d == bday.get("day"):
         prompt = bday.get("prompt", "").replace("{char}", char)
         if prompt:
