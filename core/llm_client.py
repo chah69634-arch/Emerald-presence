@@ -224,6 +224,47 @@ async def chat(
         raise
 
 
+async def chat_stream(
+    messages: list[dict],
+    max_tokens_override: int | None = None,
+    call_category: str = "chat",
+):
+    """流式生成，逐 token yield 文本增量（async generator）。
+
+    仅用于无工具的主生成（主生成步骤本身无 tools 参数）。
+    失败时抛异常，调用方（run_llm_stream）负责降级。
+    """
+    _timeout = _CALL_TIMEOUTS.get(call_category, _DEFAULT_CALL_TIMEOUT)
+    messages = sanitize_messages(messages)
+
+    cfg = get_config()["llm"]
+    client = _get_client()
+    model = cfg["model"]
+
+    temperature       = float(cfg.get("temperature",       0.7))
+    top_p             = float(cfg.get("top_p",             0.9))
+    max_tokens        = max_tokens_override or int(cfg.get("max_tokens", 1000))
+    frequency_penalty = float(cfg.get("frequency_penalty", 0.0))
+
+    stream = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        frequency_penalty=frequency_penalty,
+        timeout=_timeout,
+        stream=True,
+    )
+    async for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        piece = getattr(delta, "content", None)
+        if piece:
+            yield piece
+
+
 def parse_tool_call_response(response: str) -> list[dict] | None:
     """
     解析 LLM 返回值中的工具调用信息

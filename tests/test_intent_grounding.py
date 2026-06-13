@@ -381,6 +381,32 @@ async def test_dangerous_device_sleep_path_b_rejected(sandbox, monkeypatch):
     assert not push_calls, "device_sleep 不得经 Path B 自动触发"
 
 
+async def test_dream_invite_path_b_pushes_action(sandbox, monkeypatch):
+    """角色明确邀请入梦时，Path B 原样推送 dream_invite action。"""
+    _reset_intent_cooldown()
+
+    import core.llm_client as _llm
+
+    push_calls: list = []
+    monkeypatch.setattr(
+        "core.tool_dispatcher._push_desktop_action",
+        AsyncMock(side_effect=lambda action: push_calls.append(action) or "ok"),
+    )
+    chat = AsyncMock(return_value='{"action": "dream_invite", "params": {}}')
+    monkeypatch.setattr(_llm, "chat", chat)
+
+    pipeline = _make_pipeline()
+    await pipeline._parse_and_execute_intent(
+        "今晚和我一起去梦里吧，我会在那里等你。",
+        trigger_name="",
+        user_content="我们一起做梦好不好",
+        user_id="u1",
+    )
+
+    assert push_calls == [{"type": "dream_invite"}]
+    assert "dream_invite: 邀请用户进入梦境" in chat.await_args.kwargs["messages"][0]["content"]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 8. 金标准回归 — minimize 执行 → 复述 → c2 幂等不重复
 # ─────────────────────────────────────────────────────────────────────────────

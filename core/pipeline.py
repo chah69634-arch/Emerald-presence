@@ -395,6 +395,33 @@ class Pipeline:
 
         return await _call()
 
+    async def run_llm_stream(self, messages: list[dict]):
+        """流式生成，逐 token yield。失败（含零产出）时降级为非流式整段 yield 一次。
+
+        降级语义：
+        - 0 token + 异常 → 非流式 run_llm 兜底（完整输出）。
+        - 部分 token + 异常 → 中止，不追加非流式文本（避免重复拼接）。
+        """
+        from core import llm_client
+        got_any = False
+        try:
+            async for piece in llm_client.chat_stream(messages):
+                got_any = True
+                yield piece
+            # 流正常结束
+            if got_any:
+                return
+            # 0 token（模型返回空流） → 降级
+        except Exception as e:
+            from core.error_handler import log_error
+            log_error("pipeline.run_llm_stream", e)
+            if got_any:
+                # 已推出部分 token，中止而非追加以免重复
+                return
+        full = await self.run_llm(messages)
+        if full:
+            yield full
+
     # ──────────────────────────────────────────────────────────────────────────
     # 步骤 4：异步后处理
     # ──────────────────────────────────────────────────────────────────────────
@@ -665,7 +692,9 @@ class Pipeline:
             f"- open_url: 打开网址，params: {{\"url\": \"网址\"}}\n"
             f"- play_pause: 播放暂停媒体，params: {{}}\n"
             f"- send_notification: 发通知，仅当{_char}明确说「提醒你/通知你/告诉你记得」等字样时才触发，"
-            f"params: {{\"title\": \"标题\", \"message\": \"内容\"}}\n\n"
+            f"params: {{\"title\": \"标题\", \"message\": \"内容\"}}\n"
+            f"- dream_invite: 邀请用户进入梦境，仅当{_char}明确表达「一起去梦里/想和你做梦/来梦里找我」"
+            f"等直接邀请语义时才触发，params: {{}}\n\n"
             f"如果不满足严格规则，输出空字符串。"
         )
 

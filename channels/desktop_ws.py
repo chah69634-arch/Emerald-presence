@@ -81,6 +81,35 @@ async def push_segments(content: str, segments: list, msg_id: str | None = None)
     })
 
 
+async def push_stream_start(msg_id: str) -> bool:
+    """流式开始标记。前端创建空的临时气泡。"""
+    return await _send_json({
+        "type": "message_stream_start",
+        "msg_id": msg_id,
+        "source": "reality",
+        "ts": time.time(),
+    })
+
+
+async def push_stream_delta(msg_id: str, delta: str) -> bool:
+    """流式增量。fire-and-forget，不等 ack。"""
+    return await _send_json({
+        "type": "message_stream_delta",
+        "msg_id": msg_id,
+        "delta": delta,
+        "ts": time.time(),
+    })
+
+
+async def push_stream_end(msg_id: str) -> bool:
+    """流式结束标记。随后 push_message(同 msg_id) 推送 scrub 后的干净版。"""
+    return await _send_json({
+        "type": "message_stream_end",
+        "msg_id": msg_id,
+        "ts": time.time(),
+    })
+
+
 async def push_action_and_wait(
     action: dict, timeout: float = 5.0
 ) -> tuple[bool, str | None]:

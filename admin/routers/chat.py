@@ -88,7 +88,26 @@ async def run_owner_chat_turn(
             channel=channel_name,
             char_id=_frozen_scope.character_id,
         )
-        reply = await pipeline.run_llm(messages)
+        # ── 流式 vs 非流式分支 ──────────────────────────────────────────────────
+        # desktop channel 且 WS 已连接时走流式：逐 token 推送，最终用 scrub 后文本替换。
+        # 其余 channel（mobile、QQ 触发路径）和 WS 离线时保持非流式，确保完整消息语义。
+        from channels import desktop_ws as _dws
+
+        _use_stream = (channel_name == "desktop") and _dws.is_connected()
+        if _use_stream:
+            _stream_msg_id = _dws._new_msg_id()
+            await _dws.push_stream_start(_stream_msg_id)
+            _chunks: list[str] = []
+            try:
+                async for piece in pipeline.run_llm_stream(messages):
+                    _chunks.append(piece)
+                    await _dws.push_stream_delta(_stream_msg_id, piece)
+            finally:
+                await _dws.push_stream_end(_stream_msg_id)
+            reply = "".join(_chunks)
+        else:
+            _stream_msg_id = None
+            reply = await pipeline.run_llm(messages)
         if not reply:
             reply = ""
 
@@ -126,31 +145,48 @@ async def run_owner_chat_turn(
         from core.response_processor import strip_render_tags as _strip_tags
         visible_reply = _strip_tags(reply) or reply
 
+        # 流式路径：record 走完后用同一 msg_id 推 canonical 干净版替换临时气泡。
+        # record_assistant_turn 已通过 exclude_origin_channel="desktop" 跳过 desktop fanout，
+        # 此处是唯一一次向 desktop WS 推送 canonical channel_message，不会重复。
+        if _stream_msg_id and reply:
+            await _dws.push_message(visible_reply, msg_id=_stream_msg_id)
+
         return {
             "reply": visible_reply,
             "affection": info["value"],
             "level": info["label"],
             "emotion": turn_result.emotion,
             "turn_id": turn_result.turn_id,
-            "msg_id": turn_result.turn_id,
+            # 流式路径：HTTP msg_id 与 WS 流式帧共享同一 id，
+            # 前端凭此判断 WS 已渲染，取消 3s HTTP fallback 计时器。
+            "msg_id": _stream_msg_id or turn_result.turn_id,
             "critical_written": turn_result.written_to_memory,
         }
 
 
 async def _probe_and_execute_tools(message: str, user_id: str) -> str | None:
     from core import tool_dispatcher, llm_client as _llm
-    from core.memory import user_profile as _up
+    from core.memory import user_profile as _up, short_term as _st_probe
     from core.session_state import get as _get_state
 
     _profile = _up.load(user_id)
     _location = _profile.get("location", "杭州")
     tools_schema = tool_dispatcher.get_tools_schema(categories=["info", "desktop"])
     state = _get_state(f"user_{user_id}")
+
+    # 注入最近 2 轮（最多 4 条）真实对话，帮助探针解析代词指代
+    # 过滤 trigger_stub 条目，避免系统占位符混入探针上下文
+    _probe_ctx = [
+        {"role": m["role"], "content": m.get("content", "")}
+        for m in _st_probe.load(user_id)
+        if m.get("_source") != "trigger_stub"
+    ][-4:]
     probe_messages = [
         {
             "role": "system",
             "content": tool_dispatcher.get_probe_prompt(_location),
         },
+        *_probe_ctx,
         {"role": "user", "content": message},
     ]
 
