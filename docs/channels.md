@@ -35,7 +35,7 @@ QQ 收消息 → main.handle_message → Pipeline → text_output.send() 直发 
 `channels/registry.py` 维护通道注册表：
 - `register(channel)`：启动时注册通道。
 - `get_active()`：返回 `is_active=True` 的通道。
-- `broadcast(content, user_id, behavior=None)`：向所有活跃通道广播；`behavior` 会透传给支持动作包的通道，QQ 通道忽略它。
+- `broadcast(content, user_id, behavior=None, *, char_id=None)`：向所有活跃通道广播；`behavior` 会透传给支持动作包的通道，QQ 通道忽略它；`char_id` 是可选发言人字段。
 
 ---
 
@@ -55,6 +55,7 @@ QQ 收消息 → main.handle_message → Pipeline → text_output.send() 直发 
 | `POST /mobile/push` | 后端工具/调试入口：通过 `MobileChannel.send()` 写入一条主动消息 |
 
 上述接口使用管理面板 Bearer token。手机端当前不连接 `/ws/desktop`，因此不会抢占桌宠 WebSocket。
+`POST /mobile/push` 可选接收 `char_id`，写入主动消息信封供新客户端渲染发言人。
 
 MobileChannel 的活跃状态有 120 秒 TTL：手机端持续轮询时保持活跃；停止轮询后，调度器广播不会再写入手机队列。
 
@@ -187,6 +188,9 @@ HTTP /desktop/chat 触发 turn
 Emerald-client 的 `ChatPanel` 按 `msg_id` 关联两条消息；`message_segments` 先到时会暂存。
 旧客户端忽略未知 `message_segments` 即可继续工作。QQ / mobile 输出会移除 `<say>` 等展示
 标签；reality history / event_log 同样保存纯文本。desktop segments 保持原行为。
+
+两种信封均可携带可选 `char_id` 发言人字段；旧客户端忽略未知字段即可。mobile 主动消息队列
+和 desktop 文件降级队列同样按需写入 `char_id`，QQ 当前只接受参数、不改变文本渲染。
 
 ---
 

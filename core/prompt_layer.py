@@ -53,10 +53,16 @@ def sanitize_messages(messages: list[dict]) -> list[dict]:
     """Return a new list of API-safe message dicts.
 
     Strips every key whose name starts with ``_`` (internal fields such as
-    ``_layer``, ``_debug``, ``_drop_priority``).  Never mutates the original
-    list or any of the original dicts.
+    ``_layer``, ``_debug``, ``_drop_priority``), plus local transcript metadata
+    ``speaker_id`` and ``timestamp``. Never mutates the original list or any of
+    the original dicts.
     """
+    local_metadata = {"speaker_id", "timestamp"}
     return [
-        {k: v for k, v in m.items() if not k.startswith("_")}
+        {
+            k: v
+            for k, v in m.items()
+            if not k.startswith("_") and k not in local_metadata
+        }
         for m in messages
     ]

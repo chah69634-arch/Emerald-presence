@@ -89,6 +89,7 @@ async def _fanout(
     behavior: Optional[dict],
     exclude_origin_channel: Optional[str] = None,
     ws_msg_id: Optional[str] = None,
+    char_id: Optional[str] = None,
 ) -> tuple[list[str], dict[str, str]]:
     from channels import registry
 
@@ -121,12 +122,14 @@ async def _fanout(
         sent_targets.append(name)
         try:
             text_to_send = _visible_text
+            send_kwargs = {"behavior": behavior}
+            if char_id is not None:
+                send_kwargs["char_id"] = char_id
             # Desktop and mobile share the canonical turn id so clients can
             # correlate the same assistant turn across transports.
             if ws_msg_id is not None and name in ("desktop", "mobile"):
-                await channel.send(text_to_send, uid, behavior=behavior, msg_id=ws_msg_id)
-            else:
-                await channel.send(text_to_send, uid, behavior=behavior)
+                send_kwargs["msg_id"] = ws_msg_id
+            await channel.send(text_to_send, uid, **send_kwargs)
         except Exception as exc:
             failures[name] = str(exc)
             logger.warning("[turn_sink] fanout failed channel=%s: %s", name, exc)
@@ -157,6 +160,7 @@ async def record_assistant_turn(
     is_group: bool = False,
     pending_paths: Optional[list] = None,
     frozen_scope=None,
+    char_id: Optional[str] = None,
 ) -> TurnResult:
     """
     Record one completed assistant turn and deliver it to the requested channels.
@@ -182,6 +186,10 @@ async def record_assistant_turn(
     memory_input = user_text if source == TurnSource.USER_CHAT else (trigger_name or "")
     capture_trigger = "" if source == TurnSource.USER_CHAT else (trigger_name or "")
     behavior = payload.get("behavior") if payload else None
+    if char_id is None and frozen_scope is not None:
+        char_id = getattr(frozen_scope, "character_id", None)
+    if char_id is None:
+        char_id = getattr(pipeline, "_active_character_id", None) or None
 
     # Reality inlet pre-scrub (defense-in-depth): strip render markup then
     # action/narration content before passing to post_process.  This covers all
@@ -244,6 +252,7 @@ async def record_assistant_turn(
         behavior=behavior,
         exclude_origin_channel=exclude_origin_channel,
         ws_msg_id=_ws_msg_id,
+        char_id=char_id,
     )
 
     # Narrative segments: push a parallel message_segments envelope to the
@@ -266,7 +275,10 @@ async def record_assistant_turn(
                 # later bubbles kept their raw paragraph — rendering duplicated text
                 # that looked like a double-send for multi-paragraph trigger messages.
                 _say_content = "\n".join(s.get("text", "") for s in _say_segs).strip() or _parsed["content"]
-                await _dws.push_segments(_say_content, _say_segs, msg_id=_ws_msg_id)
+                segment_kwargs = {"msg_id": _ws_msg_id}
+                if char_id is not None:
+                    segment_kwargs["char_id"] = char_id
+                await _dws.push_segments(_say_content, _say_segs, **segment_kwargs)
         except Exception:
             logger.debug("[turn_sink] message_segments fanout failed", exc_info=True)
 

@@ -50,45 +50,75 @@ async def _send_json(payload: dict) -> bool:
         return False
 
 
-async def push_message(content: str, msg_id: str | None = None) -> bool:
+async def push_message(
+    content: str,
+    msg_id: str | None = None,
+    *,
+    char_id: str | None = None,
+    round_id: str | None = None,
+) -> bool:
     """推送普通消息，fire-and-forget，不等 ack。
     msg_id 可由调用方预先生成（用于与 message_segments 共享），省略时自动生成。
     source 固定为 "reality"：dream pipeline 不经 WS 推送，所有 WS channel_message 均为 reality turn。
     """
     if msg_id is None:
         msg_id = _new_msg_id()
-    return await _send_json({
+    payload: dict = {
         "type": "channel_message",
         "content": content,
         "msg_id": msg_id,
         "source": "reality",
-    })
+    }
+    if char_id is not None:
+        payload["char_id"] = char_id
+    if round_id is not None:
+        payload["round_id"] = round_id
+    return await _send_json(payload)
 
 
-async def push_segments(content: str, segments: list, msg_id: str | None = None) -> bool:
+async def push_segments(
+    content: str,
+    segments: list,
+    msg_id: str | None = None,
+    *,
+    char_id: str | None = None,
+) -> bool:
     """推送 narrative segments envelope，fire-and-forget，不等 ack。
     与 channel_message 并行发送；老客户端可安全忽略此消息类型。
     source 固定为 "reality"，与 push_message 保持一致。
     """
     if msg_id is None:
         msg_id = _new_msg_id()
-    return await _send_json({
+    payload = {
         "type": "message_segments",
         "content": content,
         "segments": segments,
         "msg_id": msg_id,
         "source": "reality",
-    })
+    }
+    if char_id is not None:
+        payload["char_id"] = char_id
+    return await _send_json(payload)
 
 
-async def push_stream_start(msg_id: str) -> bool:
+async def push_stream_start(
+    msg_id: str,
+    *,
+    char_id: str | None = None,
+    round_id: str | None = None,
+) -> bool:
     """流式开始标记。前端创建空的临时气泡。"""
-    return await _send_json({
+    payload: dict = {
         "type": "message_stream_start",
         "msg_id": msg_id,
         "source": "reality",
         "ts": time.time(),
-    })
+    }
+    if char_id is not None:
+        payload["char_id"] = char_id
+    if round_id is not None:
+        payload["round_id"] = round_id
+    return await _send_json(payload)
 
 
 async def push_stream_delta(msg_id: str, delta: str) -> bool:
@@ -199,6 +229,24 @@ async def _handle_message(msg: dict) -> None:
             fut.set_result(msg)
     else:
         logger.debug(f"[desktop_ws] 未知消息类型: {mtype}")
+
+
+async def push_group_round_start(round_id: str, group_id: str) -> bool:
+    """群聊回合开始标记。前端锁输入框，显示「成员陆续回应中…」。"""
+    return await _send_json({
+        "type": "group_round_start",
+        "round_id": round_id,
+        "group_id": group_id,
+    })
+
+
+async def push_group_round_end(round_id: str, group_id: str) -> bool:
+    """群聊回合结束标记。前端解锁输入框。"""
+    return await _send_json({
+        "type": "group_round_end",
+        "round_id": round_id,
+        "group_id": group_id,
+    })
 
 
 async def _heartbeat_loop() -> None:

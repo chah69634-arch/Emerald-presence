@@ -149,7 +149,11 @@ async def run_owner_chat_turn(
         # record_assistant_turn 已通过 exclude_origin_channel="desktop" 跳过 desktop fanout，
         # 此处是唯一一次向 desktop WS 推送 canonical channel_message，不会重复。
         if _stream_msg_id and reply:
-            await _dws.push_message(visible_reply, msg_id=_stream_msg_id)
+            await _dws.push_message(
+                visible_reply,
+                msg_id=_stream_msg_id,
+                char_id=_frozen_scope.character_id,
+            )
 
         return {
             "reply": visible_reply,

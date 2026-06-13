@@ -71,3 +71,34 @@ def test_group_turns_scores_and_load_for_prompt_selection(monkeypatch):
 
     for turn_id in {"t_high", "t_near_1", "t_near_2"}:
         assert selected_turn_ids.count(turn_id) == 2
+
+
+def test_group_turns_keeps_multiple_assistant_speakers_in_one_turn():
+    history = [
+        {**_entry("user", "大家觉得呢？", 1, "t_group"), "speaker_id": "owner"},
+        {**_entry("assistant", "我先说。", 2, "t_group"), "speaker_id": "yexuan"},
+        {**_entry("assistant", "我补一句。", 3, "t_group"), "speaker_id": "hongcha"},
+    ]
+
+    groups = short_term._group_turns(history)
+
+    assert len(groups) == 1
+    assert [item["speaker_id"] for item in groups[0]] == ["owner", "yexuan", "hongcha"]
+
+
+def test_score_turn_group_rewards_assistant_speaker_diversity():
+    one_speaker = [
+        {**_entry("assistant", "同一句。", 1, "t1"), "speaker_id": "yexuan"},
+        {**_entry("assistant", "同一句。", 2, "t1"), "speaker_id": "yexuan"},
+    ]
+    two_speakers = [
+        {**_entry("assistant", "同一句。", 1, "t2"), "speaker_id": "yexuan"},
+        {**_entry("assistant", "同一句。", 2, "t2"), "speaker_id": "hongcha"},
+    ]
+
+    one_score, one_parts = short_term._score_turn_group(one_speaker)
+    two_score, two_parts = short_term._score_turn_group(two_speakers)
+
+    assert one_parts["speaker_diversity"] == 0
+    assert two_parts["speaker_diversity"] > 0
+    assert two_score > one_score

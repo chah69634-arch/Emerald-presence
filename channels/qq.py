@@ -31,6 +31,7 @@ class QQChannel(BaseChannel):
         user_id: str,
         behavior: dict | None = None,
         *,
+        char_id: str | None = None,
         target_id: str | None = None,
         is_group: bool = False,
     ) -> None:

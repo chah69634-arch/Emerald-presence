@@ -105,8 +105,10 @@ async def mobile_push(body: dict, auth=Depends(verify_token)):
         user_id = str(get_config().get("scheduler", {}).get("owner_id", ""))
 
     behavior = body.get("behavior")
+    char_id = str(body.get("char_id") or "").strip() or None
+    send_kwargs = {"char_id": char_id} if char_id is not None else {}
     if isinstance(behavior, dict):
-        await mobile.send_with_behavior(content, user_id, behavior)
+        await mobile.send_with_behavior(content, user_id, behavior, **send_kwargs)
     else:
-        await mobile.send(content, user_id)
+        await mobile.send(content, user_id, **send_kwargs)
     return {"ok": True, "queued": True, "active": mobile.is_active}

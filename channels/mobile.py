@@ -56,8 +56,16 @@ class MobileChannel(BaseChannel):
         user_id: str,
         behavior: dict | None = None,
         msg_id: str | None = None,
+        *,
+        char_id: str | None = None,
     ) -> None:
-        await self._write_to_queue(content, user_id, behavior=behavior, msg_id=msg_id)
+        await self._write_to_queue(
+            content,
+            user_id,
+            behavior=behavior,
+            msg_id=msg_id,
+            char_id=char_id,
+        )
 
     async def send_with_behavior(
         self,
@@ -65,8 +73,16 @@ class MobileChannel(BaseChannel):
         user_id: str,
         behavior: dict,
         msg_id: str | None = None,
+        *,
+        char_id: str | None = None,
     ) -> None:
-        await self._write_to_queue(content, user_id, behavior=behavior, msg_id=msg_id)
+        await self._write_to_queue(
+            content,
+            user_id,
+            behavior=behavior,
+            msg_id=msg_id,
+            char_id=char_id,
+        )
 
     async def poll(
         self,
@@ -113,6 +129,8 @@ class MobileChannel(BaseChannel):
         user_id: str,
         behavior: dict | None = None,
         msg_id: str | None = None,
+        *,
+        char_id: str | None = None,
     ) -> None:
         item = None
         try:
@@ -132,6 +150,8 @@ class MobileChannel(BaseChannel):
                 }
                 if behavior:
                     item["behavior"] = behavior
+                if char_id is not None:
+                    item["char_id"] = char_id
                 queue.append(item)
                 queue = self._prune_queue(queue)
                 safe_write_json(q_file, queue)

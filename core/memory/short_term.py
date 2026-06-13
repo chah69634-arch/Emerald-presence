@@ -34,6 +34,8 @@ NUMBER_DATE_SIGNAL_WEIGHT = 1.2
 TAG_SIGNAL_WEIGHT = 1.3
 # 情绪词提示这一轮更可能影响关系、状态或后续照护。
 EMOTION_SIGNAL_WEIGHT = 1.1
+# 多位角色参与同一 turn，通常比单一发言者更值得保留。
+SPEAKER_DIVERSITY_WEIGHT = 0.6
 # B 档信号将来接 mid_term/episodic 就绪状态，v1 固定为 0。
 READY_SIGNAL_WEIGHT = 1.0
 # 单组总分上限：tag/emotion 等信号存在有意双算，clamp 总分防止多信号叠加让单组分数失控、在远场择优里碾压其他轮次
@@ -50,6 +52,23 @@ ENTITY_PATTERN = re.compile(
 )
 QUESTION_PATTERN = re.compile(r"[?？]|吗|嘛|么|什么|怎么|为什么|哪|谁|几|多少|是不是|能不能|要不要")
 NUMBER_DATE_PATTERN = re.compile(r"\d|[一二三四五六七八九十百千万]+(?:点|次|天|年|月|日|分钟|小时)|今天|昨天|明天|上午|下午|晚上|凌晨|周[一二三四五六日天]")
+
+
+def _default_speaker_id(role: str, char_id: str) -> str:
+    """为旧调用补齐 speaker_id；owner 是单用户系统中的唯一人类发言者。"""
+    if role == "user":
+        return "owner"
+    if role == "assistant":
+        return char_id
+    return role
+
+
+def _speaker_id(entry: dict) -> str:
+    """读取 entry 的发言人；旧数据按 role 提供稳定兼容值。"""
+    value = entry.get("speaker_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return str(entry.get("role") or "unknown")
 
 
 def _strip_third_person_narrative(text: str) -> str:
@@ -205,6 +224,14 @@ def _score_turn_group(group: list[dict]) -> tuple[float, dict]:
 
     emotion_hits = {tag for tag in tag_hits if tag.startswith("emotion.")}
     emotion_score = (EMOTION_SIGNAL_WEIGHT if emotion_hits else 0.0)
+    assistant_speakers = {
+        _speaker_id(msg)
+        for msg in group
+        if msg.get("role") == "assistant"
+    }
+    speaker_diversity_score = (
+        SPEAKER_DIVERSITY_WEIGHT if len(assistant_speakers) > 1 else 0.0
+    )
     turn_id = next((msg.get("_turn_id") for msg in group if msg.get("_turn_id") is not None), None)
     ready_score = _ready_signal_bonus(turn_id) * READY_SIGNAL_WEIGHT
 
@@ -215,6 +242,7 @@ def _score_turn_group(group: list[dict]) -> tuple[float, dict]:
         "number_date": round(number_date_score, 4),
         "tag": round(tag_score, 4),
         "emotion": round(emotion_score, 4),
+        "speaker_diversity": round(speaker_diversity_score, 4),
         "ready": round(ready_score, 4),
     }
     total = round(min(sum(parts.values()), TURN_SCORE_CAP), 4)
@@ -262,6 +290,9 @@ def load(user_id: str, *, char_id: str = "yexuan") -> list[dict]:
                 return []
             # 风格脱敏：防止 history 里的塌缩样本被 ds 自模仿
             for msg in data:
+                role = str(msg.get("role") or "")
+                if not isinstance(msg.get("speaker_id"), str) or not msg["speaker_id"].strip():
+                    msg["speaker_id"] = _default_speaker_id(role, char_id)
                 if msg.get("role") == "assistant":
                     msg["content"] = _sanitize_assistant_message(msg.get("content", ""), uid=user_id)
             return data
@@ -294,14 +325,23 @@ def get_history(user_id: str, max_turns: int | None = None, *, char_id: str = "y
         )
 
     history = load(user_id, char_id=char_id)
-    # 每轮 = 2 条消息（user + assistant）
-    max_msgs = max_turns * 2
-    return history[-max_msgs:] if len(history) > max_msgs else history
+    groups = _group_turns(history)
+    max_turns = max(int(max_turns), 0)
+    if max_turns == 0:
+        return []
+    if len(groups) <= max_turns:
+        return history
+    return [entry for group in groups[-max_turns:] for entry in group]
 
 
 def load_for_prompt(user_id, *, budget_rounds=None, near_k=NEAR_K, char_id: str = "yexuan") -> list[dict]:
     """读取已 sanitize 的 short_term，并按 turn-group 加权选择 prompt 子集。"""
     raw = load(user_id, char_id=char_id)
+    # trigger_stub 是系统触发锚点（内容含内部 trigger_name 明文），绝不能投影进 prompt。
+    # 此前仅靠 _score_turn_group 评 0 分淘汰，但近场 NEAR_K 与 ≤budget 全量两条路径
+    # 都绕过评分，导致 [触发: xxx] 被当成用户消息喂给 LLM。这里在入口统一剔除，
+    # 覆盖所有下游路径；磁盘上的 stub 仍保留供记忆血缘使用（get_history 不受影响）。
+    raw = [m for m in raw if m.get("_source") != "trigger_stub"]
     groups = _group_turns(raw)
     if budget_rounds is None:
         cfg = get_config()
@@ -345,37 +385,59 @@ def load_for_prompt(user_id, *, budget_rounds=None, near_k=NEAR_K, char_id: str 
     return selected
 
 
-def append(user_id: str, role: str, content: str, turn_id: str | None = None, *, char_id: str = "yexuan", source: str | None = None) -> bool:
+def append(
+    user_id: str,
+    role: str,
+    content: str,
+    turn_id: str | None = None,
+    *,
+    char_id: str = "yexuan",
+    source: str | None = None,
+    speaker_id: str | None = None,
+) -> bool:
     """
     追加一条消息到历史记录，并裁剪到最大轮数
 
-    role: "user" 或 "assistant"
-    每两条（一问一答）算一轮，实际保留 short_term_rounds * 2 条消息
+    role: OpenAI 兼容角色，当前 reality history 使用 "user" / "assistant"
+    speaker_id: 实际发言人；user 默认 owner，assistant 默认当前 char_id
+    同一 _turn_id 的所有发言算一轮，裁剪时绝不拆组
     turn_id 来自 fixation_pipeline.capture_turn，写入 _turn_id 字段供血缘追踪
     char_id 决定写入哪个角色桶（默认 "yexuan"）
     source: 可选来源标记，写入 _source 字段（如 "trigger_stub" 表示系统触发锚点）
     """
     cfg = get_config()
     max_rounds = cfg.get("memory", {}).get("short_term_disk_rounds", cfg.get("memory", {}).get("short_term_rounds", 20))
-    max_msgs = max_rounds * 2  # 每轮 = user + assistant
+    max_rounds = max(int(max_rounds), 0)
+    resolved_speaker_id = str(speaker_id or "").strip() or _default_speaker_id(role, char_id)
 
     history = load(user_id, char_id=char_id)
     if turn_id and any(
-        item.get("_turn_id") == turn_id and item.get("role") == role
+        item.get("_turn_id") == turn_id
+        and item.get("role") == role
+        and _speaker_id(item) == resolved_speaker_id
+        and item.get("content") == content
         for item in history
     ):
         return True
 
-    entry: dict = {"role": role, "content": content, "timestamp": time.time()}
+    entry: dict = {
+        "role": role,
+        "speaker_id": resolved_speaker_id,
+        "content": content,
+        "timestamp": time.time(),
+    }
     if turn_id:
         entry["_turn_id"] = turn_id
     if source:
         entry["_source"] = source
     history.append(entry)
 
-    # 超出上限时，从头部移除最早的消息
-    if len(history) > max_msgs:
-        history = history[-max_msgs:]
+    # 超出上限时按完整 turn-group 移除，不能截出孤儿发言。
+    groups = _group_turns(history)
+    if max_rounds == 0:
+        history = []
+    elif len(groups) > max_rounds:
+        history = [item for group in groups[-max_rounds:] for item in group]
 
     return _save(user_id, history, char_id=char_id)
 
@@ -404,8 +466,26 @@ class ShortTermMemory:
     def get_history(self, user_id: str, max_turns: int | None = None, *, char_id: str = "yexuan") -> list[dict]:
         return get_history(user_id, max_turns, char_id=char_id)
 
-    def append(self, user_id: str, role: str, content: str, turn_id: str | None = None, *, char_id: str = "yexuan", source: str | None = None):
-        append(user_id, role, content, turn_id=turn_id, char_id=char_id, source=source)
+    def append(
+        self,
+        user_id: str,
+        role: str,
+        content: str,
+        turn_id: str | None = None,
+        *,
+        char_id: str = "yexuan",
+        source: str | None = None,
+        speaker_id: str | None = None,
+    ) -> bool:
+        return append(
+            user_id,
+            role,
+            content,
+            turn_id=turn_id,
+            char_id=char_id,
+            source=source,
+            speaker_id=speaker_id,
+        )
 
     def clear(self, user_id: str, *, char_id: str = "yexuan"):
         clear(user_id, char_id=char_id)

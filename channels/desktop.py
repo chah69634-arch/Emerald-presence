@@ -38,11 +38,22 @@ class DesktopChannel(BaseChannel):
         self._fallback_active = active
         logger.info(f"[desktop_channel] fallback 活跃状态: {active}")
 
-    async def send(self, content: str, user_id: str, behavior: dict | None = None, msg_id: str | None = None) -> None:
+    async def send(
+        self,
+        content: str,
+        user_id: str,
+        behavior: dict | None = None,
+        msg_id: str | None = None,
+        *,
+        char_id: str | None = None,
+    ) -> None:
         from channels import desktop_ws
         # 路径 1：WS 实时推送
         if desktop_ws.is_connected():
-            ok = await desktop_ws.push_message(content, msg_id=msg_id)
+            push_kwargs = {"msg_id": msg_id}
+            if char_id is not None:
+                push_kwargs["char_id"] = char_id
+            ok = await desktop_ws.push_message(content, **push_kwargs)
             if ok:
                 if behavior:
                     action_ok, err = await desktop_ws.push_action_and_wait(behavior, timeout=5.0)
@@ -52,11 +63,11 @@ class DesktopChannel(BaseChannel):
                 return
             logger.warning("[desktop_channel] WS push 失败，降级到文件")
         # 路径 2：文件队列 fallback
-        await self._write_to_queue(content)
+        await self._write_to_queue(content, char_id=char_id)
         if behavior:
             await self._write_action_to_queue(behavior)
 
-    async def _write_to_queue(self, content: str) -> None:
+    async def _write_to_queue(self, content: str, *, char_id: str | None = None) -> None:
         try:
             async with _queue_lock:
                 q_file = get_paths().channel_queue()
@@ -64,10 +75,13 @@ class DesktopChannel(BaseChannel):
                 queue = []
                 if q_file.exists():
                     queue = json.loads(q_file.read_text(encoding="utf-8"))
-                queue.append({
+                item = {
                     "content": content,
                     "timestamp": time.time(),
-                })
+                }
+                if char_id is not None:
+                    item["char_id"] = char_id
+                queue.append(item)
                 safe_write_json(q_file, queue)
         except Exception as e:
             logger.warning(f"[desktop_channel] 写入队列失败: {e}")
