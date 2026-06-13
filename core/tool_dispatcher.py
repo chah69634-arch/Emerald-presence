@@ -272,6 +272,32 @@ async def _exit_yandere_wrapper() -> str:
     return f"{get_active_char_name()}平静下来了"
 
 
+async def _toy_vibrate_wrapper(
+    intensity: float = 0.5,
+    duration_ms: int = 1000,
+    device_index: int | None = None,
+) -> str:
+    from core.tools.hardware_tools import toy_vibrate
+    return await toy_vibrate(
+        intensity=intensity,
+        duration_ms=duration_ms,
+        device_index=device_index,
+    )
+
+
+async def _toy_stop_wrapper(device_index: int | None = None) -> str:
+    from core.tools.hardware_tools import toy_stop
+    return await toy_stop(device_index=device_index)
+
+
+async def _toy_pattern_wrapper(
+    pattern_name: str = "gentle",
+    device_index: int | None = None,
+) -> str:
+    from core.tools.hardware_tools import toy_pattern
+    return await toy_pattern(pattern_name=pattern_name, device_index=device_index)
+
+
 _TOOL_REGISTRY["get_time"] = {
     "func": _get_current_time,
     "description": "获取当前准确时间，当用户询问时间、日期时调用.不确定时间时优先调用此工具,禁止猜测。",
@@ -600,6 +626,60 @@ _TOOL_REGISTRY["water_garden"] = {
     "keywords": ["浇花", "花园", "浇水"],
 }
 
+_TOOL_REGISTRY["toy_vibrate"] = {
+    "func": _toy_vibrate_wrapper,
+    "description": "控制已连接的 Intiface 振动设备。仅在用户明确要求振动并给出或接受强度、时长时调用。",
+    "dangerous": False,
+    "category": "desktop",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "intensity": {"type": "number", "description": "振动强度 0.0~1.0"},
+            "duration_ms": {"type": "integer", "description": "持续毫秒数，最多 30000"},
+            "device_index": {"type": "integer", "description": "可选设备索引"},
+        },
+        "required": [],
+    },
+    "examples": ["让玩具轻轻振动一下", "让连接的设备振动一秒"],
+    "keywords": ["玩具振动", "设备振动"],
+}
+
+_TOOL_REGISTRY["toy_stop"] = {
+    "func": _toy_stop_wrapper,
+    "description": "立即停止已连接的 Intiface 设备。用户要求停止时应优先调用。",
+    "dangerous": False,
+    "category": "desktop",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "device_index": {"type": "integer", "description": "可选设备索引"},
+        },
+        "required": [],
+    },
+    "examples": ["停止玩具", "让设备停下"],
+    "keywords": ["停止玩具", "设备停下"],
+}
+
+_TOOL_REGISTRY["toy_pattern"] = {
+    "func": _toy_pattern_wrapper,
+    "description": "让已连接的 Intiface 振动设备执行预设模式（gentle/pulse/wave/long）。仅在用户明确要求时调用。",
+    "dangerous": False,
+    "category": "desktop",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "pattern_name": {
+                "type": "string",
+                "enum": ["gentle", "pulse", "wave", "long"],
+            },
+            "device_index": {"type": "integer", "description": "可选设备索引"},
+        },
+        "required": [],
+    },
+    "examples": ["让玩具用波浪模式振动", "让设备执行轻柔模式"],
+    "keywords": ["玩具模式", "波浪振动"],
+}
+
 
 # ─── N7: 快速路径风险标记 helper ──────────────────────────────────────────────
 #
@@ -619,6 +699,9 @@ _SIDE_EFFECT_TOOLS: frozenset[str] = frozenset({
     "desktop_play_pause",
     "desktop_notify",
     "play_song",
+    "toy_vibrate",
+    "toy_stop",
+    "toy_pattern",
     # 写状态的工具
     "add_reminder",
     "water_garden",
@@ -736,6 +819,11 @@ def get_probe_prompt(location: str) -> str:
 
 
 _EXECUTE_ALLOWED_ORIGINS: frozenset[str] = frozenset({"user_live", "assistant_intent"})
+_OWNER_ONLY_HARDWARE_TOOLS: frozenset[str] = frozenset({
+    "toy_vibrate",
+    "toy_stop",
+    "toy_pattern",
+})
 
 
 async def execute(
@@ -778,6 +866,15 @@ async def execute(
     tool_info = _TOOL_REGISTRY[tool_name]
 
     # 权限校验
+    if tool_name in _OWNER_ONLY_HARDWARE_TOOLS:
+        owner_id = str(get_config().get("scheduler", {}).get("owner_id") or "")
+        if is_group or not owner_id or str(user_id) != owner_id:
+            logger.warning(
+                "[tool_dispatcher.execute] 拒绝硬件控制: 非 owner 私聊, user_id=%s is_group=%s tool=%s",
+                user_id, is_group, tool_name,
+            )
+            return "硬件控制只允许 owner 私聊触发", None
+
     if tool_name in ("device_shutdown", "device_sleep"):
         if not user_relation.has_permission(user_id, "agent_control"):
             return "你没有执行此操作的权限哦", None

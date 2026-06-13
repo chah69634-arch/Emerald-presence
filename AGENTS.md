@@ -45,6 +45,7 @@ D:\ai\qq-st-bot\
 | Prompt 组装 | `core/prompt_builder.py` |
 | 话题标签规则 | `core/tag_rules.py` |
 | 工具注册 + 调度 + 探针 | `core/tool_dispatcher.py` |
+| Intiface / Buttplug 硬件控制 | `core/hardware/buttplug_client.py` / `core/hardware/device_registry.py` / `core/tools/hardware_tools.py` |
 | 通道注册与广播 | `channels/registry.py` |
 | 桌宠通道 WebSocket + 文件降级 | `channels/desktop_ws.py` / `channels/desktop.py` |
 | 桌宠聊天 HTTP 入口 | `admin/routers/chat.py` → `/desktop/chat` |

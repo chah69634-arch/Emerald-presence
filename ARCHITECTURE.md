@@ -31,6 +31,10 @@ QQ 消息 → main.py → message_queue
 通道细节见 `docs/channels.md`。手机端当前通过 mobile 轮询通道接收主动消息，不占用桌宠 WebSocket。花园这类不进入对话 pipeline 的伴生状态，见 `docs/garden.md`。
 Dream Session 后续必须走独立 pipeline，不进入当前现实对话 pipeline，也不走现有 `post_process`。
 
+Intiface / Buttplug 硬件是 reality-side actuator：只有 owner 私聊中的真实 turn 工具调用可触发，
+不进入 scheduler、trigger 或 Dream pipeline。`core/hardware/buttplug_client.py` 通过
+`aiohttp` 的无代理 WebSocket 连接本机 Intiface Central，并维护进程内设备发现状态。
+
 手机端用户输入走 `POST /mobile/chat`，桌宠输入走 `POST /desktop/chat`。这两个 owner 入口共享
 `core/conversation_gate.py` 的 per-user conversation lock，保证同一用户多端输入按顺序完成
 `fetch_context → run_llm → critical post_process`。记忆文件自身仍由 `core/memory/locks.py`
@@ -179,6 +183,7 @@ data/
 │   ├── diary_context.txt         用户日记上下文
 │   ├── reminders.json            用户备忘录列表（调度器检查到期即发）
 │   ├── fixation_state.json       固化 pipeline 状态（重启不丢）
+│   ├── dream_seed.json           梦境预构短期种子（12h TTL；入梦一次性消费）
 │   └── event_log/{date}.md       按天分割的对话流水账（search 最近 30 天）
 ├── _legacy_retired/{timestamp}/      ← V9 归档：S5/S6 旧型目录（含 event_log 旧路径）
 │                                        event_log/{uid}/ 在 30 天窗口内仍被 union 读取
