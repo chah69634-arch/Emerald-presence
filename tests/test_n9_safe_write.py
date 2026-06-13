@@ -168,13 +168,15 @@ def test_desktop_write_to_queue_roundtrip(tmp_path):
 
 # ── 6. mobile channel 写入/取出内容一致 ─────────────────────────────────────
 
-def test_mobile_queue_write_and_take(tmp_path):
+def test_mobile_queue_write_poll_and_ack(tmp_path):
     q_file = tmp_path / "mobile_queue.json"
+    seq_file = tmp_path / "mobile_queue_seq"
 
     import channels.mobile as mobile_mod
 
     fake_paths = MagicMock()
     fake_paths.mobile_queue.return_value = q_file
+    fake_paths.mobile_queue_seq.return_value = seq_file
 
     with patch("channels.mobile.get_paths", return_value=fake_paths):
         ch = mobile_mod.MobileChannel()
@@ -183,10 +185,12 @@ def test_mobile_queue_write_and_take(tmp_path):
         asyncio.get_event_loop().run_until_complete(ch._write_to_queue("msg2", user_id="u1"))
 
         # 取 1 条
-        taken = ch._take_from_queue(1)
+        polled = ch._read_from_queue(after=None, limit=1)
+        remaining_count = asyncio.get_event_loop().run_until_complete(ch.ack(polled[0]["seq"]))
 
-    assert len(taken) == 1
-    assert taken[0]["content"] == "msg1"
+    assert len(polled) == 1
+    assert polled[0]["content"] == "msg1"
+    assert remaining_count == 1
 
     # 剩余 1 条仍在文件里
     remaining = json.loads(q_file.read_text(encoding="utf-8"))

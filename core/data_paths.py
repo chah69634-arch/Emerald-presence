@@ -88,6 +88,9 @@ class DataPaths:
     def mobile_queue(self) -> Path:
         return self._p("runtime", "mobile_queue.json")
 
+    def mobile_queue_seq(self) -> Path:
+        return self._p("runtime", "mobile_queue_seq")
+
     def agent_actions(self) -> Path:
         return self._p("runtime", "agent_actions.json")
 

@@ -62,15 +62,30 @@ async def mobile_chat(body: dict = Body(...), auth=Depends(verify_token)):
 
 @router.get("/mobile/poll", summary="手机端轮询主动消息")
 async def mobile_poll(
+    after: int | None = Query(default=None, ge=0),
     limit: int = Query(default=20, ge=1, le=50),
     wait: float = Query(default=0, ge=0, le=60),
     auth=Depends(verify_token),
 ):
     mobile = _get_mobile_channel()
     if mobile is None:
-        return {"messages": [], "count": 0, "active": False}
-    messages = await mobile.poll(limit=limit, wait_seconds=wait)
-    return {"messages": messages, "count": len(messages), "active": True}
+        return {"messages": [], "count": 0, "cursor": after, "active": False}
+    messages = await mobile.poll(after=after, limit=limit, wait_seconds=wait)
+    cursor = max((message["seq"] for message in messages), default=after)
+    return {"messages": messages, "count": len(messages), "cursor": cursor, "active": True}
+
+
+@router.post("/mobile/ack", summary="确认手机端已持久化的主动消息")
+async def mobile_ack(body: dict = Body(...), auth=Depends(verify_token)):
+    ack_seq = body.get("ack_seq")
+    if not isinstance(ack_seq, int) or isinstance(ack_seq, bool) or ack_seq < 0:
+        raise HTTPException(status_code=422, detail="ack_seq 必须是非负整数")
+
+    mobile = _get_mobile_channel()
+    if mobile is None:
+        return {"ok": False, "remaining": 0, "error": "mobile channel 未注册"}
+    remaining = await mobile.ack(ack_seq)
+    return {"ok": True, "remaining": remaining}
 
 
 @router.post("/mobile/push", summary="向手机端主动消息队列写入一条消息")

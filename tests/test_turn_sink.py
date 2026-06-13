@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -256,6 +257,29 @@ async def test_fanout_all_without_exclude_sends_to_all():
     assert set(result.fanout_targets) == {"desktop", "mobile"}
     assert desktop.sent == [("回复内容", "owner", None)]
     assert mobile.sent == [("回复内容", "owner", None)]
+
+
+async def test_mobile_fanout_queue_id_matches_turn_id(sandbox):
+    from channels import registry
+    from channels.mobile import MobileChannel
+    from core.turn_sink import TurnSource, record_assistant_turn
+
+    await _reset_channels()
+    mobile = MobileChannel()
+    mobile.set_active(True)
+    registry.register(mobile)
+
+    result = await record_assistant_turn(
+        assistant_text="proactive message",
+        uid="owner",
+        source=TurnSource.TRIGGER,
+        trigger_name="scheduler_message",
+        fanout="mobile",
+        pipeline=_FakePipeline(),
+    )
+
+    queue = json.loads(sandbox.mobile_queue().read_text(encoding="utf-8"))
+    assert queue[0]["id"] == result.turn_id == "turn-scheduler_message"
 
 
 async def test_fanout_exclude_does_not_affect_named_fanout():

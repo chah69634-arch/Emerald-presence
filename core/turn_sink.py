@@ -121,10 +121,9 @@ async def _fanout(
         sent_targets.append(name)
         try:
             text_to_send = _visible_text
-            # Pass ws_msg_id only to the desktop channel so channel_message and
-            # message_segments can share the same correlation id.  Other channels
-            # (mobile, QQ) don't have this concept and are not changed.
-            if ws_msg_id is not None and name == "desktop":
+            # Desktop and mobile share the canonical turn id so clients can
+            # correlate the same assistant turn across transports.
+            if ws_msg_id is not None and name in ("desktop", "mobile"):
                 await channel.send(text_to_send, uid, behavior=behavior, msg_id=ws_msg_id)
             else:
                 await channel.send(text_to_send, uid, behavior=behavior)
