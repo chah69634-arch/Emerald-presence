@@ -310,6 +310,7 @@ class Pipeline:
         tags: set[str] | None = None,
         channel: str | None = None,
         char_id: "str | None" = None,
+        consume_pending_perception: bool = True,
     ) -> tuple[list[dict], dict]:
         """
         调用 prompt_builder 组装完整消息列表。
@@ -337,9 +338,11 @@ class Pipeline:
         _tags = tags if tags is not None else get_tags(content)
 
         _perception = ""
-        _pending, _pending_paths = _pending_perception.read_and_mark()
-        if _pending:
-            _perception = _pending.strip()
+        _pending_paths: list[str] = []
+        if consume_pending_perception:
+            _pending, _pending_paths = _pending_perception.read_and_mark()
+            if _pending:
+                _perception = _pending.strip()
 
         # 跨通道接续感知
         if channel and self._last_channel and channel != self._last_channel:
@@ -375,6 +378,8 @@ class Pipeline:
             tags=_tags,
             dream_impression_text=context.get("dream_impression_text", ""),
             char_id=_char_id,
+            stage_presence=context.get("stage_presence", ""),
+            stage_transcript=context.get("stage_transcript", ""),
         )
         self.author_note_extra = ""
         debug_info["pending_paths"] = _pending_paths

@@ -7,6 +7,7 @@
 
 ---
 
+
 ## 0. 一句话
 
 存储层（S5/S6 的 `{char_id}/{uid}` 布局、per-char mood/garden/diary/记忆五层）已经为多角色准备好了；**运行时仍是二人世界假设**。群聊不是"加功能"，是把"单活跃角色热切换"换成"N 个角色同时在场"。在没准备好之前贸然接入，会在 short_term 配对、通道协议、调度冷却三处同时炸。
@@ -84,6 +85,152 @@
 2. **一个 stage turn = 一次 `conversation_lock`**：不引入新锁原语，不在 `run_llm()` 里加 while 循环。
 3. **per-char scope 不串味**：投影读写一律经 `MemoryScope.reality_scope(uid, char_id)`（`core/memory/scope.py`），禁止默认桶。
 4. **协议向后兼容**：`char_id` 是可选字段，旧客户端忽略；不得做破坏性协议升级。
+
+---
+
+# 群聊运行时设计（Runtime — 给实现者）
+
+> 本部分是 P2/P3 的可落地设计。两种群聊形态：**Chat 版**（reality，类微信）与**梦境版**（dream）。两者共用同一 Stage 抽象，只是挂在不同 domain，记忆走不同回流路径。
+
+## 6. 记忆模型：三层分离
+
+群聊的难点在于区分「群里实际说了什么」与「角色记住了什么」。三层分开，互不混淆：
+
+### 第 1 层 · 共享群 transcript（群文件，**不是记忆层**）
+原始多人聊天流，每条带 `speaker_id`。等价于群版 short_term，所有参与者读同一份。
+
+```
+data/runtime/groups/{group_id}/
+  meta.json              # roster、domain、settings（见 §10）
+  transcript.json        # 共享多人 live log（近 K 条）；entry 见下
+  transcript_log/{date}.md   # 群事件归档（可选，类比 event_log）
+```
+
+transcript entry：
+```json
+{ "speaker_id": "owner" | "<char_id>", "content": "...", "timestamp": 0,
+  "_turn_id": "...", "triggered_by": "user" | "<char_id>" }
+```
+
+> `speaker_id="owner"`：单用户系统里群 = {owner} ∪ roster，群里的「人类」永远是 owner。
+
+### 第 2 层 · 每个角色的投影记忆（写进各自单人文件，格式不变）
+群聊收尾 / 滚动窗口触发时，consolidation **逐 roster 角色各跑一遍**，从该角色视角把这段群聊消化进**它自己的** mid_term → episodic → identity。写入路径仍是 `MemoryScope.reality_scope(owner_uid, char_id)`（**复用现有 scope，不新增**），打 `source="group:{group_id}"` 标签，strength 乘系数。
+
+- 原始 transcript **不混入**单人文件；只有消化后的投影进入。
+- 角色 A 的 episodic 里因此同时有「与 owner 一对一」与「群聊」记忆，后者权重低一格。
+- 检索时**不按来源隔离**：A 日后与 owner 一对一时能自然回忆群里那件事（它就在 A 的 episodic 里）；`source` 仅用于加权与审计。
+
+strength 系数（建议默认，配置见 §10）：
+
+| 来源 | 系数 |
+|---|---|
+| 单人一对一 | 1.0 |
+| **群聊** | **0.7** |
+| 触发器 | 0.4 |
+
+复用现有 episodic 的 strength / decay 机制（`core/memory/episodic_memory.py`），无新机制。消化走 slow-queue post_process 模式（`core/post_process/`），逐角色入链必须经 fixation pipeline + envelope，**禁止直写 episodic**。
+
+### 第 3 层 · 群 turn 的 prompt 上下文
+建 prompt 时，角色 A 的上下文 = **[A 自己的记忆层]** + **[群 transcript 近场]**。长期记忆来自 A 的投影，实时上下文来自共享文件，**不重复存**。
+
+## 7. 双版本：同一 Stage，两个 domain
+
+Stage（roster + 仲裁器 + 共享 transcript）domain 无关。差别只在记忆回流：
+
+- **Chat 版** → reality domain → 投影进 reality episodic（§6）。
+- **梦境版** → dream domain → 走现有 dream 隔离链：`dream_scope(uid, char_id, world_id)`、dream guard、exit afterglow 受控回流（`core/dream/`）。**绝不直写 reality**。
+
+实现上：Stage 持有 `domain` 字段，consolidation 据此选择回流路径。梦境群聊 ≈ Stage 挂 dream domain，记忆纪律由现有 dream/reality 隔离保证。
+
+## 8. 自主回应引擎（Arbiter）
+
+不做轮流。核心 = **want-to-speak 打分（纯规则、不调 LLM）+ 逐个生成 + 每条后重算**。
+
+### want-to-speak 打分（廉价）
+对每个非发言者计分，因子：
+- 被点名 / @ → 大加成（addressed）
+- 话题相关度（复用 `core/tag_rules.py` 话题打分 + 角色人设关键词）
+- 对发言者 / 对 owner 的关系亲密度
+- 当前 mood / state（restless 爱插话、quiet 憋着）
+- **recency penalty**：刚说过话 → 递减（防单角色刷屏）
+- `talkativeness` 基线（每角色配置）
+
+### 两阶段仲裁（每条 owner 消息触发一轮）
+
+**Phase A — 直接回应波（`triggered_by="user"`，不计 AI 跳数）**
+```
+candidates = roster
+responders = 0
+while True:
+    rescore 未在本轮发言过的 candidates        # 重算：后说的人看得到先说的
+    pick = argmax(score)
+    if responders < N:        pass            # 强制至少 N（不够从最高分补齐）
+    elif score(pick) < THRESHOLD: break       # 够 N 之后按阈值
+    if responders >= M: break                 # 上限 M
+    reply = generate(pick)                     # pick 看到目前为止的全部 transcript
+    append(transcript, reply); responders += 1
+```
+
+**Phase B — 自主续聊（`triggered_by="<char>"`，计 AI 跳数）**
+```
+ai_chain_depth = 0
+while ai_chain_depth < MAX_AI_CHAIN_DEPTH:    # 默认 2 → 双跳上限
+    rescore candidates with SPONTANEOUS_THRESHOLD (高于 A 的阈值)
+    pick = argmax(score); if score(pick) < SPONTANEOUS_THRESHOLD: break
+    reply = generate(pick); append(transcript, reply)
+    ai_chain_depth += 1
+# 触顶或无人想说 → 停，等 owner 再开口
+```
+
+- owner 发消息 → `ai_chain_depth` 清零。
+- 「回应 owner」（Phase A，N..M）与「AI 互相弹」（Phase B，≤2 跳）是两条独立的轴，互不打架。
+- 锁：**一整轮（Phase A+B）= 一次 `conversation_lock(owner_uid)`**（`core/conversation_gate.py`），逐个 `generate` 串行，禁止在 `run_llm()` 内加 while 循环。
+
+### 节奏（决定观感，必做）
+回复错峰送达，不一次性 dump；分高 / 话痨者回得快，每人加随机 think-delay（复用流式气泡延迟）。允许冷场——Phase A 的 N 下限只保证 owner 不被无视，其余话题可以没人接。
+
+### 不机械的来源
+desire 选择（不同人接不同话题）+ 逐条重算（后说的接话/反驳/或决定不说）+ recency penalty + 错峰 + 有界的 AI 互弹。
+
+## 9. 群聊 prompt 层（在场感 / 开场白）
+
+新增 prompt 层（须带 `_layer` 字段，见 CLAUDE.md 硬规则 3；改 tag_rules 后跑 `python tests/run_eval.py`，硬规则 4）：
+
+- **群聊开场白**（注入到该角色 system / author-note 侧）：
+  > 「现在这里是群聊，在场的还有 {其他成员名}。你说的话不只 owner 看得到，{他们} 也看得到。是否提及你和 owner 私下说过的事，由你的性格决定。」
+- **transcript 渲染**：把共享 transcript 以带发言人标签的形式喂入（`A：…` / `你：…`），让角色知道每句是谁说的。
+
+**隐私**：不设硬闸。角色读的是 [自己记忆 + 群 transcript]，一对一私聊不在群 transcript 里，默认不泄漏；但角色技术上*能*在群里提自己记得的私事——是否说出口由开场白交给**性格**决定（符合产品意图）。
+
+## 10. 配置项（`config.yaml` / 群 `meta.json`）
+
+```yaml
+group_chat:
+  min_responders: 1          # N：对 owner 消息至少回应的角色数
+  max_responders: 2          # M：单轮最多回应的角色数
+  max_ai_chain_depth: 2      # AI 互相触发的双跳上限
+  respond_threshold: 0.5     # Phase A 阈值（够 N 之后生效）
+  spontaneous_threshold: 0.7 # Phase B 自主续聊阈值（更高）
+  addressed_exclusive: false # @某人时是否只有他回
+  memory_strength:
+    solo: 1.0
+    group: 0.7
+    trigger: 0.4
+  debug_token_log: true      # 后台记录每轮群聊 token 消耗（不设上限，仅观测）
+# 每角色：talkativeness 基线放角色卡或 per-char 配置
+```
+
+- **不设单轮 token 上限**；`debug_token_log` 在后台累计每轮群聊 token，便于观测（当前仅 2 角色）。
+
+## 11. v1 范围边界（已决策）
+
+- ✅ Chat 版 + 梦境版（同 Stage 两 domain）。
+- ✅ owner 消息 → Phase A 自主回应（N..M）。
+- ✅ AI 互相触发，双跳上限。
+- ✅ 群记忆按 §6 投影入各角色单人文件，权重 0.7。
+- ✅ 群聊开场白 / 在场感 prompt 层；隐私交给性格。
+- ❌ **proactive 群触发（无人发言时角色主动起话头）v1 不做**——避免多角色抢调度器/冷却。留到 §1 的「调度冷却加 char 维度」就绪后再开。
 
 ---
 

@@ -129,6 +129,12 @@ REGISTRY: dict[str, PathMeta] = {
     # ── runtime config: active prompt asset selection ─────────────────────────
     "active_prompt_assets":   PathMeta("runtime",   "shared",          "global",        "ignore"),
 
+    # ── Stage: multi-character session truth ─────────────────────────────────
+    # Stage may run in reality or dream; the persisted meta carries the domain.
+    "stage_group_dir":        PathMeta("canonical", "shared",          "per_group",     "ignore"),
+    "stage_meta":             PathMeta("canonical", "shared",          "per_group",     "ignore"),
+    "stage_transcript":       PathMeta("canonical", "shared",          "per_group",     "ignore"),
+
     # ── authored: lorebooks / jailbreaks (characters/reality/ 目录，不走 data/) ─
     "lorebooks_dir":          PathMeta("authored",  "shared",          "global",        "ignore-but-authored"),
     "jailbreaks_dir":         PathMeta("authored",  "shared",          "global",        "ignore-but-authored"),

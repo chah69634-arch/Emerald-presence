@@ -23,13 +23,18 @@ QQ 消息 → main.py → message_queue
          ↓
       LLM（DeepSeek）
          ↓
-      输出层
+      输出层（消息信封可选携带 `char_id` 发言人字段）
          ├─ QQ 主入口：_qq_reality_reply_adapter 可见发送 + turn_sink 记忆写入
          └─ desktop/mobile/scheduler/sensor：core.turn_sink 写入 + channels.registry 广播活跃通道
 ```
 
 通道细节见 `docs/channels.md`。手机端当前通过 mobile 轮询通道接收主动消息，不占用桌宠 WebSocket。花园这类不进入对话 pipeline 的伴生状态，见 `docs/garden.md`。
 Dream Session 后续必须走独立 pipeline，不进入当前现实对话 pipeline，也不走现有 `post_process`。
+
+多角色群聊使用独立 `core/stage/` Session 内核：Stage 持有 roster、共享 transcript 和纯规则回合仲裁，
+一整轮 Phase A + Phase B 共用一次 owner conversation lock。Reality Stage 通过 per-character
+只读生成视图显式绑定角色卡与 memory scope，群 transcript 独立注入 prompt；回合后只把摘要按
+`group:{group_id}` 来源送入各角色 fixation 链。Dream Stage 当前 fail-closed。详见 `docs/stage.md`。
 
 Intiface / Buttplug 硬件是 reality-side actuator：只有 owner 私聊中的真实 turn 工具调用可触发，
 不进入 scheduler、trigger 或 Dream pipeline。`core/hardware/buttplug_client.py` 通过
@@ -54,7 +59,7 @@ get_tags()（build_prompt 内计算；部分入口可显式传入复用）
     │
     ▼ 步骤1  fetch_context()
 并发拉取所有记忆数据：
-├─ short_term.load_for_prompt() → history            [同步，近场保留 + 远场加权择优]
+├─ short_term.load_for_prompt() → history            [同步，speaker-aware turn-group；近场保留 + 远场加权择优]
   ├─ user_relation.get_relation()→ relation             [同步]
   ├─ group_context.get_recent() → group_context         [同步]
   ├─ user_identity.format_for_prompt() → user_identity_text [异步]

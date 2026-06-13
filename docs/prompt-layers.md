@@ -11,12 +11,14 @@
 | `0_jailbreak` | 破限预设 layer=0 | 文件存在且 enabled | `characters/reality/jailbreak_entries.json` |
 | `1_system_prompt` | 角色存在性定义 + 情绪软提示 + `{perception_block}` 槽位 | always | `characters/yexuan.json` + `core/mood_text.py` |
 | `2_char_desc` | 角色描述 + 性格 + 情境 | always | 角色卡 |
+| `2.2_stage_presence` | 群聊在场成员与公开发言提醒 | reality Stage 角色生成时 | `core/stage/context.py` |
 | `2_jailbreak` | 破限预设 layer=2 | 文件存在且 enabled | `characters/reality/jailbreak_entries.json` |
 | `2.5_time` | 当前时间（年月日 时:分 星期X） | always | 实时生成 |
 | `2.55_last_seen` | 用户上次说话时间 | 距上次说话 ≥ 6 小时 | `core/presence.py` → `get_last_seen_text()` |
 | `2.6_activity` | 他此刻的状态 | 对话开头（history 为空）或沉默超10分钟 | `activity_manager.get_prompt_fragment()`，每15-45分钟随机切换，部分活动会从 episodic_memory 按 strength 加权抽一条记忆作为"他在想什么"注入 |
 | `3_relation` | 与该用户的关系 + 称呼 | always | `user_relation` |
 | `4_group_context` | 群聊最近动态 | 群聊时 | `group_context.get_recent()` |
+| `4.2_stage_transcript` | 带真实 speaker 标签的共享 Stage transcript | reality Stage 角色生成时 | `core/stage/context.py` |
 | `3.5_period` | 生理期感知（第N天） | tagged（见下） | `user_profile.get_period_info()` |
 | `3.6_watch` | 最近一次睡眠数据 | tagged（见下） | `user_profile` sleep_segments |
 | `3.7_sensor` | 手机传感器（步数/电量/位置/亮屏次数） | 当天有数据即注（无 tag 门控） | `user_profile.phone_sensor_today` |
@@ -36,7 +38,7 @@
 | `dream_afterglow_soft_hint` | 梦境余韵软提示（只读，非事实，TTL 8h，`may/可能` 限定语气，`neutral+空tags` 不注入） | 详细 afterglow 层为空，且 afterglow_residue.json 存在、TTL 未过期、tone≠neutral 或 tags 非空 | `core/prompt_builder._format_afterglow_soft_hint()` → `core/memory/user_hidden_state.read_afterglow_residue()` → `data/runtime/memory/{char_id}/{uid}/afterglow_residue.json`（S6 路径，详见 docs/memory.md §记忆层一览） |
 | `6g_dream_impression` | 梦境印象回流（ambient，≤3条，非事实框定，他自述"我好像在梦里……"） | 有未过期印象时注入 | `core/dream/impression_loader.load_impression_text()` → `data/runtime/dreams/{char_id}/impressions/{uid}.json` |
 | `7_mes_example_item` | 对话示例（few-shot） | always（有内容） | 角色卡 mes_example |
-| `9_history` | 短期对话历史（近场保留 + 远场加权择优） | always | `short_term.load_for_prompt()` |
+| `9_history` | 短期对话历史（近场保留 + 远场加权择优；投影时跳过 `_source=="trigger_stub"` 防触发器名泄露） | always | `short_term.load_for_prompt()` |
 | `9.5_episodic_top` | 最相关情景记忆1条（attention sweet spot） | episodic_result 非空 | 从已召回结果取第一条，不重复召回 |
 | `10_tool_result` | 本轮工具执行结果 | 有工具调用时 | `tool_dispatcher.execute()` 裸输出经 `core/tools/tool_result.py` 截断+定界框定后注入（`safe_summary`） |
 | `11_author_note` | 人设核心提醒 + 输出格式规则 + 纠偏 | always | 硬编码 + `author_note_rotator` + consistency_check |
@@ -220,7 +222,8 @@ messages.append({
 
 - 磁盘保留上限：`memory.short_term_disk_rounds`，没有则回退 `memory.short_term_rounds`
 - prompt 预算：`memory.short_term_rounds`
-- 分组：优先按 `_turn_id` 把同一轮 user/assistant 连续消息绑在一起，旧数据按相邻 user+assistant 分组
+- 分组：优先按 `_turn_id` 把同一轮所有 speaker 连续消息绑在一起，旧数据按相邻 user+assistant 分组
+- 存储 entry 带 `speaker_id`；当前单聊层9投影为标准 `{role, content}`，不把元数据发送给 LLM
 - 选择：固定保留最近 `NEAR_K=5` 组；更早的组按长度、实体、问句、数字/日期、tag、情绪信号打分择优补足预算
 - 日志：`short_term_weight` debug 会记录每组分数和是否入选
 
@@ -250,7 +253,7 @@ class PromptLayer:
 
 `llm_client.chat()` 在进入任何分支（function_calling / xml_fallback / plain）前，统一调用 `sanitize_messages()` 清洗入参：
 
-- **剥离**：任何以 `_` 开头的键（`_layer`、`_debug`、`_drop_priority` 等）。
+- **剥离**：任何以 `_` 开头的键（`_layer`、`_debug`、`_drop_priority` 等），以及本地 transcript 元数据 `speaker_id` / `timestamp`。
 - **保留**：`role`、`content`、`name`、`tool_calls`、`tool_call_id` 等标准 OpenAI 字段。
 - **不修改原始对象**：返回新 list + 新 dict，调用方持有的 messages 不受影响。
 

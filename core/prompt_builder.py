@@ -203,6 +203,8 @@ def build(
     dream_impression_text: str = "",
     char_id: str = "yexuan",
     user_facts_text: str = "",
+    stage_presence: str = "",
+    stage_transcript: str = "",
 ) -> tuple[list[dict], dict]:
     """
     组装完整的 prompt 消息列表
@@ -289,6 +291,15 @@ def build(
             "role": "system",
             "content": "\n\n".join(char_desc_parts),
             "_layer": "2_char_desc",
+        })
+
+    # ── Layer 2.2: Stage presence ────────────────────────────────────────────
+    if stage_presence:
+        _layers.append("2.2_stage_presence")
+        messages.append({
+            "role": "system",
+            "content": stage_presence,
+            "_layer": "2.2_stage_presence",
         })
 
     jb_layer2 = _load_jailbreak(layer=2)
@@ -395,6 +406,16 @@ def build(
             "role": "system",
             "content": "【群聊上下文（最近群内动态）】\n" + "\n".join(ctx_lines),
             "_layer": "4_group_context",
+        })
+
+    # ── Layer 4.2: shared Stage transcript ──────────────────────────────────
+    if stage_transcript:
+        _layers.append("4.2_stage_transcript")
+        messages.append({
+            "role": "system",
+            "content": "【当前群聊共享对话】\n" + stage_transcript,
+            "_layer": "4.2_stage_transcript",
+            "_drop_priority": 90,
         })
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -651,7 +672,7 @@ def build(
         from datetime import date, timedelta
         yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
         from core.sandbox import get_paths
-        _new_diary = get_paths().yexuan_inner_diary()
+        _new_diary = get_paths().yexuan_inner_diary(char_id=char_id)
         _diary_dir = _new_diary if _new_diary.is_dir() else get_paths()._p("yexuan_inner", "diary")
         inner_diary = _diary_dir / f"{yesterday}.md"
         if inner_diary.exists():
@@ -748,8 +769,17 @@ def build(
     # ─────────────────────────────────────────────────────────────────────────
     _layers.append("9_history")
     for _hm in history:
-        _hm.setdefault("_layer", "9_history")
-        messages.append(_hm)
+        # 防御性：trigger_stub（系统触发锚点，含内部 trigger_name 明文）绝不投影进 prompt。
+        # 主过滤在 short_term.load_for_prompt，此处为第二道闸，挡住其他历史来源。
+        if _hm.get("_source") == "trigger_stub":
+            continue
+        # short_term 持久化 speaker_id/timestamp/turn_id；当前单聊 prompt 只投影
+        # OpenAI 标准字段。Stage 会在 P2 用独立 transcript renderer 展示发言人。
+        messages.append({
+            "role": _hm.get("role", "user"),
+            "content": _hm.get("content", ""),
+            "_layer": "9_history",
+        })
 
     # 层 9.5：最相关情景记忆（1条，挪到 history 之后获得 recency 红利）
     # 从已召回的 episodic_result 原始列表里取第一条，不重复召回

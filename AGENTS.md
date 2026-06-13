@@ -28,6 +28,7 @@ D:\ai\qq-st-bot\
 | 改工具系统（新增工具、探针规则、桌面动作、execute() origin 闸门、Path B 守卫） | `docs/tools.md` |
 | 改调度器（定时触发、主动消息） | `docs/scheduler.md` |
 | 改 QQ / 桌宠通道、广播、WebSocket、跨通道接续 | `docs/channels.md` |
+| 改多角色群聊、Stage session、共享 transcript、回合仲裁 | `docs/stage.md` |
 | 改花园系统（情绪花槽、自动/被动浇水、采后处理、管理面板状态） | `docs/garden.md` |
 | 理解事件/交互三维 envelope（realm/kind/lifecycle）、stimulus 边界、v0.1 约束 | `docs/interaction-event-model.md` |
 | 修已知 bug / 查技术债 | `docs/known-issues.md` |
@@ -52,6 +53,7 @@ D:\ai\qq-st-bot\
 | 手机通道 + 轮询接口 | `channels/mobile.py` / `admin/routers/mobile.py` |
 | 统一 assistant turn sink | `core/turn_sink.py` |
 | 多端 owner 对话串行锁 | `core/conversation_gate.py` |
+| 多角色 Stage session / 共享 transcript / 回合仲裁 | `core/stage/models.py` / `core/stage/store.py` / `core/stage/arbiter.py` / `core/stage/runner.py` |
 | 情景记忆 | `core/memory/episodic_memory.py` |
 | 情绪状态 | `core/memory/mood_state.py` |
 | 用户稳定行为模式 | `core/memory/user_identity.py` |
@@ -87,7 +89,7 @@ D:\ai\qq-st-bot\
 | trusted_user_text / probe grounding | `main.py` `_trusted_user_text` 在 media merge 前捕获；`admin/routers/chat.py` `run_owner_chat_turn(trusted_user_text=)` |
 | execute() origin 闸门 | `core/tool_dispatcher.py` → `_EXECUTE_ALLOWED_ORIGINS` / `execute(origin=)` |
 | Path B 守卫（意图反射去重） | `core/pipeline.py` → `_parse_and_execute_intent()` guards (a/b/c) + `_INTENT_LAST_ACTION` c2 幂等 |
-| history 风格脱敏 | `core/memory/short_term.py` → `_sanitize_assistant_message()` |
+| speaker-aware history + 风格脱敏 | `core/memory/short_term.py` → `speaker_id` / `_group_turns()` / `_sanitize_assistant_message()` |
 
 ---
 

@@ -445,6 +445,17 @@ class DataPaths:
         Used for runtime-uploaded assets (e.g. avatar overrides)."""
         return self._p("runtime", "characters", char_id)
 
+    # ── Stage / multi-character group session ───────────────────────────────
+    def stage_group_dir(self, *, group_id: str) -> Path:
+        """data/runtime/groups/{group_id}/ — shared Stage session state."""
+        return self._p("runtime", "groups", safe_user_id(group_id))
+
+    def stage_meta(self, *, group_id: str) -> Path:
+        return self.stage_group_dir(group_id=group_id) / "meta.json"
+
+    def stage_transcript(self, *, group_id: str) -> Path:
+        return self.stage_group_dir(group_id=group_id) / "transcript.json"
+
     # ── Activity: reading ─────────────────────────────────────────────────────
     def reading_char_root(self, *, char_id: str) -> Path:
         """data/runtime/activity/reading/{char_id}/  — enumerate all uid subdirs."""

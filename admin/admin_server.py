@@ -39,6 +39,7 @@ from admin.routers import (
     mood, activity, dream,
     reading, gomoku, chess, dream_seed,
     debug, hidden_state_debug, hardware,
+    group,
 )
 
 app.include_router(users.router,          prefix="/users",     tags=["用户"])
@@ -71,6 +72,7 @@ app.include_router(dream.router,     prefix="",           tags=["梦境"])
 app.include_router(debug.router,              prefix="", tags=["Debug"])  # DEV-ONLY
 app.include_router(hidden_state_debug.router, prefix="", tags=["Debug"])  # DEV-ONLY
 app.include_router(hardware.router, prefix="/hardware", tags=["硬件"])
+app.include_router(group.router,    prefix="/group",    tags=["群聊"])
 
 # ── 桌宠端 WebSocket 端点 ─────────────────────────────────────────────────────
 from fastapi import WebSocket as _WebSocket
