@@ -59,6 +59,11 @@ admin:
   port: 8080         # 管理面板端口，浏览器访问 http://127.0.0.1:8080
   secret_key: YOUR_ADMIN_SECRET  # 请改随机值，优先用环境变量 YEXUAN_ADMIN_SECRET 注入，勿提交真实值
 
+# 手机中继唤醒（任一项为空时静默禁用；中继 payload 只发信号，不含消息正文）
+relay_base_url: null             # 例如 https://ntfy.example.com（无尾斜杠）
+relay_topic: null                # 完整设备 topic，例如 yexuan/<user_id>/<device_token>
+relay_token: null                # 后端发布凭证；不要复用 admin secret
+
 notify:
   enabled: true
   target_qq: '你的QQ号'          # 机器人上线时发通知的目标 QQ 号，勿提交真实值

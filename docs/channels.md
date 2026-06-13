@@ -50,12 +50,18 @@ QQ 收消息 → main.handle_message → Pipeline → text_output.send() 直发 
 | `POST /mobile/activate` | 手机端上线，激活 mobile channel |
 | `POST /mobile/deactivate` | 手机端下线，停用 mobile channel |
 | `POST /mobile/chat` | 手机端发送用户消息，按 `channel="mobile"` 进入 pipeline，HTTP 返回本端 reply |
-| `GET /mobile/poll?limit=20&wait=55` | 拉取并清空最多 20 条手机主动消息；`wait` 可选，0-60 秒，用于后台长轮询 |
+| `GET /mobile/poll?after=<seq>&limit=20&wait=55` | 非销毁拉取 `seq > after` 的最多 20 条手机主动消息；响应含 `cursor`；`wait` 可选，0-60 秒，用于后台长轮询 |
+| `POST /mobile/ack` | 传入 `{ack_seq}`，删除 `seq <= ack_seq` 的已持久化消息 |
 | `POST /mobile/push` | 后端工具/调试入口：通过 `MobileChannel.send()` 写入一条主动消息 |
 
 上述接口使用管理面板 Bearer token。手机端当前不连接 `/ws/desktop`，因此不会抢占桌宠 WebSocket。
 
 MobileChannel 的活跃状态有 120 秒 TTL：手机端持续轮询时保持活跃；停止轮询后，调度器广播不会再写入手机队列。
+
+主动消息队列采用单调 `seq` 游标并保留到 `/mobile/ack`；未 ack 项最多保留 500 条或 24 小时，避免离线客户端令队列无限增长。
+配置 `relay_base_url` / `relay_topic` / `relay_token` 后，每条主动消息写盘成功会异步发布一条
+signal-only 中继唤醒（仅含 `id` / `seq` / `user_id` / `timestamp` / `signal`）；正文和
+`behavior` 只保留在 `/mobile/poll` 队列。三项任一缺失时静默跳过中继发布。
 
 手机和桌宠的 owner 对话入口共享 `core/conversation_gate.py` 的 per-user 锁：
 同一用户的 `/desktop/chat` 与 `/mobile/chat` 不会并行进入 `fetch_context → LLM → post_process`。
