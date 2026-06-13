@@ -7,7 +7,9 @@ episodic_memory — 情景记忆系统。
 import json
 import logging
 import math
+import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 from core.memory.scope import MemoryScope, require_character_id
@@ -83,9 +85,7 @@ def _load_index(user_id: str, *, char_id: str = "yexuan") -> dict:
 
 
 def _save_index(user_id: str, index: dict, *, char_id: str = "yexuan") -> None:
-    _index_write_file(user_id, char_id=char_id).write_text(
-        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    safe_write_json(_index_write_file(user_id, char_id=char_id), index)
 
 
 def _is_similar(a: str, b: str, threshold: float = 0.6) -> bool:
@@ -135,6 +135,12 @@ def write_episode(user_id: str, episode: dict, *, char_id: str = "yexuan") -> No
       "user_state": "stressed_about_work",
       "narrative_summary": "角色回忆时用的自然语言摘要", # 叙事层，用于注入
       "strength": 0.8,
+      "status": "open",
+      "resolved_at": null,
+      "resolved_by": null,
+      "temporal_ref": "none",
+      "event_time": null,
+      "expires_at": null,
       "retrieval_count": 0,
       "last_retrieved": null,
       "summary": "...",       # 旧，兼容保留
@@ -213,6 +219,18 @@ def write_episode(user_id: str, episode: dict, *, char_id: str = "yexuan") -> No
         episode["tags"] = []
     if not isinstance(episode.get("retrieval_count"), int):
         episode["retrieval_count"] = 0
+    if episode.get("status") not in ("open", "resolved", "elapsed"):
+        episode["status"] = "open"
+    if not isinstance(episode.get("resolved_at"), (int, float)):
+        episode["resolved_at"] = None
+    if not isinstance(episode.get("resolved_by"), str):
+        episode["resolved_by"] = None
+    if episode.get("temporal_ref") not in ("future", "past", "none"):
+        episode["temporal_ref"] = "none"
+    if not isinstance(episode.get("event_time"), (int, float)):
+        episode["event_time"] = None
+    if not isinstance(episode.get("expires_at"), (int, float)):
+        episode["expires_at"] = None
 
     memories.append(episode)
     _save_memories(user_id, memories, char_id=char_id)
@@ -271,6 +289,9 @@ def retrieve(
     for mem in memories:
         if mem["id"] not in candidate_ids:
             continue
+        # 已解决事件默认不再召回；若未来需要偶尔浮起，可改为对 score 乘低权重。
+        if mem.get("status", "open") in ("resolved", "elapsed"):
+            continue
 
         days = (now - mem["timestamp"]) / 86400
         decay = max(0.3, math.exp(-0.05 * days))  # 地板 0.3，防止高强度旧记忆被时间洗没
@@ -282,6 +303,9 @@ def retrieve(
         # query relevance：命中越多越相关，3 个及以上视为完全命中
         relevance_bonus = 0.2 * min(hit_counts.get(mem["id"], 0) / 3, 1.0)
         score = strength * decay + emotion_bonus + relevance_bonus
+        expires_at = mem.get("expires_at")
+        if isinstance(expires_at, (int, float)) and now > expires_at:
+            score *= 0.3
         scored.append((score, mem))
 
     # 浮起阈值：分数太低的记忆不注入，宁可不说也不强行关联
@@ -397,9 +421,17 @@ def format_for_prompt(
         if not summary:
             continue
 
-        days = (now - mem["timestamp"]) / 86400
-        if days < 1:
-            time_str = "今天"
+        timestamp = mem.get("timestamp", now)
+        elapsed_seconds = max(0.0, now - timestamp)
+        days = elapsed_seconds / 86400
+        local_now = datetime.fromtimestamp(now)
+        local_then = datetime.fromtimestamp(timestamp)
+        if elapsed_seconds < 3600:
+            time_str = "刚刚"
+        elif elapsed_seconds < 6 * 3600:
+            time_str = "几小时前"
+        elif local_then.date() == local_now.date():
+            time_str = "今天上午" if local_then.hour < 12 else "今天早些时候"
         elif days < 3:
             time_str = "前几天"
         elif days < 7:
@@ -417,11 +449,29 @@ def format_for_prompt(
             feeling_str = ""
 
         arc_str = f"（{arc}）" if arc else ""
+        status = mem.get("status", "open")
+        expires_at = mem.get("expires_at")
+        is_elapsed = status == "elapsed" or (
+            isinstance(expires_at, (int, float)) and now > expires_at
+        )
+        if status == "resolved":
+            resolved_str = "（这件事已经结束了）"
+        elif is_elapsed:
+            summary = _render_elapsed_summary(summary)
+            resolved_str = "（那时说要做的事应该已经发生了）"
+        else:
+            resolved_str = ""
 
         core_mark = "【重要】" if mem.get("is_core") else ""
-        lines.append(f"- {core_mark}{time_str}，{summary}{feeling_str}{arc_str}")
+        lines.append(f"- {core_mark}{time_str}，{summary}{resolved_str}{feeling_str}{arc_str}")
 
     return "\n".join(lines)
+
+
+def _render_elapsed_summary(summary: str) -> str:
+    """Replace relative future anchors only in prompt rendering, preserving stored facts."""
+    rendered = re.sub(r"(?:明天|后天|\d{1,3}\s*天后)", "那天", summary)
+    return re.sub(r"(?:这周|本周|下周)?周末|下周[一二三四五六日天]", "那天", rendered)
 
 
 def retrieve_fallback(user_id: str, recent_history: list[str], top_k: int = 1, *, char_id: str = "yexuan") -> list[dict]:
@@ -433,6 +483,8 @@ def retrieve_fallback(user_id: str, recent_history: list[str], top_k: int = 1, *
     now = time.time()
     candidates = []
     for m in memories:
+        if m.get("status", "open") in ("resolved", "elapsed"):
+            continue
         age_days = (now - m.get("timestamp", now)) / 86400
         if age_days > 7:
             continue
@@ -444,6 +496,9 @@ def retrieve_fallback(user_id: str, recent_history: list[str], top_k: int = 1, *
         # 衰减加地板，与主 retrieve 保持一致
         decay = max(0.5, 1.0 / (age_days + 1))
         score = m.get("strength", 0.5) * decay
+        expires_at = m.get("expires_at")
+        if isinstance(expires_at, (int, float)) and now > expires_at:
+            score *= 0.3
         candidates.append((score, m))
     if candidates:
         vals = [c[0] for c in candidates]

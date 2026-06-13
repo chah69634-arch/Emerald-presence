@@ -57,6 +57,8 @@ def append(
     source_turn_id: str | None = None,
     *,
     char_id: str = "yexuan",
+    source: str = "",
+    memory_strength: float = 1.0,
 ) -> None:
     """追加事件；追加前先清理过期 + 截断到 MAX_EVENTS-1。
 
@@ -84,6 +86,8 @@ def append(
             "mid_id": mid_id,
             "source_turn_id": source_turn_id,
             "promoted_to_episodic_id": None,
+            "source": source,
+            "memory_strength": max(0.0, min(1.0, float(memory_strength))),
         }
         events.append(entry)
         safe_write_json(write_path, {"events": events})

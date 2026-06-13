@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -32,6 +33,8 @@ _CONSOLIDATE_MIN_HIGH = 5          # 高强度 episodic 数量门槛（条件 1�
 _CONSOLIDATE_MIN_STRENGTH_ACC = 4.0  # 累积 strength 门槛（条件 2）
 _CONSOLIDATE_MIN_HOURS = 24        # 时间门槛（小时，条件 3）
 _CONSOLIDATE_MIN_EPISODIC_COUNT = 3  # 条件 3 生效时最少 episodic 数
+_CLOSURE_MATCH_WINDOW_SECONDS = 72 * 3600
+_RESOLVED_STRENGTH_FLOOR = 0.2
 
 # fixation_state 字段默认值（扩展了 4 个基本字段 + high_strength_since_last）
 _STATE_DEFAULTS: dict = {
@@ -53,8 +56,16 @@ _REFLECT_PROMPT_TEMPLATE = """\
   "emotion_arc": "情绪流动方向，10字以内，可留空",
   "user_state": "用户当时的状态短语，如 stressed_about_work / tired",
   "narrative_summary": "一句自然语言描述这段时期发生了什么，15字以内，供{char_name}回忆用",
+  "is_closure": true/false,
+  "closure_keywords": ["被结束或更新的事情关键词，如西瓜、考试；is_closure为false时为空数组"],
+  "temporal_ref": "future/past/none 中选一个",
+  "event_time_hint": "明天/周末/下周三/具体日期，无则空字符串",
   "strength": 0到1之间的浮点数（事件越重要、情绪越强则越高）
 }}
+完结/更新判定：用户明确表示先前提过的事情已经完成、结束、取消或状态已更新时，is_closure=true，
+例如“吃完了”“考完了”“不去了”“已经到了”；closure_keywords 只列被结束或更新的事情关键词。
+时间判定：主要指向未来的计划或事件时 temporal_ref=future，并原样提取简短 event_time_hint；
+主要回顾过去时 temporal_ref=past；没有明确时间指向时 temporal_ref=none 且 event_time_hint 为空。
 重要：用第三人称客观陈述，不要使用文学化语言，不要写动作描写。"""
 
 _IDENTITY_SYSTEM_PROMPT = """\
@@ -185,6 +196,25 @@ def _log_fixation(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _validate_episode(data: dict) -> bool:
+    if not isinstance(data, dict):
+        return False
+    if not isinstance(data.get("is_closure"), bool):
+        data["is_closure"] = False
+    closure_keywords = data.get("closure_keywords")
+    if not isinstance(closure_keywords, list):
+        data["closure_keywords"] = []
+    else:
+        data["closure_keywords"] = [
+            keyword.strip()
+            for keyword in closure_keywords
+            if isinstance(keyword, str) and keyword.strip()
+        ]
+    if data.get("temporal_ref") not in ("future", "past", "none"):
+        data["temporal_ref"] = "none"
+    if not isinstance(data.get("event_time_hint"), str):
+        data["event_time_hint"] = ""
+    else:
+        data["event_time_hint"] = data["event_time_hint"].strip()
     for key in ("raw_facts", "topic_keywords", "emotion_peak", "strength"):
         if key not in data:
             return False
@@ -201,6 +231,123 @@ def _validate_episode(data: dict) -> bool:
     except (TypeError, ValueError):
         return False
     return True
+
+
+_WEEKDAY_BY_CN = {
+    "一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6,
+}
+
+
+def _parse_event_time_hint(event_time_hint: str, *, now: float | None = None) -> float | None:
+    """Conservatively parse a small set of Chinese date hints in local time."""
+    if not isinstance(event_time_hint, str) or not event_time_hint.strip():
+        return None
+
+    hint = event_time_hint.strip()
+    base = datetime.fromtimestamp(time.time() if now is None else now)
+    target_date = None
+
+    if "后天" in hint:
+        target_date = base.date() + timedelta(days=2)
+    elif "明天" in hint:
+        target_date = base.date() + timedelta(days=1)
+    else:
+        days_match = re.search(r"(\d{1,3})\s*天后", hint)
+        if days_match:
+            target_date = base.date() + timedelta(days=int(days_match.group(1)))
+
+    if target_date is None and "下周末" in hint:
+        days_until_next_monday = 7 - base.weekday()
+        target_date = base.date() + timedelta(days=days_until_next_monday + 5)
+
+    if target_date is None and re.search(r"(?<!下)(?:这周|本周)?周末", hint):
+        if base.weekday() == 6:
+            target_date = base.date()
+        else:
+            days_until_saturday = (5 - base.weekday()) % 7
+            target_date = base.date() + timedelta(days=days_until_saturday)
+
+    if target_date is None:
+        weekday_match = re.search(r"下周([一二三四五六日天])", hint)
+        if weekday_match:
+            target_weekday = _WEEKDAY_BY_CN[weekday_match.group(1)]
+            days_until_next_monday = 7 - base.weekday()
+            target_date = base.date() + timedelta(days=days_until_next_monday + target_weekday)
+
+    if target_date is None:
+        date_match = re.search(r"(?:(\d{4})[-/.年])?(\d{1,2})[-/.月](\d{1,2})日?", hint)
+        if date_match:
+            year = int(date_match.group(1) or base.year)
+            try:
+                target_date = base.replace(
+                    year=year,
+                    month=int(date_match.group(2)),
+                    day=int(date_match.group(3)),
+                ).date()
+                if date_match.group(1) is None and target_date < base.date():
+                    target_date = target_date.replace(year=year + 1)
+            except ValueError:
+                return None
+
+    if target_date is None:
+        return None
+    return datetime.combine(target_date, datetime.min.time()).timestamp()
+
+
+def _resolve_matching_open_episodes(
+    uid: str,
+    closure_keywords: list[str],
+    new_ep_id: str,
+    *,
+    char_id: str,
+) -> list[str]:
+    """在调用方持有 uid_lock 时，关闭近 72 小时内匹配的非核心开放事件。"""
+    from core.memory import episodic_memory as _ep
+
+    keywords = [
+        keyword.strip()
+        for keyword in closure_keywords
+        if isinstance(keyword, str) and keyword.strip()
+    ]
+    if not keywords:
+        return []
+
+    now = time.time()
+    memories = _ep._load_memories(uid, char_id=char_id)
+    closed_ids: list[str] = []
+    for mem in memories:
+        if mem.get("status", "open") in ("resolved", "elapsed") or mem.get("is_core"):
+            continue
+        timestamp = mem.get("timestamp", 0)
+        if not isinstance(timestamp, (int, float)):
+            continue
+        age_seconds = now - timestamp
+        if age_seconds < 0 or age_seconds > _CLOSURE_MATCH_WINDOW_SECONDS:
+            continue
+        keywords_text = " ".join(
+            str(value)
+            for value in (mem.get("topic_keywords") or mem.get("tags", []))
+        )
+        facts_text = " ".join(str(value) for value in mem.get("raw_facts", []))
+        haystack = f"{keywords_text} {facts_text}"
+        if not any(keyword in haystack for keyword in keywords):
+            continue
+
+        mem["status"] = "resolved"
+        mem["resolved_at"] = now
+        mem["resolved_by"] = new_ep_id
+        try:
+            strength = float(mem.get("strength", 0.5))
+        except (TypeError, ValueError):
+            strength = 0.5
+        mem["strength"] = min(strength, _RESOLVED_STRENGTH_FLOOR)
+        closed_ids.append(str(mem.get("id", "")))
+
+    if closed_ids:
+        _ep._save_memories(uid, memories, char_id=char_id)
+        _ep._rebuild_index(uid, memories, char_id=char_id)
+        logger.info("episodic_resolved uid=%s closed=%s by=%s", uid, closed_ids, new_ep_id)
+    return closed_ids
 
 
 def _validate_growth_content(observer: str) -> bool:
@@ -365,6 +512,9 @@ async def summarize_to_midterm(
     emotion: str = "neutral",
     *,
     char_id: str = "yexuan",
+    source: str = "",
+    memory_strength: float = 1.0,
+    force_reflect: bool = False,
 ) -> str | None:
     """
     LLM 压缩单轮对话到 mid_term，写入血缘字段。
@@ -395,15 +545,27 @@ async def summarize_to_midterm(
         if any(e.get("source_turn_id") == turn_id for e in existing):
             logger.debug(f"[fixation] summarize_to_midterm 幂等命中: turn_id={turn_id}")
             return None
-        _mt.append(uid, summary, tags=tags, mid_id=mid_id, source_turn_id=turn_id, char_id=char_id)
+        append_kwargs = {"char_id": char_id}
+        if source:
+            append_kwargs["source"] = source
+        if memory_strength != 1.0:
+            append_kwargs["memory_strength"] = memory_strength
+        _mt.append(
+            uid,
+            summary,
+            tags=tags,
+            mid_id=mid_id,
+            source_turn_id=turn_id,
+            **append_kwargs,
+        )
 
     duration_ms = int((time.time() - _ts_start) * 1000)
     _log_fixation("summarize_to_midterm", uid, {
         "mid_id": mid_id, "turn_id": turn_id, "duration_ms": duration_ms,
     }, "ok")
 
-    # eager 触发：情绪显著则立即入队 reflect，携带入队时的 char_id 快照
-    if emotion in ("sad", "angry", "happy"):
+    # eager 触发：情绪显著或强制反射（如群聊来源）则立即入队 reflect
+    if force_reflect or emotion in ("sad", "angry", "happy"):
         slow_queue.enqueue("reflect_to_episodic", {
             "uid": uid,
             "mid_ids": [mid_id],
@@ -438,7 +600,7 @@ async def reflect_to_episodic(
     from core.memory.episodic_memory import write_episode, _load_memories
     from core import llm_client
     from core.post_process import slow_queue
-    from core.config_loader import get_config, _char_name
+    from core.config_loader import get_config
     from core.llm_output_validator import record_failure, reset as _reset
 
     _ts_start = time.time()
@@ -470,7 +632,11 @@ async def reflect_to_episodic(
                 return None
 
         # 构造 LLM 输入
-        char_name = _char_name()
+        from core.character_name_provider import get_char_name
+        try:
+            char_name = get_char_name(char_id)
+        except (ValueError, FileNotFoundError):
+            char_name = char_id
         summaries_text = "\n".join(
             f"{i+1}. {e.get('summary', '')}"
             for i, e in enumerate(to_process)
@@ -505,14 +671,22 @@ async def reflect_to_episodic(
             }, "error", "LLM 解析失败")
             return None
 
-        # 过滤平淡内容
+        ep_id = f"ep_{int(time.time() * 1000)}"
+        if data.get("is_closure"):
+            _resolve_matching_open_episodes(
+                uid,
+                data.get("closure_keywords", []),
+                ep_id,
+                char_id=char_id,
+            )
+
+        # 过滤平淡内容。closure 已在此前执行，因此中性低强度完结事件也能关闭旧记忆。
         if data.get("emotion_peak") == "neutral" and data.get("strength", 0) < 0.4:
             _log_fixation("reflect_to_episodic", uid, {
                 "mid_ids": mid_ids, "trigger": trigger,
             }, "ok", "neutral skip")
             return None
 
-        ep_id = f"ep_{int(time.time())}"
         episode: dict = {
             "id": ep_id,
             "timestamp": time.time(),
@@ -523,6 +697,9 @@ async def reflect_to_episodic(
             "emotion_arc": data.get("emotion_arc", ""),
             "user_state": data.get("user_state", ""),
             "narrative_summary": data.get("narrative_summary", ""),
+            "temporal_ref": data.get("temporal_ref", "none"),
+            "event_time": None,
+            "expires_at": None,
             "strength": data.get("strength", 0.5),
             "retrieval_count": 0,
             "last_retrieved": None,
@@ -530,6 +707,23 @@ async def reflect_to_episodic(
             "source_mid_ids": [e.get("mid_id") for e in to_process if e.get("mid_id")],
             "consolidated_at": None,
         }
+        event_time = _parse_event_time_hint(data.get("event_time_hint", ""))
+        if event_time is not None:
+            episode["event_time"] = event_time
+            if episode["temporal_ref"] == "future":
+                episode["expires_at"] = event_time + 86400
+        sources = sorted({str(e.get("source") or "") for e in to_process if e.get("source")})
+        strength_factors = [
+            max(0.0, min(1.0, float(e.get("memory_strength", 1.0))))
+            for e in to_process
+        ]
+        if sources:
+            episode["source"] = sources[0] if len(sources) == 1 else sources
+        if strength_factors:
+            episode["strength"] = round(
+                float(episode["strength"]) * min(strength_factors),
+                3,
+            )
 
         write_episode(uid, episode, char_id=char_id)
         _reset(_fail_key)
@@ -801,14 +995,23 @@ def _get_scope_from_payload(payload: dict, handler_name: str) -> MemoryScope:
 
 async def handler_summarize_to_midterm(payload: dict) -> None:
     scope = _get_scope_from_payload(payload, "handler_summarize_to_midterm")
+    kwargs = {
+        "turn_id": payload["turn_id"],
+        "uid": scope.uid,
+        "user_msg": payload["user_content"],
+        "reply": payload["reply"],
+        "tags": payload.get("tags", []),
+        "emotion": payload.get("emotion", "neutral"),
+        "char_id": scope.character_id,
+    }
+    if payload.get("source"):
+        kwargs["source"] = payload["source"]
+    if "memory_strength" in payload:
+        kwargs["memory_strength"] = payload["memory_strength"]
+    if payload.get("force_reflect"):
+        kwargs["force_reflect"] = True
     await summarize_to_midterm(
-        turn_id=payload["turn_id"],
-        uid=scope.uid,
-        user_msg=payload["user_content"],
-        reply=payload["reply"],
-        tags=payload.get("tags", []),
-        emotion=payload.get("emotion", "neutral"),
-        char_id=scope.character_id,
+        **kwargs,
     )
 
 
