@@ -7,6 +7,7 @@ core/garden/manager — 五株并行花园系统核心逻辑。
   auto_water_tick(*, char_id) -> dict | None
   force_water(mood=None, *, char_id) -> dict
   daily_check(*, char_id) -> list
+  get_shareable_event(*, char_id) -> str | None
   get_state(*, char_id) -> dict
 """
 
@@ -311,6 +312,24 @@ def daily_check(*, char_id: str) -> list:
 
         _save(_storage_path(char_id), storage, char_id=char_id)
         return events
+
+
+def get_shareable_event(*, char_id: str) -> str | None:
+    """Return a recent garden milestone without creating or mutating garden state."""
+    try:
+        storage = _load(_read_storage_path(char_id), {"harvest": []})
+        now = time.time()
+        recent = [
+            item for item in storage.get("harvest", [])
+            if item.get("status") == "fresh"
+            and now - float(item.get("bloomed_at") or 0) <= 6 * 3600
+        ]
+        if not recent:
+            return None
+        newest = max(recent, key=lambda item: float(item.get("bloomed_at") or 0))
+        return f"{_flower_meta(str(newest.get('flower_id', '')))['name']}开花了"
+    except Exception:
+        return None
 
 
 def get_state(*, char_id: str) -> dict:

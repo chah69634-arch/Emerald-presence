@@ -103,3 +103,26 @@ def test_repeated_concurrent_calls_leave_readable_json(sandbox):
     storage = _read_json(sandbox.garden() / "storage.json")
     assert "slots" in plants
     assert set(storage) == {"harvest", "vase", "history"}
+
+
+def test_get_shareable_event_reads_recent_fresh_harvest_without_bootstrap(sandbox, monkeypatch):
+    from core.garden import manager
+
+    now = 1_000_000.0
+    monkeypatch.setattr(manager.time, "time", lambda: now)
+    manager._save(
+        manager._storage_path(),
+        {
+            "harvest": [{
+                "flower_id": "rose",
+                "bloomed_at": now - 60,
+                "status": "fresh",
+            }],
+            "vase": [],
+            "history": [],
+        },
+    )
+
+    expected = f"{manager._flower_meta('rose')['name']}开花了"
+    assert manager.get_shareable_event(char_id="yexuan") == expected
+    assert not (sandbox.garden() / "plants.json").exists()
