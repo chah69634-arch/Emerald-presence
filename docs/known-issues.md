@@ -13,6 +13,37 @@
 
 ## 当前仍存在
 
+### H1：hidden_state 现实侧写入链未接线
+
+**状态**：`boundary-doc-needed`
+
+**位置**：`core/memory/user_hidden_state_integrator.py` → `integrate_event_and_save` / `integrate_impression_and_save`；`core/pipeline.py` → `post_process`
+
+**根因（审计结论 2026-06-14）**：
+
+`user_hidden_state_integrator.py` 的 `integrate_event_and_save` / `integrate_impression_and_save` / `integrate_body_cue_and_save` 三个 disk-wired 入口在全仓**零调用**（已 grep 确认）。运行时唯一修改 `hidden_state.json` 的路径只有三处：
+
+| 路径 | 文件 | 触发条件 |
+|---|---|---|
+| `integrate_afterglow_and_save` | `core/dream/dream_exit_afterglow.py` | 出梦后 afterglow 回流 |
+| `apply_time_decay` | `core/scheduler/triggers/hidden_state_decay.py` | 12h 调度 tick |
+| `consolidate_baselines` | `core/scheduler/triggers/hidden_state_decay.py` | 7d 调度 tick |
+
+**后果**：不做梦的情况下，`sensitivity / touch_need / embodied_ease / body_memory` 只随时间朝基线衰减，现实对话中观察到的任何行为信号从不写入。审计脚本 `scripts/audit_hidden_state.py` 可验证——`last_update_source` 的分布里永远不出现 `reality_behavior`，只有 `time_decay` / `init`。
+
+**这不是 bug**：写入链已设计并实现，但「哪些现实信号映射到哪种 `RealityEventType`」尚未拍板，接线因此搁置。
+
+**接线前需先确定**（参见 `cc-tasks/08b-hidden-state-接现实写入.md`）：
+
+1. `post_process` 的哪个位置调 `integrate_event_and_save`（`RealityEventType.SEEK_COMPANIONSHIP` / `RECEIVED_COMFORT` / `NO_INTERACTION`）
+2. `fixation_pipeline` 的哪个位置调 `integrate_impression_and_save`（情绪强度/亲密倾向 → `ImpressionInput`）
+3. 并发守卫：需在 `uid_lock` 内调用（`post_process` 已持锁），且 `WriteEnvelope` 需为 `stamp_user_chat()` 不是 `stamp_debug()`
+4. 已有 `_assert_not_long_term` source 守卫——中期层 integrator 不得触及 baseline / embodied_ease / body_memory（仅 `integrate_body_cue_and_save` 可写 body_memory）
+
+**可视化**：`SubHiddenStatePanel.tsx` 已在"SOURCE OVERVIEW"区域当所有 source 均为 `time_decay` 时显示提示，方便实时确认接线前后的变化。
+
+---
+
 ### B11：QQ 主入口 turn_sink 统一（turn-sink-converged）
 
 **状态**：`fixed`（R1-D 完成 2026-06-11；QQ LLM 回复链路已接入 `record_assistant_turn`）
