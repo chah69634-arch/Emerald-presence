@@ -7,6 +7,7 @@ QQ 协议适配器
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -213,14 +214,22 @@ def _parse_event(raw: dict) -> dict | None:
 
     # 群聊：只响应 at 机器人的消息
     if message_type == "group":
-        at_tag = f"[CQ:at,qq={_self_id}]"
-        if _self_id and at_tag not in raw_message:
+        if not _self_id:
+            logger.error("[qq_adapter] _self_id 未初始化，无法判断 @ 对象，丢弃群消息")
             return None
-        # 去掉 at 标记，只保留实际内容
-        content = content.replace(f"@{_self_id}", "").strip()
-        # 同时去掉所有 [CQ:at,...] 格式的标记
-        import re
+        # 双轨检测：消息段数组优先，CQ 串兜底（兼容 NapCat 两种下发格式）
+        at_in_array = any(
+            isinstance(seg, dict)
+            and seg.get("type") == "at"
+            and str(seg.get("data", {}).get("qq", "")) == str(_self_id)
+            for seg in message_array
+        )
+        at_in_cq = f"[CQ:at,qq={_self_id}]" in raw_message
+        if not (at_in_array or at_in_cq):
+            return None
+        # 去掉 at 标记（两种格式都清理）
         content = re.sub(r"\[CQ:at,[^\]]*\]", "", content).strip()
+        content = content.replace(f"@{_self_id}", "").strip()
 
     if not content:
         return None

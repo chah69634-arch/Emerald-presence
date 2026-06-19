@@ -105,24 +105,24 @@ def _function_body_text(src: str, func_name: str) -> str:
 
 def test_a1a_text_output_send_count():
     """
-    A1a (R1-C updated): Exactly 4 text_output.send( calls in main.py non-comment lines.
+    A1a (FIX-09 updated): Exactly 5 text_output.send( calls in main.py non-comment lines.
 
-    R1-C collapsed the two LLM_ASSISTANT_REPLY direct sends (handle_message + tool-reply)
-    into a single call inside _qq_reality_reply_adapter.
+    FIX-09 added _handle_group_message (group isolated path) with its own direct send.
 
     Expected:
       cancel confirm          SYSTEM_SHORT_TEXT      (handle_message)
       WAITING_INPUT ask_text  TOOL_CONFIRMATION_PROMPT (handle_message)
       probe ask_text          TOOL_CONFIRMATION_PROMPT (handle_message)
       adapter reply           LLM_ASSISTANT_REPLY    (_qq_reality_reply_adapter)
+      group reply             GROUP_ISOLATED_REPLY   (_handle_group_message)
     """
     hits = [
         (lineno, ln)
         for lineno, ln in _non_comment_lines("main.py")
         if "text_output.send(" in ln
     ]
-    assert len(hits) == 4, (
-        f"Expected 4 text_output.send( calls in main.py (R1-C: 3 direct + 1 in adapter), "
+    assert len(hits) == 5, (
+        f"Expected 5 text_output.send( calls in main.py (R1-C: 3 direct + 1 adapter + 1 group), "
         f"found {len(hits)}:\n"
         + "\n".join(f"  L{lineno}: {ln.strip()}" for lineno, ln in hits)
     )

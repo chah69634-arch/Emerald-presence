@@ -412,20 +412,28 @@ def test_c7c_qq_channel_no_hardcoded_group_false():
 
 
 def test_c7d_qq_channel_passes_is_group_to_adapter():
-    """C7d: QQChannel.send must forward the is_group variable to send_message."""
+    """C7d: QQChannel.send must forward the is_group variable (via text_output.send).
+
+    FIX-08: QQChannel.send now routes through text_output.send for segmented delivery;
+    is_group is forwarded there rather than directly to qq_adapter.send_message.
+    """
     src = _src("channels/qq.py")
     send_body = _function_body_text(src, "send")
-    # send_message must receive `is_group` as a variable (not a literal False)
-    assert "send_message(" in send_body, (
-        "QQChannel.send: send_message call missing"
-    )
-    # The is_group variable should appear in the send_message call line
+    # is_group must be forwarded to either text_output.send or send_message,
+    # on a line that starts with `await` (not in a docstring/comment).
+    found_forwarding_call = False
     for ln in send_body.splitlines():
-        if "send_message(" in ln and not ln.strip().startswith("#"):
+        stripped = ln.strip()
+        if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'"):
+            continue
+        if ("text_output.send(" in ln or "send_message(" in ln) and stripped.startswith("await"):
+            found_forwarding_call = True
             assert "is_group" in ln, (
-                f"QQChannel.send: send_message call does not pass is_group: {ln.strip()}"
+                f"QQChannel.send: forwarding call does not pass is_group: {stripped}"
             )
-            break
+    assert found_forwarding_call, (
+        "QQChannel.send: no `await text_output.send(` or `await send_message(` call found"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
