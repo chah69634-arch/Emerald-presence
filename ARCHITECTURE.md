@@ -145,6 +145,8 @@ QQ/客户端/手机/HTTP上传
 fetch_context ──读──→ data/ 目录各文件
     ↓
 build_prompt ──组装──→ messages[0..12层]
+    │           realtime_state 只以短 TTL 粗摘要进入 `3.9_screen_awareness`
+    │           （应用/活动类别 + 模糊编辑状态，不注入窗口标题或屏幕原文）
     │           tool_result 裸输出经 ToolResult.safe_summary 框定后进 layer 10
     ↓
 run_llm ──→ reply

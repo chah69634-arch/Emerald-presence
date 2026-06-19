@@ -34,6 +34,7 @@ D:\ai\qq-st-bot\
 | 修已知 bug / 查技术债 | `docs/known-issues.md` |
 | 不确定设计意图、准入标准、禁止行为 | `DESIGN.md` |
 | 改并发/锁/数据安全 | `docs/memory.md` → 七、并发保护 |
+| 在 Codex / Claude Code Windows 环境运行测试、跨仓验证、处理沙箱报错 | `docs/dev-environment.md` |
 
 ---
 
@@ -119,3 +120,17 @@ python run_test.py
 6. WebSocket 客户端必须绕过系统代理。`websocket-client` 库会自动读取
    `HTTP_PROXY` / `HTTPS_PROXY` 环境变量，必须在 `run_forever` 调用前
    临时清除（连接结束后恢复）。`http_proxy_host=""` 这种参数不顶用。
+
+---
+
+## Windows Agent 验证须知
+
+在 Codex / Claude Code 环境里运行测试或跨仓修改前，**必须先读
+`docs/dev-environment.md`**。特别注意：
+
+1. `python` 可能不在 `PATH`，`py.exe` 也可能存在但没有已安装解释器；不要把这误判为项目失败。
+2. pytest 默认临时目录可能因沙箱权限报 `PermissionError`；把 `TEMP` / `TMP` 临时指向仓库内 `.tmp`，测试后安全清理。
+3. `Emerald-client` 的 Vite build 可能因沙箱禁止写 `node_modules/.vite-temp` 报 `EPERM`；应申请权限后原命令重跑。
+4. 跨仓执行 git 时可能遇到 `dubious ownership`；优先按命令使用
+   `git -c safe.directory=D:/ai/Emerald-client ...`，不要擅自修改全局 git 配置。
+5. 两个仓库经常存在其他 agent 的并行未提交改动。只改任务相关文件，完整测试失败时先判断是否与本任务相关，禁止顺手修复或回滚无关改动。

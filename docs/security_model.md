@@ -12,7 +12,11 @@ LLM 不能直接执行系统能力。所有工具都必须在 `core/tool_dispatc
 注册，通过 `execute()` 做开关、危险标记、权限和确认流程。
 
 - 探针只暴露 `info` / `desktop` 类工具：`get_tools_schema(categories=["info", "desktop"])`
+- 全局默认处于 `safe` 模式；`desktop` / `system` 类工具只有在用户通过受鉴权的
+  `PATCH /system/meta-mode` 临时开启 `danger` 模式后才能执行。危险模式默认 2 小时后自动失效，
+  状态存于 `data/runtime/meta_mode.json`
 - 危险工具 `device_shutdown` / `device_sleep` 标记 `dangerous=True`，并检查 `agent_control` 权限
+- `device_shutdown` / `device_sleep` 即使在 `danger` 模式下仍需单独确认，形成模式闸和确认流双保险
 - 工具开关来自 `config.yaml tools:`，默认启用，危险工具通常配置为关闭
 - 桌面动作先走 WebSocket ack，失败才降级文件队列
 
@@ -34,6 +38,7 @@ public endpoint。
 - `/sensor/*`（含 `/sensor/activity`）/ `/watch/*`（含 `/watch/event`）/ `/garden/*` / `/mood/*` / `/diary/*`
 - `/memory/*` / `/users/*` / `/relations/*`
 - `GET /system/data-path`
+- `GET /system/meta-mode` / `PATCH /system/meta-mode`
 - 所有 LLM/settings 路由
 
 **鉴权失败行为**：`verify_token()` 抛出 HTTP 401/403，FastAPI 在函数体执行前拒绝请求。
@@ -53,6 +58,10 @@ HTTP 管理面不接受 `?token=` / `?secret=` query 鉴权；`/watch/event` 也
 `core/safe_write.py` 提供：
 - `safe_write_text/json/bytes()`：写临时文件后 replace
 - `safe_append_jsonl()`：追加 jsonl，用于日志类观测文件
+
+玩具文件工具只接受 `diary` / `wishlist` / `doodle` 三个枚举 key，不接受 LLM 提供的路径。
+目标统一解析到 `get_paths().very_formal_project_dir()`，写入前会校验目标文件、原子写临时文件
+和玩具箱目录本身均未通过软链或 `..` 越过边界。该工具属于 `desktop` 类，仅 danger 模式可用。
 
 ### 上传和媒体限制
 

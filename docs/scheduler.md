@@ -94,6 +94,17 @@ conversation_lock(uid)
 最高加权信号会成为 prompt 的具体缘由。proposal 仅允许在 `QUIET` 状态发送，
 成功发送后进入三小时冷却。`scheduler.overflow_trigger=false` 可完全关闭。
 
+## 存在感弹窗
+
+`presence_nag` 是默认关闭的 QUIET-only proposer。开启 `scheduler.presence_nag` 后，仅在
+`scheduler.activity_level=high`、距上次 owner 互动达到 `presence_nag_minutes`（默认 60 分钟）、
+且当前角色 mood 为 `sad` / `angry` / `yandere` 时报名。它受统一 active-window 和 DND
+过滤，用户正活跃时直接 drop，成功发送后进入两小时冷却。
+
+执行时台词由 LLM 生成，只投递到 desktop，并随
+`{"action_type":"presence_nag","params":{"text":...,"avatar":...}}` action 下发。
+客户端设置开关通过 `PUT /scheduler/config` 同步此配置；默认关闭时不会弹窗。
+
 ---
 
 ## 触发状态机（Phase 2 Step 1）
@@ -557,6 +568,7 @@ window 拦截、LLM 空回复或发送前异常时，不调用 execute 的 `afte
 | `hr_critical` | 1h | **高** | watch | 心率>120 告警 |
 | `sleep_end` | 2h | 低 | watch | 睡眠结束感知；`admin/routers/watch.py` 合并睡眠片段后回到 `watch.on_watch_event("sleep_end", ...)` |
 | `overflow` | 3h | 低 | overflow | 对话间隔、旧记忆牵引、隐性需求、花园事件、强情绪累计超过阈值后主动联系 |
+| `presence_nag` | 2h | 低 | presence_nag | 高活跃配置 + 60min 无互动 + 负面情绪时，下发可强制全关的桌面存在感弹窗 |
 | `dream_exit` | 1h | 普通 | dream_exit | 出梦后由 dream_state.char_id 对应角色主动开口；QUIET-only、一梦一次；无 afterglow 时按有限时段降级为中性问候 |
 | `letter_writer` | 7天 | 低 | letter_writer | 梦境、久未对话、强记忆、纪念日前夕或 hidden state 溢出时，经质量与相似度门控后发送真实邮件 |
 | ~~`sleep_report`~~ | 20h | 低 | watch | 睡眠报告（未实现，已移除冷却位） |
