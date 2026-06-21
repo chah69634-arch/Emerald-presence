@@ -33,12 +33,14 @@ class ReadingSession:
     mode: Literal["reading"] = "reading"
 
     def to_dict(self) -> dict:
+        title = self.filename[:-4] if self.filename.lower().endswith(".pdf") else self.filename
         return {
             "session_id": self.session_id,
             "uid": self.uid,
             "char_id": self.char_id,
             "file_id": self.file_id,
             "filename": self.filename,
+            "title": title,
             "total_pages": self.total_pages,
             "current_page": self.current_page,
             "created_at": self.created_at,

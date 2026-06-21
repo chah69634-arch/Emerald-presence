@@ -203,13 +203,13 @@ def _fmt_move_history_brief(history: list[dict], limit: int = _RECENT_MOVES_LIMI
     return header + " " + "→".join(parts)
 
 
-def _fmt_transcript_context(entries: list[dict]) -> str:
+def _fmt_transcript_context(entries: list[dict], char_name: str) -> str:
     lines = []
     for e in entries:
         if e.get("type") == "user_chat":
             lines.append(f"用户：{e.get('text', '')}")
         elif e.get("type") == "assistant_chat":
-            lines.append(f"叶瑄：{e.get('text', '')}")
+            lines.append(f"{char_name}：{e.get('text', '')}")
     return "\n".join(lines)
 
 
@@ -218,17 +218,18 @@ def _build_messages(
     recent_transcript: list[dict],
     user_message: str,
     facts: dict | None = None,
+    char_name: str = "(角色未加载)",
 ) -> list[dict]:
     """Build LLM messages from game state, grounding facts, transcript context, and user message."""
     is_ai = state.get("opponent") == "yexuan_ai"
-    system = _SYSTEM_YEXUAN_AI if is_ai else _SYSTEM_HUMAN
+    system = (_SYSTEM_YEXUAN_AI if is_ai else _SYSTEM_HUMAN).replace("叶瑄", char_name)
 
     status_label = {"active": "进行中", "completed": "已结束"}.get(
         state.get("status", "active"), state.get("status", "")
     )
     turn_raw = state.get("current_turn", "black")
     if is_ai:
-        turn_label = "黑棋（用户）" if turn_raw == "black" else "白棋（叶瑄AI）"
+        turn_label = "黑棋（用户）" if turn_raw == "black" else f"白棋（{char_name}AI）"
     else:
         turn_label = "黑棋" if turn_raw == "black" else "白棋"
 
@@ -244,7 +245,7 @@ def _build_messages(
         state_lines.append(f"AI风格：{state.get('ai_style', 'balanced')}")
 
     move_brief = _fmt_move_history_brief(state.get("move_history", []))
-    transcript_ctx = _fmt_transcript_context(recent_transcript)
+    transcript_ctx = _fmt_transcript_context(recent_transcript, char_name)
 
     context = "\n".join(state_lines)
     context += f"\n\n【最近棋步摘要】{move_brief}"
@@ -326,6 +327,9 @@ async def generate_reply(
     Does NOT write short_term / event_log / user_hidden_state.
     Does NOT read from Dream / hidden_state / main memory.
     """
+    from core.character_name_provider import get_char_name as _get_char_name
+    char_name = _get_char_name(char_id)
+
     # 1. Grounding facts (deterministic)
     facts = build_gomoku_grounding_facts(state)
 
@@ -333,7 +337,7 @@ async def generate_reply(
     recent_ctx = _tr.load_recent(char_id, uid, "gomoku", session_id, limit=_TRANSCRIPT_CONTEXT_LIMIT)
 
     # 3. Build LLM messages with grounding
-    messages = _build_messages(state, recent_ctx, user_message, facts)
+    messages = _build_messages(state, recent_ctx, user_message, facts, char_name=char_name)
 
     # 4. Call LLM
     reply, control = await _call_llm(messages)

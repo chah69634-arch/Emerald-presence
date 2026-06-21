@@ -3,6 +3,36 @@ from core.safe_write import safe_write_json
 from core.scheduler.rhythm import is_quiet_sleep_time
 import time, json
 
+_LAST_SEEN_MIN_SECS = 6 * 3600   # 2.55 层显示阈值（6 小时）
+_GAP_HINT_MIN_SECS = 600          # 消息边界时间提示阈值（10 分钟）
+
+
+def format_gap_text(gap_seconds: float) -> str:
+    """把秒数格式化为人类可读描述，如 '约3小时12分钟'。< 1分钟返回空字符串。"""
+    minutes = gap_seconds / 60
+    if minutes < 1:
+        return ""
+    if minutes < 60:
+        return f"约{int(minutes)}分钟"
+    hours = gap_seconds / 3600
+    h = int(hours)
+    m = int(minutes) % 60
+    if hours < 24:
+        return f"约{h}小时{m}分钟" if m else f"约{h}小时"
+    days = int(hours // 24)
+    rh = int(hours) % 24
+    return f"约{days}天{rh}小时" if rh else f"约{days}天"
+
+
+def get_gap_from_history(history: list[dict]) -> float | None:
+    """从 short_term 历史中提取最近一条 user 消息的 timestamp，返回距 now 的秒数。"""
+    for entry in reversed(history):
+        if entry.get("role") == "user":
+            ts = entry.get("timestamp")
+            if ts:
+                return time.time() - float(ts)
+    return None
+
 
 def update_last_message(user_id: str) -> None:
     """记录用户本次说话时间"""

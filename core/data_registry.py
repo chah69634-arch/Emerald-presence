@@ -164,6 +164,16 @@ REGISTRY: dict[str, PathMeta] = {
     "activity_char_root":     PathMeta("runtime",   "reality",         "per_char",      "ignore"),
     "activity_sessions_root": PathMeta("runtime",   "reality",         "per_char_user", "ignore"),
     "activity_session_dir":   PathMeta("runtime",   "reality",         "per_char_user", "ignore"),
+
+    # ── Library: manifest (shared, derived from physical book files) ──────────
+    "reading_library_manifest": PathMeta("derived", "shared",          "global",        "ignore"),
+
+    # ── Authored content: letter samples + knowledge base (per-char static) ───
+    "letter_samples_dir":     PathMeta("authored",  "character_inner", "per_char",      "ignore-but-authored"),
+    "letter_knowledge_dir":   PathMeta("authored",  "character_inner", "per_char",      "ignore-but-authored"),
+
+    # ── Canonical: sent letter archive (per-char-user) ────────────────────────
+    "sent_letters":           PathMeta("canonical", "reality",         "per_char_user", "ignore"),
 }
 
 # ── retention 策略（由 scheduler.log_maintenance 每 24 小时执行，参数见 config.yaml retention.*）

@@ -66,13 +66,13 @@ _SYSTEM_READING = (
 )
 
 
-def _fmt_transcript_context(entries: list[dict]) -> str:
+def _fmt_transcript_context(entries: list[dict], char_name: str) -> str:
     lines = []
     for e in entries:
         if e.get("type") == "user_chat":
             lines.append(f"用户：{e.get('text', '')}")
         elif e.get("type") == "assistant_chat":
-            lines.append(f"叶瑄：{e.get('text', '')}")
+            lines.append(f"{char_name}：{e.get('text', '')}")
     return "\n".join(lines)
 
 
@@ -84,6 +84,7 @@ def _build_messages(
     recent_transcript: list[dict],
     user_message: str,
     facts: dict,
+    char_name: str = "(角色未加载)",
 ) -> list[dict]:
     state_lines = [
         "【当前阅读进度】",
@@ -91,15 +92,15 @@ def _build_messages(
         f"当前页：第 {current_page} 页 / 共 {total_pages} 页",
     ]
     context = "\n".join(state_lines)
-    context += f"\n\n{format_reading_grounding_for_prompt(facts)}"
+    context += f"\n\n{format_reading_grounding_for_prompt(facts, char_name=char_name)}"
 
-    transcript_ctx = _fmt_transcript_context(recent_transcript)
+    transcript_ctx = _fmt_transcript_context(recent_transcript, char_name)
     if transcript_ctx:
         context += f"\n\n【最近对话】\n{transcript_ctx}"
     context += f"\n\n用户说：{user_message}"
 
     return [
-        {"role": "system", "content": _SYSTEM_READING},
+        {"role": "system", "content": _SYSTEM_READING.replace("叶瑄", char_name)},
         {"role": "user", "content": context},
     ]
 
@@ -157,9 +158,12 @@ async def generate_reply(
     Does NOT write short_term / event_log / user_hidden_state.
     page_text is truncated before injection — never stored in full.
     """
+    from core.character_name_provider import get_char_name as _get_char_name
+    char_name = _get_char_name(char_id)
+
     facts = build_reading_grounding_facts(current_page, total_pages, filename, page_text)
     recent_ctx = _tr.load_recent(char_id, uid, "reading", session_id, limit=_TRANSCRIPT_CONTEXT_LIMIT)
-    messages = _build_messages(current_page, total_pages, filename, page_text, recent_ctx, user_message, facts)
+    messages = _build_messages(current_page, total_pages, filename, page_text, recent_ctx, user_message, facts, char_name=char_name)
     reply, control = await _call_llm(messages)
 
     ts = now_iso()

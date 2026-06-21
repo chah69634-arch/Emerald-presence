@@ -215,7 +215,7 @@ class Pipeline:
         # 需要 IO 的任务并发进行
         loop = asyncio.get_event_loop()
         event_search_task = asyncio.create_task(
-            event_log.search(uid, content, llm_client, char_id=char_id)
+            event_log.search(uid, content, llm_client, char_id=char_id, return_trace=True)
         )
         profile_future = loop.run_in_executor(
             None, lambda: user_profile.load(uid, char_id=char_id)
@@ -228,18 +228,29 @@ class Pipeline:
         history          = short_term.load_for_prompt(uid, char_id=char_id)
         recent_group_ctx = group_context.get_recent(group_id)
         relation         = user_relation.get_relation(uid)
-        lore_entries     = scoped_lore_engine.match(content, history)
+        lore_entries, _lore_trace = scoped_lore_engine.match(content, history, return_trace=True)
+
+        # 关系事实（动态世界书）— 只注入 confirmed 条目，不含 pending
+        try:
+            from core.relationship_facts import match as _rf_match
+            rf_entries = _rf_match(uid, content, history, char_id=char_id)
+            if rf_entries:
+                lore_entries = lore_entries + rf_entries
+        except Exception as _rfe:
+            logger.warning("[pipeline.fetch_context] relationship_facts match failed: %s", _rfe)
 
         # 情景记忆检索
         # N2-A: fetch_context 是读路径，传 allow_strengthen=False 禁止写回 strength，
         # 避免"召回→增强→更易召回"的永动机效应。写回仍由写路径触发（post_process 等）。
         from core.memory.episodic_memory import retrieve, format_for_prompt
-        episodic_memories = retrieve(
+        episodic_memories, _episodic_trace = retrieve(
             user_id=uid,
             topic=content,
             top_k=3,
             char_id=char_id,
+            char_name=scoped_character.name,
             allow_strengthen=False,
+            return_trace=True,
         )
         from core.memory.mood_state import get_current as _get_mood
         episodic_result = format_for_prompt(
@@ -251,11 +262,12 @@ class Pipeline:
         # 兜底召回：tag 未命中时备用，存入 context 供 prompt_builder 判断
         from core.memory.episodic_memory import retrieve_fallback
         _recent_texts = [h.get("content", "") for h in history[-5:]]
-        episodic_fallback = retrieve_fallback(
+        episodic_fallback, _episodic_fallback_trace = retrieve_fallback(
             user_id=uid,
             recent_history=_recent_texts,
             top_k=1,
             char_id=char_id,
+            return_trace=True,
         )
         from core.memory.mood_state import get_current as _get_mood2
         episodic_fallback_result = format_for_prompt(
@@ -265,7 +277,7 @@ class Pipeline:
         ) if episodic_fallback else ""
 
         # 等待异步任务
-        event_search_result  = await event_search_task
+        event_search_result, _event_log_trace  = await event_search_task
         profile              = await profile_future
         mid_term_text        = await mid_term_future
         user_identity_text   = await user_identity.format_for_prompt(uid, char_id=char_id)
@@ -291,6 +303,30 @@ class Pipeline:
             f"[pipeline.fetch_context] uid={uid} "
             f"history={len(history)} lore={len(lore_entries)}"
         )
+
+        # Recall trace — diagnostic only, never raises, not on hot path
+        try:
+            from core.recall_trace import write_trace as _write_recall_trace
+            from core.memory.mood_state import get_intensity as _get_intensity
+            from datetime import datetime as _dt
+            _write_recall_trace(uid, char_id, {
+                "ts": _dt.now().isoformat(timespec="seconds"),
+                "uid": uid,
+                "char_id": char_id,
+                "query": content,
+                "episodic_hits": _episodic_trace,
+                "episodic_fallback_used": bool(episodic_fallback),
+                "episodic_fallback_hits": _episodic_fallback_trace,
+                "event_log_hits": _event_log_trace,
+                "lore_hits": _lore_trace,
+                "mood": {
+                    "current": _get_mood(char_id=char_id),
+                    "intensity": round(_get_intensity(char_id=char_id), 3),
+                },
+            })
+        except Exception as _te:
+            logger.warning("[pipeline.fetch_context] recall trace write failed: %s", _te)
+
         return {
             "history":             history,
             "profile":             profile,
@@ -395,6 +431,13 @@ class Pipeline:
         if _char_id == self._active_character_id:
             self.author_note_extra = ""
         debug_info["pending_paths"] = _pending_paths
+
+        try:
+            from core.observe.prompt_capture import capture as _capture_prompt
+            _capture_prompt(user_id, messages, debug_info)
+        except Exception:
+            pass
+
         return messages, debug_info
 
     # ──────────────────────────────────────────────────────────────────────────

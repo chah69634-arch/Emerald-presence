@@ -21,7 +21,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-async def build_snapshot(user_id: str, entry_reason: str = "", *, char_id: str = "yexuan", char_name: str = "叶瑄") -> dict[str, Any]:
+async def build_snapshot(user_id: str, entry_reason: str = "", *, char_id: str = "yexuan", char_name: str = "(角色未加载)") -> dict[str, Any]:
     """
     Assemble and return the frozen dream context snapshot.
 
@@ -130,7 +130,7 @@ async def build_snapshot(user_id: str, entry_reason: str = "", *, char_id: str =
     return snapshot
 
 
-def _summarize_recent(history: list[dict], *, char_name: str = "叶瑄") -> str:
+def _summarize_recent(history: list[dict], *, char_name: str = "(角色未加载)") -> str:
     """Condense last few history turns into a short context string."""
     tail = history[-6:] if len(history) > 6 else history
     lines = []

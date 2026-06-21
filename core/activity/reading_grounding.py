@@ -57,7 +57,7 @@ def build_reading_grounding_facts(
     }
 
 
-def format_reading_grounding_for_prompt(facts: dict) -> str:
+def format_reading_grounding_for_prompt(facts: dict, char_name: str = "(角色未加载)") -> str:
     """Format reading grounding facts as a <page_context> block for LLM injection."""
     lines = ["<page_context>"]
     lines.append(f"书名/文件：{facts.get('filename', '未知')}")
@@ -70,7 +70,7 @@ def format_reading_grounding_for_prompt(facts: dict) -> str:
         lines.append("\n本页内容：（空白或不可读）")
 
     lines.append(
-        "\n注意：以上是本页的开头片段，不是全文。叶瑄只能根据这段内容和用户的讨论来回应，"
+        f"\n注意：以上是本页的开头片段，不是全文。{char_name}只能根据这段内容和用户的讨论来回应，"
         "不要凭空声称知道本页后续内容或其他页的细节。"
     )
     lines.append("</page_context>")

@@ -98,11 +98,19 @@ def scrub_reality_output_text(
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _make_speaker_label_re() -> re.Pattern:
+    from core.config_loader import _char_name
+    return re.compile(
+        rf"^(?:\*\*)?(?:用户|{re.escape(_char_name())})(?:\*\*)?\s*[:：]"
+    )
+
+
 def _scrub_lines(text: str) -> str | None:
     """Line-level filter.  Returns None when nothing non-empty remains."""
     lines = text.split("\n")
     kept: list[str] = []
     in_code_block = False
+    speaker_label_re = _make_speaker_label_re()
 
     for line in lines:
         s = line.strip()
@@ -139,6 +147,10 @@ def _scrub_lines(text: str) -> str | None:
 
         # Drop lines containing obvious physical action words
         if _ACTION_WORD_RE.search(s):
+            continue
+
+        # P0-2: 拦截内嵌说话人标签（模型自己写对白时产生的投毒行）
+        if speaker_label_re.match(s):
             continue
 
         kept.append(line)

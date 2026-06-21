@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _queue: asyncio.Queue = asyncio.Queue()
 _handlers: dict[str, Callable] = {}
 _worker_task: asyncio.Task | None = None
+_current_task_type: str | None = None
 
 _MAX_RETRIES = 2  # 首次 + 最多 2 次重试，共 3 次尝试
 
@@ -72,6 +73,18 @@ def is_dlq_task_expired(
         return (now - file_mtime) > ttl_sec
 
     return False
+
+
+def queue_size() -> int:
+    return _queue.qsize()
+
+
+def worker_alive() -> bool:
+    return _worker_task is not None and not _worker_task.done()
+
+
+def current_task_type() -> str | None:
+    return _current_task_type
 
 
 def register_handler(task_type: str, fn: Callable) -> None:
@@ -141,6 +154,7 @@ async def _write_dlq(task: dict, error: str) -> None:
 
 async def worker() -> None:
     """单 worker 循环，永不主动退出。task 失败时退避重试，超限写 DLQ。"""
+    global _current_task_type
     while True:
         item = await _queue.get()
         task_type = item.get("task_type", "")
@@ -152,6 +166,7 @@ async def worker() -> None:
             _queue.task_done()
             continue
 
+        _current_task_type = task_type
         last_error = ""
         succeeded = False
         for attempt in range(_MAX_RETRIES + 1):  # 0, 1, 2
@@ -167,6 +182,7 @@ async def worker() -> None:
                 if attempt < _MAX_RETRIES:
                     await asyncio.sleep(0.5 * (attempt + 1))
 
+        _current_task_type = None
         if not succeeded:
             await _write_dlq(item, last_error)
 

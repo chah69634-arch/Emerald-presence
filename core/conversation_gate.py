@@ -14,3 +14,8 @@ _conversation_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 def conversation_lock(uid: str) -> asyncio.Lock:
     return _conversation_locks[str(uid)]
+
+
+def locked_conversation_uids() -> list[str]:
+    """Return list of uids whose conversation_lock is currently held."""
+    return [uid for uid, lock in _conversation_locks.items() if lock.locked()]

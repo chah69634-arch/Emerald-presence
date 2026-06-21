@@ -72,9 +72,9 @@ _IDENTITY_SYSTEM_PROMPT = """\
 你是一个客观分析器，负责归纳用户的稳定行为模式。
 你不是任何角色，不要带角色立场。
 你将看到一份"旧版印象"和一些"最近发生的事"，请基于这些，
-输出 8 个维度的最新判断。
+输出 9 个维度的最新判断。
 
-8 个维度：
+9 个维度：
 - trust_pattern（信任建立模式）
 - emotion_expression（情绪表达方式）
 - help_seeking（求助风格）
@@ -83,6 +83,7 @@ _IDENTITY_SYSTEM_PROMPT = """\
 - sleep_pattern（作息模式）
 - topic_preference（话题偏好）
 - self_relation（自我关系）
+- address_style（称呼习惯：她平时怎么称呼叶瑄/自己，有没有固定的爱称、昵称、角色化称呼，如"主人"等）
 
 规则：
 1. 每个维度的 text 字段必须是第三人称"她"开头的短句，30-60 字，自然口语，不要心理学术语。
@@ -99,7 +100,8 @@ _IDENTITY_SYSTEM_PROMPT = """\
 {
   "trust_pattern": {"text": "...", "confidence": 0.7, "evidence_count": 12, "counter_evidence_count": 2},
   "emotion_expression": {...},
-  ...
+  ...,
+  "address_style": {"text": "...", "confidence": 0.8, "evidence_count": 5, "counter_evidence_count": 0}
 }
 不要输出任何 JSON 之外的文字。"""
 
@@ -236,6 +238,26 @@ def _validate_episode(data: dict) -> bool:
 _WEEKDAY_BY_CN = {
     "一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6,
 }
+
+
+def _parse_turn_ms(turn_id: str) -> float | None:
+    """turn_id 形如 {uid}_{ms}；取尾段毫秒→秒。"""
+    try:
+        return int(str(turn_id).rsplit("_", 1)[1]) / 1000.0
+    except (IndexError, ValueError):
+        return None
+
+
+def _derive_occurred_at(to_process: list[dict], fallback: float) -> float:
+    """取这批 mid_term 来源 turn 的最早真实时刻；都拿不到则回退（=反思时刻）。"""
+    times = []
+    for e in to_process:
+        ms = _parse_turn_ms(e.get("source_turn_id") or "")
+        if ms is not None:
+            times.append(ms)
+        elif isinstance(e.get("ts"), (int, float)):
+            times.append(float(e["ts"]))
+    return min(times) if times else fallback
 
 
 def _parse_event_time_hint(event_time_hint: str, *, now: float | None = None) -> float | None:
@@ -732,9 +754,11 @@ async def reflect_to_episodic(
                 }, "ok", "neutral skip")
                 return None
 
+        _now = time.time()
         episode: dict = {
             "id": ep_id,
-            "timestamp": time.time(),
+            "timestamp": _now,
+            "occurred_at": _derive_occurred_at(to_process, _now),
             "raw_facts": data.get("raw_facts", []),
             "topic_keywords": data.get("topic_keywords", []),
             "emotion_peak": data.get("emotion_peak", "neutral"),

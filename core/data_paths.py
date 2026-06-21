@@ -15,6 +15,26 @@ _CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
 _DEFAULTS_ROOT = Path(__file__).parent.parent / "defaults"
 _SAFE_USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
+
+def _read_default_char_id() -> str:
+    """Read character.default from config.yaml once at import time.
+
+    Callers that omit char_id will use this value, so changing config.yaml
+    character.default naturally propagates to all path defaults — no more
+    silent fallback to 'yexuan' on multi-character deployments.
+    Falls back to 'yexuan' only if config is unreadable (startup edge case).
+    """
+    try:
+        import yaml as _yaml
+        cfg = _yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8")) or {}
+        default = (cfg.get("character", {}).get("default") or "").strip()
+        return default if default else "yexuan"
+    except Exception:
+        return "yexuan"
+
+
+_DEFAULT_CHAR_ID: str = _read_default_char_id()
+
 # ── 多角色布局开关（默认 legacy = 维持旧单角色路径）──────────────────────────────
 # S5 将 character_inner 类翻至 v1（global → per_char）；
 # S6 将 reality 类翻至 v1（per_user → per_char_user）：
@@ -108,32 +128,32 @@ class DataPaths:
         return self._p("wake_delivery", f"{safe_user_id(user_id)}.json")
 
     # ── 记忆根目录 ─────────────────────────────────────────────────────────────
-    def character_growth(self, *, char_id: str = "yexuan") -> Path:
+    def character_growth(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("character_growth")
         return self._p("runtime", "characters", char_id, "character_growth")
 
-    def diary_context(self, *, char_id: str = "yexuan") -> Path:
+    def diary_context(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("diary_context")
         return self._p("chars", char_id, "diary_context")
 
-    def pet_file(self, *, char_id: str = "yexuan") -> Path:
+    def pet_file(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("pet.json")
         return self._p("runtime", "characters", char_id, "pet.json")
 
-    def episodic_memory(self, *, char_id: str = "yexuan") -> Path:
+    def episodic_memory(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("episodic_memory")
         return self._p("chars", char_id, "episodic_memory")
 
-    def memory_index(self, *, char_id: str = "yexuan") -> Path:
+    def memory_index(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("memory_index")
         return self._p("chars", char_id, "memory_index")
 
-    def event_log(self, *, char_id: str = "yexuan") -> Path:
+    def event_log(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("event_log")
         return self._p("chars", char_id, "event_log")
@@ -141,22 +161,22 @@ class DataPaths:
     def group_context(self) -> Path:
         return self._p("group_context")
 
-    def yexuan_inner_diary(self, *, char_id: str = "yexuan") -> Path:
+    def yexuan_inner_diary(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "diary")
         return self._p("runtime", "characters", char_id, "inner", "diary")
 
-    def history(self, *, char_id: str = "yexuan") -> Path:
+    def history(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("history")
         return self._p("chars", char_id, "history")
 
-    def profiles(self, *, char_id: str = "yexuan") -> Path:
+    def profiles(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("profiles")
         return self._p("chars", char_id, "profiles")
 
-    def reminders(self, *, char_id: str = "yexuan") -> Path:
+    def reminders(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("reminders")
         return self._p("chars", char_id, "reminders")
@@ -174,7 +194,7 @@ class DataPaths:
             return self._p("activity_snapshot.json")
         return self._p("runtime", "characters", char_id, "inner", "activity_snapshot.json")
 
-    def presence(self, *, char_id: str = "yexuan") -> Path:
+    def presence(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "presence.json")
         return self._p("runtime", "characters", char_id, "inner", "presence.json")
@@ -194,14 +214,14 @@ class DataPaths:
             return self._p("yexuan_inner", "mood_state.json")
         return self._p("runtime", "characters", char_id, "inner", "mood_state.json")
 
-    def activity_pool(self, *, char_id: str = "yexuan") -> Path:
+    def activity_pool(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return Path("data/yexuan_inner/activity_pool.yaml")
-        # S8 will physically move authored files; fall back to legacy if new not yet present
+        # S8 will physically move authored files; fall back to legacy yexuan path if new not yet present
         new = Path(f"content/characters/{char_id}/activity_pool.yaml")
         return new if new.exists() else Path("data/yexuan_inner/activity_pool.yaml")
 
-    def activity_state(self, *, char_id: str = "yexuan") -> Path:
+    def activity_state(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "activity_state.json")
         return self._p("runtime", "characters", char_id, "inner", "activity_state.json")
@@ -211,57 +231,62 @@ class DataPaths:
             return self._p("yexuan_inner", "observations.jsonl")
         return self._p("runtime", "characters", char_id, "inner", "observations.jsonl")
 
-    def mid_term(self, *, char_id: str = "yexuan") -> Path:
+    def mid_term(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("mid_term")
         return self._p("chars", char_id, "mid_term")
 
-    def dreams_tmp_dir(self, *, char_id: str = "yexuan") -> Path:
+    def dreams_tmp_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "tmp")
         return self._p("runtime", "dreams", char_id, "tmp")
 
-    def dreams_archive_dir(self, *, char_id: str = "yexuan") -> Path:
+    def dreams_archive_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "archive")
         return self._p("runtime", "dreams", char_id, "archive")
 
-    def dreams_summaries_dir(self, *, char_id: str = "yexuan") -> Path:
+    def dreams_summaries_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "summaries")
         return self._p("runtime", "dreams", char_id, "summaries")
 
-    def dreams_impressions_dir(self, *, char_id: str = "yexuan") -> Path:
+    def dreams_impressions_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "impressions")
         return self._p("runtime", "dreams", char_id, "impressions")
 
-    def dream_state_path(self, user_id: str | int, *, char_id: str = "yexuan") -> Path:
+    def dream_state_path(self, user_id: str | int, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "state", safe_user_id(user_id), "dream_state.json")
         return self._p("runtime", "dreams", char_id, "state", safe_user_id(user_id), "dream_state.json")
 
-    def dream_settings_path(self, user_id: str | int, *, char_id: str = "yexuan") -> Path:
+    def dream_settings_path(self, user_id: str | int, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "settings", safe_user_id(user_id) + ".json")
         return self._p("runtime", "dreams", char_id, "settings", safe_user_id(user_id) + ".json")
 
-    def dream_hud_state_path(self, user_id: str | int, *, char_id: str = "yexuan") -> Path:
+    def dream_hud_state_path(self, user_id: str | int, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_DREAM == "legacy":
             return self._p("dreams", "state", safe_user_id(user_id), "dream_hud_state.json")
         return self._p("runtime", "dreams", char_id, "state", safe_user_id(user_id), "dream_hud_state.json")
 
-    def garden(self, *, char_id: str = "yexuan") -> Path:
+    def garden(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("garden")
         return self._p("runtime", "characters", char_id, "garden")
 
-    def author_notes_pool(self, *, char_id: str = "yexuan") -> Path:
+    def author_notes_pool(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
-            return Path("characters/yexuan_author_notes.json")
-        # S8 will physically move authored files; fall back to legacy if new not yet present
+            return Path("characters/default_author_notes.json")
+        # S8 will physically move authored files; fall back to default pool if new not yet present
         new = Path(f"content/characters/{char_id}/{char_id}_author_notes.json")
-        return new if new.exists() else Path(f"characters/{char_id}_author_notes.json")
+        legacy = Path(f"characters/{char_id}_author_notes.json")
+        if new.exists():
+            return new
+        if legacy.exists():
+            return legacy
+        return Path("characters/default_author_notes.json")
 
     def _seed_if_missing(self, runtime_path: Path, defaults_name: str) -> Path:
         """运行时文件不存在时从 defaults/ 复制种子，然后返回运行时路径。"""
@@ -332,6 +357,18 @@ class DataPaths:
             return self._base / "reality" / "lorebooks"
         return Path("characters") / "reality" / "lorebooks"
 
+    def dream_worlds_dir(self) -> Path:
+        """characters/dream_worlds/ 目录（authored，不走 data/ 沙盒偏移）"""
+        if self.mode == "test":
+            return self._base / "dream_worlds"
+        return Path("characters") / "dream_worlds"
+
+    def dream_presets_dir(self) -> Path:
+        """characters/dream_presets/ 目录（authored，不走 data/ 沙盒偏移）"""
+        if self.mode == "test":
+            return self._base / "dream_presets"
+        return Path("characters") / "dream_presets"
+
     def jailbreaks_dir(self) -> Path:
         """characters/reality/jailbreaks/ 目录（authored，不走 data/ 沙盒偏移）"""
         if self.mode == "test":
@@ -380,7 +417,7 @@ class DataPaths:
         return self._seed_if_missing(self._p("blacklist.yaml"), "blacklist.yaml")
 
     # ── 只读静态（不偏移，test 与 prod 共享原文件）───────────────────────────
-    def yexuan_traits(self, *, char_id: str = "yexuan") -> Path:
+    def yexuan_traits(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return Path("data/yexuan_traits.yaml")
         # S8 will physically move authored files; fall back to legacy if new not yet present
@@ -391,12 +428,12 @@ class DataPaths:
         new = Path("content/jailbreak_presets")
         return new if new.exists() else Path("data/jailbreak_presets")
 
-    def author_note_state(self, *, char_id: str = "yexuan") -> Path:
+    def author_note_state(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "author_note_state.json")
         return self._p("runtime", "characters", char_id, "inner", "author_note_state.json")
 
-    def trait_state(self, *, char_id: str = "yexuan") -> Path:
+    def trait_state(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_CHARACTER_INNER == "legacy":
             return self._p("yexuan_inner", "trait_state.json")
         return self._p("runtime", "characters", char_id, "inner", "trait_state.json")
@@ -404,7 +441,7 @@ class DataPaths:
     def dead_letter_queue(self) -> Path:
         return self._p("logs", "dead_letter_queue")
 
-    def fixation_state_dir(self, *, char_id: str = "yexuan") -> Path:
+    def fixation_state_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("fixation_state")
         return self._p("chars", char_id, "fixation_state")
@@ -424,31 +461,31 @@ class DataPaths:
     def debug_llm_output_dir(self) -> Path:
         return self._p("debug", "llm_output")
 
-    def user_identity_dir(self, *, char_id: str = "yexuan") -> Path:
+    def user_identity_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         if _LAYOUT_REALITY == "legacy":
             return self._p("user_identity")
         return self._p("chars", char_id, "user_identity")
 
     # ── S6: per-user memory 新布局 ────────────────────────────────────────────
-    def user_memory_root(self, user_id: str | int, *, char_id: str = "yexuan") -> Path:
+    def user_memory_root(self, user_id: str | int, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         """S6: per-user memory 根目录: data/runtime/memory/{char_id}/{uid}/
         写入前调用方负责 .mkdir(parents=True, exist_ok=True)。"""
         return self._p("runtime", "memory", char_id, safe_user_id(user_id))
 
     # ── 信件内容资产（authored static content）────────────────────────────────
-    def letter_samples_dir(self, *, char_id: str = "yexuan") -> Path:
+    def letter_samples_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         """示范信件库目录（静态内容）: content/characters/{char_id}/letter_samples/"""
         return Path(f"content/characters/{char_id}/letter_samples")
 
-    def letter_knowledge_dir(self, *, char_id: str = "yexuan") -> Path:
+    def letter_knowledge_dir(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         """知识库目录（静态内容）: content/characters/{char_id}/knowledge/"""
         return Path(f"content/characters/{char_id}/knowledge")
 
-    def sent_letters(self, user_id: str | int, *, char_id: str = "yexuan") -> Path:
+    def sent_letters(self, user_id: str | int, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         """已发送信件归档: data/runtime/memory/{char_id}/{uid}/sent_letters.json"""
         return self.user_memory_root(user_id, char_id=char_id) / "sent_letters.json"
 
-    def memory_char_root(self, *, char_id: str = "yexuan") -> Path:
+    def memory_char_root(self, *, char_id: str = _DEFAULT_CHAR_ID) -> Path:
         """S6: per-char memory 根目录: data/runtime/memory/{char_id}/
         用于 v1 模式下枚举所有用户（各 uid 是其直接子目录）。"""
         return self._p("runtime", "memory", char_id)
@@ -506,6 +543,10 @@ class DataPaths:
     def reading_library_insights_dir(self, *, book_id: str) -> Path:
         """data/library/insights/{book_id}/  — Yexuan's reading insights per book."""
         return self._p("library", "insights", safe_user_id(book_id))
+
+    def reading_library_manifest(self) -> Path:
+        """data/library/manifest.json — book metadata registry (id, title, category, filename)."""
+        return self._p("library", "manifest.json")
 
     # ── Activity: generic session (char_id-first layout) ─────────────────────
     def activity_char_root(self, *, char_id: str) -> Path:

@@ -150,20 +150,21 @@ class LoreEngine:
 
     # ── 关键词匹配 ────────────────────────────────────────────────────────────
 
-    def match(self, user_message: str, recent_messages: list[dict] | None = None) -> list[str]:
+    def match(self, user_message: str, recent_messages: list[dict] | None = None, *, return_trace: bool = False) -> list[str] | tuple:
         """
         扫描用户消息（和可选的最近历史），返回命中的世界书 content 列表。
 
         参数:
             user_message:    当前用户消息
             recent_messages: 最近几条历史消息（可选，扩大扫描范围）
+            return_trace:    若 True，返回 (list[str], trace_items)；trace_items 含命中关键词明细。
 
         返回:
             命中条目的 content 字符串列表，按 insertion_order 升序排列。
             无命中则返回空列表。
         """
         if not self.entries:
-            return []
+            return ([], []) if return_trace else []
 
         # 拼接扫描文本，全部转小写做不区分大小写的普通匹配
         scan_parts = [user_message]
@@ -175,7 +176,7 @@ class LoreEngine:
         full_text = " ".join(scan_parts)
         full_text_lower = full_text.lower()
 
-        matched: list[dict] = []  # [(insertion_order, content)]
+        matched: list[dict] = []  # entry dict + "_hit_kw" field
         seen: set[str] = set()    # 去重，防止同一 content 出现两次
 
         for entry in self.entries:
@@ -185,25 +186,40 @@ class LoreEngine:
 
             is_regex = entry.get("regex", False)
             hit = False
+            hit_kw: str | None = None
 
             for kw in entry["keywords"]:
                 if is_regex:
                     try:
                         if re.search(kw, full_text, re.IGNORECASE):
                             hit = True
+                            hit_kw = kw
                             break
                     except re.error:
                         logger.warning(f"[lore_engine] 正则表达式无效：{kw!r}，跳过")
                 else:
                     if kw.lower() in full_text_lower:
                         hit = True
+                        hit_kw = kw
                         break
 
             if hit:
-                matched.append(entry)
+                matched_entry = dict(entry)
+                matched_entry["_hit_kw"] = hit_kw
+                matched.append(matched_entry)
                 seen.add(content)
                 logger.debug(f"[lore_engine] 条目命中（order={entry['insertion_order']}），注入世界书")
 
         # 按 insertion_order 升序排列（数字越小越靠前）
         matched.sort(key=lambda e: e["insertion_order"])
+        if return_trace:
+            trace_items = [
+                {
+                    "kw": e["_hit_kw"],
+                    "content_preview": e["content"][:60],
+                    "insertion_order": e["insertion_order"],
+                }
+                for e in matched
+            ]
+            return [e["content"] for e in matched], trace_items
         return [e["content"] for e in matched]

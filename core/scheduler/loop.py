@@ -371,7 +371,7 @@ async def _pipeline_send(
         from core.scheduler.triggers.birthday import _is_birthday_period
         if _is_birthday_period():
             prompt = prompt + "\n（今天是她的生日，4月24日）"
-        _states = ["在思考", "在翻阅她的日记", "在想她说过的话", "在看窗外", "在灵体出游", "在家里"]
+        _states = ["在思考", "在翻阅她的日记", "在想她说过的话", "在看窗外", "在灵体出游"]
         try:
             from core.character_name_provider import get_char_name
             prompt = prompt + f"\n（{get_char_name(resolved_char_id)}此刻{random.choice(_states)}）"
@@ -643,14 +643,30 @@ async def _check_reminders():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_status() -> dict:
-    """返回所有触发器的状态信息"""
+    """返回所有触发器的状态信息，含 enabled 状态"""
+    from core.config_loader import get_config
+    cfg = get_config().get("scheduler", {})
+
+    _TRIGGER_CONFIG_KEYS: dict[str, str] = {
+        "morning_greeting":  "morning_greeting",
+        "night_reminder":    "night_reminder",
+        "random_message":    "random_message",
+        "daily_journal":     "daily_journal",
+        "period_reminder":   "period_reminder",
+        "diary_reminder":    "diary_reminder",
+        "diary_inject":      "diary_inject",
+        "presence_nag":      "presence_nag",
+    }
+
     now = time.time()
     result = {}
     for name, cooldown in _COOLDOWNS.items():
         last = _last_trigger.get(name, 0)
         elapsed = now - last if last > 0 else cooldown + 1
         remaining = max(0, cooldown - elapsed)
-        result[name] = {
+        cfg_key = _TRIGGER_CONFIG_KEYS.get(name)
+        enabled = bool(cfg.get(cfg_key, True)) if cfg_key else None
+        entry = {
             "last_triggered": (
                 datetime.fromtimestamp(last).strftime("%Y-%m-%d %H:%M:%S")
                 if last > 0 else "从未"
@@ -659,6 +675,9 @@ def get_status() -> dict:
             "remaining_sec":  int(remaining),
             "ready":          remaining == 0,
         }
+        if enabled is not None:
+            entry["enabled"] = enabled
+        result[name] = entry
     return result
 
 

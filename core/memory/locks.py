@@ -17,3 +17,13 @@ def uid_lock(uid: str) -> asyncio.Lock:
 
 def global_lock(name: str) -> asyncio.Lock:
     return _global_locks[name]
+
+
+def locked_uids() -> list[str]:
+    """Return list of uids whose uid_lock is currently held."""
+    return [uid for uid, lock in _uid_locks.items() if lock.locked()]
+
+
+def locked_globals() -> list[str]:
+    """Return list of global lock names currently held."""
+    return [name for name, lock in _global_locks.items() if lock.locked()]

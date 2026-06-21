@@ -340,12 +340,12 @@ def apply_ai_move(
     return result
 
 
-def build_game_summary(state: dict) -> str:
+def build_game_summary(state: dict, char_name: str = "(角色未加载)") -> str:
     """
     生成轻量对局摘要文本。
 
     只使用 move_count / winner / opponent，不含棋谱坐标列表。
-    opponent=yexuan_ai 时写"叶瑄执白"；human 时写"本地双人对局"。
+    opponent=yexuan_ai 时写"{char_name}执白"；human 时写"本地双人对局"。
     """
     move_count = len(state.get("move_history", []))
     winner = state.get("winner")
@@ -360,8 +360,8 @@ def build_game_summary(state: dict) -> str:
 
     if opponent == "yexuan_ai":
         return (
-            f"用户和叶瑄进行了一局五子棋。"
-            f"用户执黑，叶瑄执白，对局共 {move_count} 手，结果：{result}。"
+            f"用户和{char_name}进行了一局五子棋。"
+            f"用户执黑，{char_name}执白，对局共 {move_count} 手，结果：{result}。"
         )
     return f"用户进行了一局本地双人五子棋，对局共 {move_count} 手，结果：{result}。"
 
@@ -396,7 +396,9 @@ def close_game(
         )
         return session, None
 
-    summary_text = build_game_summary(state)
+    from core.character_name_provider import get_char_name as _get_char_name
+    char_name = _get_char_name(char_id)
+    summary_text = build_game_summary(state, char_name=char_name)
     save_summary(
         char_id=char_id,
         uid=uid,

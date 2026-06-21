@@ -242,6 +242,7 @@ def build_dream_prompt(
     dream_mode: str = "sandbox",
     scenario_core: dict[str, Any] | None = None,
     mirror_core: dict[str, Any] | None = None,
+    _capture_hook: "Any | None" = None,
 ) -> list[dict[str, str]]:
     """
     Assemble the complete dream prompt as a D0-D10 layer stack.
@@ -263,7 +264,11 @@ def build_dream_prompt(
     from core.dream.world_loader import load_world
     world = load_world(world_id)
 
-    char_name: str = getattr(character, "name", "叶瑄") or "叶瑄"
+    char_name: str = getattr(character, "name", None) or "(角色未加载)"
+    _char_gender_raw = getattr(character, "gender", None)
+    _char_gender: str = _char_gender_raw if isinstance(_char_gender_raw, str) else "neutral"
+    from core.character_name_provider import _PRONOUN_MAP as _PM
+    char_pronoun: str = _PM.get(_char_gender, "ta")
     system_layers: list[str] = []
     _records: list[_LayerRec] = []
 
@@ -282,9 +287,8 @@ def build_dream_prompt(
     d1_parts = [f"# D1·身份核心 ─ {char_name}（固定）"]
     if char_desc:
         d1_parts.append(char_desc)
-    d1_parts.append(
-        _D1_NON_LUCID_AWARENESS if lucid_mode == "non_lucid" else _D1_LUCID_AWARENESS
-    )
+    _d1_awareness = _D1_NON_LUCID_AWARENESS if lucid_mode == "non_lucid" else _D1_LUCID_AWARENESS
+    d1_parts.append(_d1_awareness.replace("叶瑄", char_name).replace("他", char_pronoun))
     _d1 = "\n\n".join(d1_parts)
     system_layers.append(_d1)
     _records.append(_LayerRec("D1_identity_core", len(_d1), _est_tokens(_d1)))
@@ -367,9 +371,9 @@ def build_dream_prompt(
     if yexuan_tension > 0.05:
         _d7_bucket = _bucket_tension(yexuan_tension)
         _d7 = (
-            f"# D7·叶瑄情绪张力\n"
+            f"# D7·{char_name}情绪张力\n"
             f"当前情绪张力水位：{_d7_bucket}\n"
-            f"（这是梦内累积的情绪紧绷程度，影响叶瑄的表达方式和反应灵敏度。）"
+            f"（这是梦内累积的情绪紧绷程度，影响{char_name}的表达方式和反应灵敏度。）"
         )
         system_layers.append(_d7)
         _records.append(_LayerRec("D7_dream_tension", len(_d7), _est_tokens(_d7)))
@@ -377,8 +381,8 @@ def build_dream_prompt(
         _records.append(_LayerRec("D7_dream_tension", flags=["DISABLED"]))
 
     # ── D8: dream_director ───────────────────────────────────────────────────
-    _d8_text = _D8_DREAM_DIRECTOR_NON_LUCID if lucid_mode == "non_lucid" else _D8_DREAM_DIRECTOR
-    _d8 = f"# D8·梦境导演注记\n{_d8_text}"
+    _d8_raw = _D8_DREAM_DIRECTOR_NON_LUCID if lucid_mode == "non_lucid" else _D8_DREAM_DIRECTOR
+    _d8 = f"# D8·梦境导演注记\n{_d8_raw.replace('叶瑄', char_name)}"
     system_layers.append(_d8)
     _records.append(_LayerRec("D8_dream_director", len(_d8), _est_tokens(_d8)))
 
@@ -464,6 +468,33 @@ def build_dream_prompt(
     )
     if debug:
         _dream_token_logger.info("[DREAM_SYSTEM_MSG]\n%s", system_content)
+
+    # ── Capture hook (admin panel dream-prompt inspector) ─────────────────────
+    if _capture_hook is not None:
+        try:
+            _scene_tags = _collect_scene_tags(local_state, context_snapshot)
+            _total_tok = sum(r.tokens for r in _records if r.chars > 0)
+            _capture_hook({
+                "world_id": world_id,
+                "lucid_mode": lucid_mode,
+                "dream_mode": dream_mode,
+                "scene_tags": sorted(_scene_tags),
+                "total_tokens": _total_tok,
+                "layers": [
+                    {
+                        "label": r.label,
+                        "chars": r.chars,
+                        "tokens": r.tokens,
+                        "flags": list(r.flags),
+                        "note": r.note,
+                        "injected": r.chars > 0,
+                    }
+                    for r in _records
+                ],
+                "history_turns": len(dream_history),
+            })
+        except Exception as _hook_exc:
+            logger.debug("[build_dream_prompt] capture hook failed: %s", _hook_exc)
 
     return messages
 

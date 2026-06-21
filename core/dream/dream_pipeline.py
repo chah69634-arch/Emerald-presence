@@ -200,6 +200,10 @@ async def dream_turn(
         )
 
     from core.dream.dream_prompt import build_dream_prompt
+    _dream_capture_data: dict = {}
+    def _dream_capture_hook(data: dict) -> None:
+        _dream_capture_data.update(data)
+
     messages = build_dream_prompt(
         character=character,
         user_id=uid,
@@ -218,11 +222,24 @@ async def dream_turn(
         dream_mode=state.get("dream_mode", "sandbox"),
         scenario_core=state.get("scenario_core"),
         mirror_core=state.get("mirror_core"),
+        _capture_hook=_dream_capture_hook,
     )
 
     # Call LLM — zero reality side-effects
     from core import llm_client
     reply = await llm_client.chat(messages)
+
+    # ── Dream prompt capture (admin panel observer) ───────────────────────────
+    if _dream_capture_data:
+        try:
+            from core.observe.dream_capture import capture_dream as _cap_dream
+            _dream_capture_data["user_message"] = user_msg
+            _dream_capture_data["dream_id"] = dream_id
+            _cap_dream(uid, _dream_capture_data)
+            from core.observe.dream_capture import update_dream_llm_output as _upd_dream
+            _upd_dream(uid, reply)
+        except Exception as _dc_exc:
+            logger.debug("[dream_pipeline] dream capture failed: %s", _dc_exc)
 
     # ── v0.6: strip scenario_control block BEFORE anything else sees the reply ─
     # parsed_control is None when block is absent or invalid (fail-soft).
@@ -415,7 +432,7 @@ async def enter_dream(
     dream_id = f"dream_{uid}_{int(time.time())}"
     from core.pipeline_registry import get as _get_pl_enter
     _pl_enter = _get_pl_enter()
-    char_name = (getattr(getattr(_pl_enter, "character", None), "name", None) or "叶瑄") if _pl_enter else "叶瑄"
+    char_name = (getattr(getattr(_pl_enter, "character", None), "name", None) or "(角色未加载)") if _pl_enter else "(角色未加载)"
     snapshot = await build_snapshot(uid, entry_reason=entry_reason, char_id=char_id, char_name=char_name)
 
     # Freeze world_layer and lucid_mode from settings for this dream session

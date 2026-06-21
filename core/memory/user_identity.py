@@ -26,6 +26,7 @@ IDENTITY_DIMENSIONS = [
     ("sleep_pattern",     "作息模式"),
     ("topic_preference",  "话题偏好"),
     ("self_relation",     "自我关系"),
+    ("address_style",     "称呼习惯"),
 ]
 
 _VALID_KEYS = {k for k, _ in IDENTITY_DIMENSIONS}

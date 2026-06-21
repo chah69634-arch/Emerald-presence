@@ -395,6 +395,14 @@ async def handle_message(message: dict):
             )
             tool_calls = [{"name": _fast_tool, "arguments": {}}]
             logger.info(f"[handle_message] 快速路径命中工具: {_fast_tool}")
+            _probe_snap: dict = {
+                "is_fast_path": True,
+                "matched_tool": _fast_tool,
+                "matched_keyword": _fast_kw,
+                "fast_path_risk": tool_dispatcher.tool_fast_path_risk(_fast_tool),
+                "user_message": _trusted_user_text,
+                "tool_calls": list(tool_calls),
+            }
         else:
             # 注入最近 2 轮（最多 4 条）真实对话，帮助探针解析代词指代
             # 过滤 trigger_stub 条目，避免系统占位符混入探针上下文
@@ -421,6 +429,19 @@ async def handle_message(message: dict):
 
             tool_calls = llm_client.parse_tool_call_response(probe_response)
             logger.info(f"[handle_message] probe_response type={type(probe_response)} tool_calls={tool_calls}")
+            _probe_snap = {
+                "is_fast_path": False,
+                "probe_system": tool_dispatcher.get_probe_prompt(_location),
+                "probe_context": _probe_ctx,
+                "user_message": _trusted_user_text,
+                "tools_available": [
+                    (t.get("function") or t).get("name", "")
+                    for t in tools_schema
+                ],
+                "probe_response_raw": probe_response if isinstance(probe_response, str) else "",
+                "tool_calls": tool_calls or [],
+            }
+        _probe_tool_results: list[dict] = []
         if tool_calls:
             try:
                 # N2-A/N2-B: thinking mood 写入通过显式 helper，传入 qq envelope
@@ -443,8 +464,21 @@ async def handle_message(message: dict):
                 )
                 if ask_text:
                     logger.info(f"[handle_message] 高危工具 {t_name}，等待用户确认")
+                    # capture what we have before early return
+                    _probe_snap["tool_results"] = _probe_tool_results
+                    try:
+                        from core.observe.probe_capture import capture_probe as _cap_probe
+                        _cap_probe(user_id, _probe_snap)
+                    except Exception:
+                        pass
                     await text_output.send(target_id, [ask_text], is_group)
                     return
+                _probe_tool_results.append({
+                    "name": t_name,
+                    "arguments": t_args,
+                    "result": t_result or "",
+                    "has_side_effect": tool_dispatcher.is_side_effect_tool(t_name),
+                })
                 if t_result:
                     tool_result_text = t_result
                     if t_name == "read_diary":
@@ -456,6 +490,12 @@ async def handle_message(message: dict):
                             "④回应长度不少于150字，不要因为克制就缩短回应。"
                         )
                     break
+        _probe_snap["tool_results"] = _probe_tool_results
+        try:
+            from core.observe.probe_capture import capture_probe as _cap_probe
+            _cap_probe(user_id, _probe_snap)
+        except Exception:
+            pass
 
         # ── 步骤4：拉取上下文（并发）────────────────────────────────────────
         logger.debug("[handle_message] 并发拉取上下文...")
@@ -468,6 +508,11 @@ async def handle_message(message: dict):
         # ── 步骤6：调用主 LLM ────────────────────────────────────────────────
         logger.info("[handle_message] 调用主 LLM...")
         raw_reply = await _pipeline.run_llm(messages)
+        try:
+            from core.observe.prompt_capture import update_llm_output as _upd_prompt_out
+            _upd_prompt_out(user_id, raw_reply)
+        except Exception:
+            pass
         logger.info(
             f"[handle_message] LLM 回复长度={len(raw_reply) if raw_reply else 0}"
             f"，预览: {(raw_reply or '')[:60]!r}"
@@ -750,6 +795,10 @@ async def main():
 
     from core.config_loader import get_config
     cfg = get_config()
+
+    if cfg.get("logging", {}).get("console_quiet", True):
+        from admin.log_filter import install_console_quiet_mode
+        install_console_quiet_mode()
 
     from core import session_state
     session_state.start_cleanup_task()

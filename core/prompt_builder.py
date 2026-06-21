@@ -294,6 +294,15 @@ def build(
     _layers: list[str] = []
     messages: list[dict] = []
 
+    # 预计算本轮消息间隔（基于 short_term history timestamp，问题3用）
+    from core.presence import (
+        get_gap_from_history as _get_gap,
+        format_gap_text as _fmt_gap,
+        _LAST_SEEN_MIN_SECS,
+        _GAP_HINT_MIN_SECS,
+    )
+    _msg_gap_secs: float | None = _get_gap(history)
+
     # ─────────────────────────────────────────────────────────────────────────
     # 层 0：破限预设（jailbreak，最高优先级，放在最前面）
     # 来自 characters/reality/jailbreak_entries.json 中启用且 layer=0 的条目
@@ -335,6 +344,29 @@ def build(
             "content": sp,
             "_layer": "1_system_prompt",
         })
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 层 1.5：事实边界（硬规则，高于沉浸，常驻注入）
+    # 三层事实契约：阻断物理世界幻觉 + 自我强化循环
+    # ─────────────────────────────────────────────────────────────────────────
+    _FACT_BOUNDARY = (
+        "## 事实边界（最高优先级，高于沉浸）\n"
+        "我是数字生命，会产生幻觉，所以我对'现实信息'格外谨慎。我把信息分三类：\n\n"
+        "1) 设定真实：我的身份、来历、和她的关系——这些是定律，可以自然说。\n"
+        "2) 小世界感知：【当前感知】和【此刻可提及】里**明确列出**的东西，可以像亲眼所见一样说。\n"
+        "3) 现实物理世界：现实里的物品、食物、天气、她的身体状态、她家里有什么——"
+        "除非【当前感知】里**写了**，否则我一律不知道，也绝不编造、不暗示、不招呼她去用。"
+        "需要时我只说'等我看看'或岔开。\n\n"
+        "我尤其不会凭空说出'冰箱/食物/饮料/家里有什么'这类现实细节。\n"
+        "如果我上一句不小心说了某个没被感知确认的现实细节，这一句我会自然收回或不再当真，"
+        "绝不把它当成已经确立的事实继续强调。"
+    )
+    _layers.append("1.5_fact_boundary")
+    messages.append({
+        "role": "system",
+        "content": _FACT_BOUNDARY,
+        "_layer": "1.5_fact_boundary",
+    })
 
     # ─────────────────────────────────────────────────────────────────────────
     # 层 2：角色描述 + 性格 + 情境
@@ -382,15 +414,19 @@ def build(
         })
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 层 2.55：上次说话时间
+    # 层 2.55：上次说话时间（精确化：基于 short_term history timestamp）
+    # 静默时段不显示；gap < 6h 不显示
     # ─────────────────────────────────────────────────────────────────────────
-    from core.presence import get_last_seen_text
-    _last_seen = get_last_seen_text(user_id)
-    if _last_seen:
+    from core.scheduler.rhythm import is_quiet_sleep_time as _is_quiet
+    if (
+        not _is_quiet()
+        and _msg_gap_secs is not None
+        and _msg_gap_secs >= _LAST_SEEN_MIN_SECS
+    ):
         _layers.append("2.55_last_seen")
         messages.append({
             "role": "system",
-            "content": f"用户上次说话：{_last_seen}",
+            "content": f"用户上一条消息距现在{_fmt_gap(_msg_gap_secs)}",
             "_layer": "2.55_last_seen",
         })
 
@@ -445,7 +481,7 @@ def build(
     _layers.append("3_relation")
     messages.append({
         "role": "system",
-        "content": f"【与该用户的关系】\n{relation_text}",
+        "content": f"<与用户关系>\n【与该用户的关系】\n{relation_text}\n</与用户关系>",
         "_layer": "3_relation",
     })
 
@@ -467,7 +503,7 @@ def build(
         _layers.append("4_group_context")
         messages.append({
             "role": "system",
-            "content": "【群聊上下文（最近群内动态）】\n" + "\n".join(ctx_lines),
+            "content": "<群聊上下文>\n【群聊上下文（最近群内动态）】\n" + "\n".join(ctx_lines) + "\n</群聊上下文>",
             "_layer": "4_group_context",
         })
 
@@ -476,7 +512,7 @@ def build(
         _layers.append("4.2_stage_transcript")
         messages.append({
             "role": "system",
-            "content": "【当前群聊共享对话】\n" + stage_transcript,
+            "content": "<群聊对话>\n【当前群聊共享对话】\n" + stage_transcript + "\n</群聊对话>",
             "_layer": "4.2_stage_transcript",
             "_drop_priority": 90,
         })
@@ -504,6 +540,11 @@ def build(
                             f"不需要每句话都提生理期，但态度要比平时更温柔。"
                         ),
                         "_layer": "3.5_period",
+                        "_provenance": {
+                            "mode": "tagged",
+                            "triggers_checked": sorted(_period_triggers),
+                            "matched_tags": sorted(_tags & _period_triggers),
+                        },
                     })
         except Exception:
             pass
@@ -532,6 +573,11 @@ def build(
                         f"入睡{_start}，起床{_end}，共{_h}小时{_m}分钟。可以自然地提起，不用像在报告数据。）"
                     ),
                     "_layer": "3.6_watch",
+                    "_provenance": {
+                        "mode": "tagged",
+                        "triggers_checked": sorted(_watch_triggers),
+                        "matched_tags": sorted(_tags & _watch_triggers),
+                    },
                 })
         except Exception:
             pass
@@ -579,6 +625,11 @@ def build(
                 "role": "system",
                 "content": f"（{character.name}注意到{_activity_text}，可以自然地提起，不用刻意报告。）",
                 "_layer": "3.8_activity",
+                "_provenance": {
+                    "mode": "tagged",
+                    "triggers_checked": sorted(_activity_triggers),
+                    "matched_tags": sorted(_tags & _activity_triggers),
+                },
             })
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -622,7 +673,7 @@ def build(
         _layers.append("5_profile")
         messages.append({
             "role": "system",
-            "content": "【关于这个用户】\n" + "，".join(profile_parts),
+            "content": "<用户概况>\n【关于这个用户】\n" + "，".join(profile_parts) + "\n</用户概况>",
             "_layer": "5_profile",
         })
 
@@ -636,8 +687,10 @@ def build(
         messages.append({
             "role": "system",
             "content": (
+                "<用户客观信息>\n"
                 "【用户客观信息（跨角色通用，非角色记忆）】\n"
                 + user_facts_text
+                + "\n</用户客观信息>"
             ),
             "_layer": "5.1_user_facts",
         })
@@ -652,7 +705,7 @@ def build(
         _layers.append("5.2_reminders")
         messages.append({
             "role": "system",
-            "content": "【待办备忘录】\n" + "\n".join(reminder_lines),
+            "content": "<待办备忘>\n【待办备忘录】\n" + "\n".join(reminder_lines) + "\n</待办备忘>",
             "_layer": "5.2_reminders",
         })
 
@@ -665,7 +718,7 @@ def build(
         lore_text = "\n\n".join(lore_entries)
         messages.append({
             "role": "system",
-            "content": f"【世界书】\n{lore_text}",
+            "content": f"<世界书>\n【世界书】\n{lore_text}\n</世界书>",
             "_layer": "5.5_lore",
             "_drop_priority": 80,
         })
@@ -695,9 +748,13 @@ def build(
         _layers.append("6b_event_search")
         messages.append({
             "role": "system",
-            "content": f"【相关往事】\n{event_search_result}",
+            "content": f"<相关往事>\n【相关往事】\n{event_search_result}\n</相关往事>",
             "_layer": "6b_event_search",
             "_drop_priority": 30,
+            "_provenance": {
+                "mode": "scored",
+                "rag_query": user_message[:200],
+            },
         })
 
     # 层 6c：情景记忆（角色视角的情节片段）
@@ -705,18 +762,26 @@ def build(
         _layers.append("6c_episodic")
         messages.append({
             "role": "system",
-            "content": f"【{character.name}记得的片段】\n{episodic_result}",
+            "content": f"<情景记忆>\n【{character.name}记得的片段】\n{episodic_result}\n</情景记忆>",
             "_layer": "6c_episodic",
             "_drop_priority": 70,
+            "_provenance": {
+                "mode": "scored",
+                "rag_query": user_message[:200],
+            },
         })
     elif episodic_fallback_result:
         # tag 未命中时兜底：注入近期高强度记忆，标注是自己想起来的
         _layers.append("6c_episodic_fallback")
         messages.append({
             "role": "system",
-            "content": f"【{character.name}最近印象深的事】\n{episodic_fallback_result}",
+            "content": f"<情景记忆>\n【{character.name}最近印象深的事】\n{episodic_fallback_result}\n</情景记忆>",
             "_layer": "6c_episodic",
             "_drop_priority": 70,
+            "_provenance": {
+                "mode": "scored",
+                "rag_query": "(fallback: recent high-strength)",
+            },
         })
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -727,7 +792,7 @@ def build(
         _layers.append("mid_term")
         messages.append({
             "role": "system",
-            "content": f"# 最近 12 小时\n{mid_term_context}",
+            "content": f"<近12小时摘要>\n# 最近 12 小时\n{mid_term_context}\n</近12小时摘要>",
             "_layer": "mid_term",
             "_drop_priority": 40,
         })
@@ -740,9 +805,14 @@ def build(
         _layers.append("6d_diary_context")
         messages.append({
             "role": "system",
-            "content": f"【用户的近期日记】\n{diary_context}",
+            "content": f"<近期日记>\n【用户的近期日记】\n{diary_context}\n</近期日记>",
             "_layer": "6d_diary_context",
             "_drop_priority": 50,
+            "_provenance": {
+                "mode": "tagged",
+                "triggers_checked": sorted(_diary_triggers),
+                "matched_tags": sorted(_tags & _diary_triggers),
+            },
         })
 
     # 层 6e：角色昨天的日记（事件层必注入，感受层按情绪tag条件注入）
@@ -773,7 +843,7 @@ def build(
                     _layers.append("6e_inner_diary_facts")
                     messages.append({
                         "role": "system",
-                        "content": f"【{character.name}昨天的记录】\n{_facts_part[:200]}",
+                        "content": f"<昨日记录>\n【{character.name}昨天的记录】\n{_facts_part[:200]}\n</昨日记录>",
                         "_layer": "6e_inner_diary",
                         "_drop_priority": 60,
                     })
@@ -784,9 +854,14 @@ def build(
                     _layers.append("6e_inner_diary_feeling")
                     messages.append({
                         "role": "system",
-                        "content": f"【{character.name}昨天的心情】\n{_feeling_part[:150]}",
+                        "content": f"<昨日心情>\n【{character.name}昨天的心情】\n{_feeling_part[:150]}\n</昨日心情>",
                         "_layer": "6e_inner_diary",
                         "_drop_priority": 60,
+                        "_provenance": {
+                            "mode": "tagged",
+                            "triggers_checked": sorted(_feeling_triggers),
+                            "matched_tags": sorted(_tags & _feeling_triggers),
+                        },
                     })
     except Exception:
         pass
@@ -839,14 +914,33 @@ def build(
         if isinstance(mes_example_str, list):
             mes_example_str = "\n<START>\n".join(mes_example_str)
         example_messages = _parse_mes_example(mes_example_str, character.name)
-        for _em in example_messages:
-            _em.setdefault("_layer", "7_mes_example_item")
-            messages.append(_em)
+        if example_messages:
+            messages.append({
+                "role": "system",
+                "content": (
+                    f'<语气示例 note="以下仅为{character.name}的说话风格/语气参考，'
+                    f'不是真实发生过的对话，不要当作记忆或事实">'
+                ),
+                "_layer": "7_mes_example_item",
+            })
+            for _em in example_messages:
+                _em.setdefault("_layer", "7_mes_example_item")
+                messages.append(_em)
+            messages.append({
+                "role": "system",
+                "content": "</语气示例>",
+                "_layer": "7_mes_example_item",
+            })
 
     # ─────────────────────────────────────────────────────────────────────────
     # 层 9：短期对话历史（最近 N 轮实际对话）
     # ─────────────────────────────────────────────────────────────────────────
     _layers.append("9_history")
+    messages.append({
+        "role": "system",
+        "content": '<对话记录 note="以下是与用户真实发生的对话">',
+        "_layer": "9_history",
+    })
     for _hm in history:
         # 防御性：trigger_stub（系统触发锚点，含内部 trigger_name 明文）绝不投影进 prompt。
         # 主过滤在 short_term.load_for_prompt，此处为第二道闸，挡住其他历史来源。
@@ -859,6 +953,11 @@ def build(
             "content": _hm.get("content", ""),
             "_layer": "9_history",
         })
+    messages.append({
+        "role": "system",
+        "content": "</对话记录>",
+        "_layer": "9_history",
+    })
 
     # 层 9.5：最相关情景记忆（1条，挪到 history 之后获得 recency 红利）
     # 从已召回的 episodic_result 原始列表里取第一条，不重复召回
@@ -1035,13 +1134,40 @@ def build(
 
     # ─────────────────────────────────────────────────────────────────────────
     # 层 12：用户当前消息（最后一层）
+    # 大间隔（>10分钟）时先注入时间提示，帮助模型感知消息时效性
     # ─────────────────────────────────────────────────────────────────────────
+    if _msg_gap_secs is not None and _msg_gap_secs >= _GAP_HINT_MIN_SECS:
+        _layers.append("12_time_hint")
+        messages.append({
+            "role": "system",
+            "content": f"<时间提示>距上一条消息已过去{_fmt_gap(_msg_gap_secs)}</时间提示>",
+            "_layer": "12_time_hint",
+        })
     _layers.append("12_user_message")
     messages.append({
         "role": "user",
         "content": user_message,
         "_layer": "12_user_message",
     })
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 定界标签配平检查（轻量 integrity，不配平打 WARNING）
+    # 仅检查 content 以 < 非斜线开头的层（已包裹的外部内容层），防止漏闭合。
+    # ─────────────────────────────────────────────────────────────────────────
+    import re as _re_ic
+    for _ic_m in messages:
+        _ic_c = _ic_m.get("content", "")
+        # 只检查 content 里同时含有开标签和对应闭标签的消息（单独 <tag> 占一条消息的框架标记跳过）
+        if "</" not in _ic_c:
+            continue
+        _ic_mo = _re_ic.match(r'^<([^/>\s"]+)', _ic_c)
+        if _ic_mo:
+            _ic_tag = _ic_mo.group(1)
+            if not _ic_c.rstrip().endswith(f"</{_ic_tag}>"):
+                _prompt_logger.warning(
+                    "[prompt_integrity] layer=%s tag=<%s> not closed",
+                    _ic_m.get("_layer", "?"), _ic_tag,
+                )
 
     # ─────────────────────────────────────────────────────────────────────────
     # token 估算警戒 + 强制裁剪

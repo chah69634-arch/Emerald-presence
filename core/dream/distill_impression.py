@@ -72,6 +72,7 @@ async def _distill(uid: str, dream_id: str, exit_type: str, *, char_id: str = "y
     from core.sandbox import get_paths
     from core import llm_client
     from core.dream.impression_store import append_impression
+    from core.character_name_provider import get_char_name
 
     archive_path = get_paths().dreams_archive_dir(char_id=char_id) / f"dream_{dream_id}.jsonl"
     turns = _load_archive(archive_path)
@@ -79,8 +80,12 @@ async def _distill(uid: str, dream_id: str, exit_type: str, *, char_id: str = "y
         logger.info(f"[distill_impression] empty archive uid={uid}, skip")
         return
 
+    try:
+        char_name = get_char_name(char_id)
+    except Exception:
+        char_name = char_id
     dialogue = _format_dialogue(turns)
-    data = await _llm_distill(dialogue, llm_client)
+    data = await _llm_distill(dialogue, llm_client, char_name=char_name)
 
     impression_text = (data.get("impression_text") or "").strip().strip('"')
     if not impression_text:
@@ -148,12 +153,13 @@ def _format_dialogue(turns: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-async def _llm_distill(dialogue: str, llm_client) -> dict[str, Any]:
+async def _llm_distill(dialogue: str, llm_client, *, char_name: str = "(角色未加载)") -> dict[str, Any]:
+    system = _DISTILL_SYSTEM.replace("叶瑄", char_name)
     for attempt in range(3):
         try:
             raw = await llm_client.chat(
                 messages=[
-                    {"role": "system", "content": _DISTILL_SYSTEM},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": f"梦境对话：\n{dialogue[:1500]}"},
                 ],
                 max_tokens_override=200,

@@ -66,13 +66,13 @@ _SYSTEM_CHESS = (
 )
 
 
-def _fmt_transcript_context(entries: list[dict]) -> str:
+def _fmt_transcript_context(entries: list[dict], char_name: str) -> str:
     lines = []
     for e in entries:
         if e.get("type") == "user_chat":
             lines.append(f"用户：{e.get('text', '')}")
         elif e.get("type") == "assistant_chat":
-            lines.append(f"叶瑄：{e.get('text', '')}")
+            lines.append(f"{char_name}：{e.get('text', '')}")
     return "\n".join(lines)
 
 
@@ -81,6 +81,7 @@ def _build_messages(
     recent_transcript: list[dict],
     user_message: str,
     facts: dict,
+    char_name: str = "(角色未加载)",
 ) -> list[dict]:
     status_label = {"active": "进行中", "completed": "已结束"}.get(
         state.get("status", "active"), state.get("status", "")
@@ -101,13 +102,13 @@ def _build_messages(
     context = "\n".join(state_lines)
     context += f"\n\n{format_chess_grounding_for_prompt(facts)}"
 
-    transcript_ctx = _fmt_transcript_context(recent_transcript)
+    transcript_ctx = _fmt_transcript_context(recent_transcript, char_name)
     if transcript_ctx:
         context += f"\n\n【最近对话】\n{transcript_ctx}"
     context += f"\n\n用户说：{user_message}"
 
     return [
-        {"role": "system", "content": _SYSTEM_CHESS},
+        {"role": "system", "content": _SYSTEM_CHESS.replace("叶瑄", char_name)},
         {"role": "user", "content": context},
     ]
 
@@ -161,9 +162,12 @@ async def generate_reply(
     Does NOT modify game state (board / move_history / result / status).
     Does NOT write short_term / event_log / user_hidden_state.
     """
+    from core.character_name_provider import get_char_name as _get_char_name
+    char_name = _get_char_name(char_id)
+
     facts = build_chess_grounding_facts(state)
     recent_ctx = _tr.load_recent(char_id, uid, "chess", session_id, limit=_TRANSCRIPT_CONTEXT_LIMIT)
-    messages = _build_messages(state, recent_ctx, user_message, facts)
+    messages = _build_messages(state, recent_ctx, user_message, facts, char_name=char_name)
     reply, control = await _call_llm(messages)
 
     ts = now_iso()

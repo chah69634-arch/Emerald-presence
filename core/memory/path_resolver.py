@@ -30,6 +30,8 @@ REALITY_USER_ARTIFACTS: frozenset[str] = frozenset({
     "afterglow_residue",
     "dream_seed",
     "impression",        # dream-origin but reality-scoped
+    "recall_trace",      # per-turn recall audit log directory
+    "relationship_facts",  # dynamic lorebook — per-user relationship fact table
 })
 
 # Reality-scoped, character-global: path uses char_id only, uid is NOT part of path.
@@ -143,6 +145,12 @@ def resolve_path(scope: MemoryScope, artifact: str) -> Path:
     if artifact == "impression":
         # Dream-origin but reality-scoped: per-user file under dreams_impressions_dir.
         return paths.dreams_impressions_dir(char_id=char_id) / f"{uid}.json"
+
+    if artifact == "recall_trace":
+        return paths.user_memory_root(uid, char_id=char_id) / "recall_trace"
+
+    if artifact == "relationship_facts":
+        return paths.user_memory_root(uid, char_id=char_id) / "relationship_facts.yaml"
 
     # ── character-global scoped: (char_id) only — uid is not part of path ───
 

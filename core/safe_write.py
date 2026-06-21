@@ -1,6 +1,7 @@
 import gzip
 import json
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +15,9 @@ def safe_write_text(path: Path, content: str, encoding: str = "utf-8") -> bool:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_text(content, encoding=encoding)
+        with open(tmp, "r+b") as _fd:
+            _fd.flush()
+            os.fsync(_fd.fileno())
         tmp.replace(path)
         return True
     except Exception as e:
@@ -44,8 +48,33 @@ def safe_write_bytes(path: Path, content: bytes) -> bool:
         return False
 
 
-def safe_write_json(path: Path, data: dict | list) -> bool:
-    return safe_write_text(Path(path), json.dumps(data, ensure_ascii=False, indent=2))
+def safe_write_json(path: Path, data: dict | list, *, keep_bak: bool = True) -> bool:
+    path = Path(path)
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(payload, encoding="utf-8")
+        # post-write verify: if the tmp file can't be parsed back, abort before replacing
+        json.loads(tmp.read_text(encoding="utf-8"))
+        with open(tmp, "r+b") as _fd:
+            _fd.flush()
+            os.fsync(_fd.fileno())
+        if keep_bak and path.exists():
+            try:
+                path.replace(path.with_suffix(path.suffix + ".bak"))
+            except Exception:
+                pass
+        tmp.replace(path)
+        return True
+    except Exception as e:
+        logger.error(f"[safe_write] JSON 写入/校验失败，已保留原文件 {path}: {e}")
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+        return False
 
 
 def rotate_jsonl_if_needed(path: Path, max_bytes: int = 5 * 1024 * 1024, keep_n: int = 3) -> bool:
@@ -121,6 +150,7 @@ def safe_append_jsonl(path: Path, record: dict) -> bool:
         line = json.dumps(record, ensure_ascii=False) + "\n"
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
+            f.flush()
         return True
     except Exception as e:
         logger.error(f"[safe_write] jsonl 追加失败 {path}: {e}")
