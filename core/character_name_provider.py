@@ -33,3 +33,31 @@ def get_char_name(char_id: str | None = None) -> str:
 def get_active_char_name() -> str:
     """兼容别名：返回当前活跃角色显示名。"""
     return get_char_name()
+
+
+_PRONOUN_MAP: dict[str, str] = {
+    "male": "他",
+    "female": "她",
+    "neutral": "ta",
+}
+
+
+def get_char_pronoun(char_id: str | None = None) -> str:
+    """返回指定角色或当前活跃角色的第三人称代词（他/她/ta）。
+
+    从 Character.gender 字段推导：male→他，female→她，neutral→ta。
+    未知 gender 值回退 ta。pipeline 未注册时返回 ta（安全占位，不泄露角色信息）。
+    """
+    gender: str = "neutral"
+    if char_id is not None:
+        from core.character_loader import load
+        try:
+            gender = load(char_id).gender
+        except Exception:
+            pass
+    else:
+        from core import pipeline_registry
+        pl = pipeline_registry.get()
+        if pl is not None and pl.character is not None:
+            gender = getattr(pl.character, "gender", "neutral")
+    return _PRONOUN_MAP.get(gender, "ta")

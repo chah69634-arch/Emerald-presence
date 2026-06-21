@@ -36,6 +36,9 @@ class Character:
     # [] / {} = 已迁移、该角色无此类日期（不回落，避免认领别的角色的纪念日）。
     anniversaries: list[dict] | None = None   # 角色专属纪念日
     birthday: dict | None = None              # 角色生日 {month, day, prompt}
+    # 性别标识，用于推导人称代词（"male" → 他，"female" → 她，"neutral" → ta）。
+    # 默认 "neutral" 保持向后兼容，不影响 name/personality 已迁移的卡。
+    gender: str = "neutral"
 
 
 def load(filename_or_id: str) -> Character:
@@ -94,6 +97,7 @@ def load(filename_or_id: str) -> Character:
         # which festival uses to decide between card and legacy-config fallback.
         anniversaries=data.get("anniversaries"),
         birthday=data.get("birthday"),
+        gender=data.get("gender", "neutral"),
     )
     for field_name in ("system_prompt", "description", "personality", "scenario"):
         val = getattr(char, field_name)
