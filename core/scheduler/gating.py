@@ -229,6 +229,16 @@ def _decide(uid: str, proposals: list[TriggerProposal]) -> tuple[Optional[Trigge
     if not cooldown_allowed:
         return None, "cooldown_filtered", candidates
 
+    # ── Global proactive gap filter (B1) ─────────────────────────────────────
+    # Prevent bursts: if the global cross-trigger gap hasn't elapsed since the
+    # last proactive send, non-emergency triggers are suppressed.
+    from core.scheduler.loop import _global_proactive_gap_ready
+    if not _global_proactive_gap_ready():
+        non_emergency = [p for p in cooldown_allowed if not _policy_is_emergency(p.trigger_name)]
+        cooldown_allowed = [p for p in cooldown_allowed if p not in non_emergency]
+        if not cooldown_allowed:
+            return None, "global_gap_filtered", candidates
+
     picked = max(cooldown_allowed, key=lambda p: p.urgency)
     # Release from defer queue: trigger was sent (or will be sent this tick).
     release_defer(uid, picked.trigger_name)

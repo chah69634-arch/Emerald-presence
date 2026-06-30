@@ -46,6 +46,53 @@ AfterSend = Callable[[], object]
 BehaviorFactory = Callable[[str], dict]
 
 
+def _proactive_continuity_hint() -> str:
+    """Return a soft 'don't repeat yourself' hint based on the last proactive message.
+
+    Fail-open: returns '' on any error so the calling prompt is unaffected.
+    """
+    try:
+        import json
+        p = get_paths().proactive_recent()
+        if not p.exists():
+            return ""
+        records = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(records, list) or not records:
+            return ""
+        last = records[-1]
+        gist = str(last.get("gist") or "").strip()
+        ts = float(last.get("ts") or 0)
+        if not gist or not ts:
+            return ""
+        mins_ago = max(1, int((time.time() - ts) / 60))
+        return (
+            f"（你上一次主动找她是在 {mins_ago} 分钟前，说的是「{gist}」。"
+            "这次别重复那件事；可以自然承接它，或换一个新的由头开口，像真人那样有连贯的心思。）"
+        )
+    except Exception:
+        return ""
+
+
+def _append_proactive_recent(trigger_name: str, prompt: str) -> None:
+    """Append a proactive send record to proactive_recent.json (keep last 3). Fail-open."""
+    try:
+        import json
+        from core.safe_write import safe_write_json
+        p = get_paths().proactive_recent()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        records: list = []
+        if p.exists():
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                records = raw
+        gist = prompt.replace("（", "").replace("）", "")[:40].strip()
+        records.append({"trigger_name": trigger_name, "gist": gist, "ts": time.time()})
+        records = records[-3:]
+        safe_write_json(p, records)
+    except Exception:
+        pass
+
+
 async def execute_prompt(
     *,
     trigger_name: str,
@@ -64,6 +111,10 @@ async def execute_prompt(
     """Execute a scheduler prompt, or log what would happen in dry-run mode."""
 
     prompt = str(prompt_factory() or "")
+    if not dry_run:
+        hint = _proactive_continuity_hint()
+        if hint:
+            prompt = f"{prompt}\n{hint}"
     result = ExecuteResult(
         trigger_name=trigger_name,
         would_send_prompt=prompt,
@@ -112,6 +163,8 @@ async def execute_prompt(
         if resolved_char_id and "char_id" in mark_params:
             loop._mark(name, char_id=resolved_char_id)
         loop._mark(name)
+    loop._mark_global_proactive()
+    _append_proactive_recent(trigger_name, prompt)
     return ExecuteResult(
         trigger_name=result.trigger_name,
         would_send_prompt=result.would_send_prompt,

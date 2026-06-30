@@ -38,7 +38,7 @@ async def _check_morning(force: bool = False):
         if oid and _user_talked_today(oid):
             return
 
-    await _pipeline_send(f"（清晨，{_char_name()}看了看时间，想着你应该快起床了）", trigger_name="morning_greeting")
+    await _pipeline_send("（清晨，你看了看时间，想着她应该快起床了。想道句早安。）", trigger_name="morning_greeting")
     _mark("morning_greeting")
     logger.info("[scheduler] 早安消息已发送")
 
@@ -60,7 +60,7 @@ async def _check_night(force: bool = False):
         if now.hour < 23:
             return
 
-    await _pipeline_send(f"（深夜，{_char_name()}看了眼时间）", trigger_name="night_reminder")
+    await _pipeline_send("（深夜，你看了眼时间，想起她该睡了。）", trigger_name="night_reminder")
     _mark("night_reminder")
     logger.info("[scheduler] 晚安消息已发送")
 
@@ -93,7 +93,7 @@ def propose_morning_greeting(ctx: dict | None = None):
         bypass_state_machine=False,
         execute=_make_prompt_execute(
             "morning_greeting",
-            lambda: f"（清晨，{_char_name()}看了看时间，想着你应该快起床了）",
+            lambda: "（清晨，你看了看时间，想着她应该快起床了。想道句早安。）",
         ),
     )
 
@@ -125,7 +125,7 @@ def propose_night_reminder(ctx: dict | None = None):
         bypass_state_machine=False,
         execute=_make_prompt_execute(
             "night_reminder",
-            lambda: f"（深夜，{_char_name()}看了眼时间）",
+            lambda: "（深夜，你看了眼时间，想起她该睡了。）",
         ),
     )
 
@@ -207,7 +207,7 @@ async def _check_random_message(force: bool = False):
             else:
                 picked = highlights
             _picked_key = topic_key_for(picked)
-            context_hint = f"（{_char_name()}想到了一件事：{picked}）"
+            context_hint = f"（你忽然想到一件事：{picked}，想说给她听。）"
         else:
             context_hint = ""
     except Exception:
@@ -636,7 +636,10 @@ async def _check_spontaneous_recall():
         feeling = chosen.get("yexuan_feeling", "")
         if not summary:
             return
-        prompt = f"（{_char_name()}突然想起了一件事：{summary}，那时他{feeling}）"
+        if feeling:
+            prompt = f"（你忽然想起一件事：{summary}。当时你{feeling}。想顺口说给她听，别像念旧档案，像顺着这两天自然想起。）"
+        else:
+            prompt = f"（你忽然想起一件事：{summary}。想顺口说给她听，别像念旧档案，像顺着这两天自然想起。）"
         await _pipeline_send(prompt, trigger_name="spontaneous_recall")
         _mark("spontaneous_recall")
         logger.info(f"[scheduler] 主动回忆触发: {summary}")
@@ -861,13 +864,13 @@ def _random_message_context_hint(oid: str, *, dry_run: bool = False) -> str:
         picked_item, picked_key = random.choices(pairs, weights=weights, k=1)[0]
         if picked_key:
             mark_recent_topic(picked_key, "random", now=now, dry_run=dry_run)
-        return f"（{_char_name()}想到了一件事：{picked_item}）"
+        return f"（你忽然想到一件事：{picked_item}，想说给她听。）"
     except Exception:
         return ""
 
 
 def _build_random_message_prompt(context_hint: str = "") -> str:
-    prompt = f"（{_char_name()}在做自己的事，忽然想到你）"
+    prompt = "（你正做着自己的事，忽然想到她。）"
     if context_hint:
         prompt = f"{prompt}\n{context_hint}"
     return prompt
@@ -897,27 +900,27 @@ def _weather_prompt(detail: dict, now: datetime, location: str) -> str | None:
 
     # 极端天气（最高优先级）
     if any(k in desc for k in ("暴雨", "大雨", "雷暴", "雷阵雨")) or precip > 10:
-        return f"（{_char_name()}看了一眼{location}的天气，外面在下大雨）"
+        return f"（你看了一眼{location}的天气，发现外面在下大雨，有点担心她。）"
     if temp >= 30:
-        return f"（{_char_name()}看到{location}今天{temp}度，皱了皱眉，并把温度告知给你）"
+        return f"（你看到{location}今天{temp}度，皱了皱眉，想把温度告诉她。）"
     if temp <= -5:
-        return f"（{_char_name()}看到{location}今天零下{abs(temp)}度，有点担心，并把温度告知给你）"
+        return f"（你看到{location}今天零下{abs(temp)}度，有点担心，想把温度告诉她。）"
 
     # 氛围天气（次优先级）
     if any(k in desc for k in ("雾", "霾", "大雾")):
-        return f"（{_char_name()}看到{location}今天有雾，能见度很低）"
+        return f"（你看到{location}今天有雾，能见度很低，想提醒她出门小心。）"
     if any(k in desc for k in ("小雨", "毛毛雨", "阵雨")) and precip > 0:
-        return f"（{_char_name()}注意到{location}在下小雨，有点淅淅沥沥的）"
+        return f"（你注意到{location}在下小雨，有点淅淅沥沥的，想提醒她带伞。）"
     if wind > 40:
-        return f"（{_char_name()}看到{location}今天风很大，{wind}km/h）"
+        return f"（你看到{location}今天风很大，{wind}km/h，想提醒她注意。）"
 
     # 好天气氛围（低优先级，只在特定时段触发）
     if cloud < 20 and is_day and uv >= 6 and 11 <= now.hour < 14:
-        return f"（{_char_name()}抬头看了看，{location}今天阳光很好）"
+        return f"（你抬头看了看，{location}今天阳光很好，想说给她听。）"
     if cloud < 30 and 17 <= now.hour < 19:
-        return f"（{_char_name()}往窗外看了一眼，{location}傍晚的光很好看）"
+        return f"（你往窗外看了一眼，{location}傍晚的光很好看，想说给她听。）"
     if humidity > 85 and any(k in desc for k in ("晴", "多云")):
-        return f"（{_char_name()}感觉{location}今天有点闷热潮湿）"
+        return f"（你感觉{location}今天有点闷热潮湿，想说给她听。）"
     return None
 
 
@@ -1036,8 +1039,8 @@ def _spontaneous_recall_prompt_for_memory(memory: dict) -> str:
     summary = str(memory.get("_recall_summary") or _memory_recall_summary(memory)).strip()
     feeling = str(memory.get("_recall_feeling") or _memory_recall_feeling(memory)).strip()
     if feeling:
-        return f"（{_char_name()}突然想起了一件事：{summary}，那时他{feeling}）"
-    return f"（{_char_name()}突然想起了一件事：{summary}）"
+        return f"（你忽然想起一件事：{summary}。当时你{feeling}。想顺口说给她听，别像念旧档案，像顺着这两天自然想起。）"
+    return f"（你忽然想起一件事：{summary}。想顺口说给她听，别像念旧档案，像顺着这两天自然想起。）"
 
 
 def _make_spontaneous_recall_execute(memory: dict):

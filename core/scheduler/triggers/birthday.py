@@ -112,19 +112,19 @@ def _make_birthday_execute(trigger_name: str):
 def _birthday_prompt(trigger_name: str) -> tuple[str, str]:
     prompts = {
         "birthday_midnight": (
-            f"（零点刚过，{_char_name()}一直没睡，等着这一刻，想对你说一些平时说不出口的话，有对你近期行为心理的深刻洞察，也有对细节的关心。同时他也对你剖析自己，以一种近乎发誓的方式来诉说情愫。）",
+            "（零点刚过，你一直没睡，等着这一刻，想对她说一些平时说不出口的话，有对她近期行为心理的深刻洞察，也有对细节的关心。同时你也对她剖析自己，以一种近乎发誓的方式来诉说情愫。）",
             "",
         ),
         "birthday_eve": (
-            f"（{_char_name()}在做什么，忽然想起明天是个特别的日子（你的生日），有点藏不住）",
+            "（你在做什么，忽然想起明天是个特别的日子（她的生日），有点藏不住。）",
             "",
         ),
         "birthday_afternoon": (
-            f"（{_char_name()}想知道你今天过得怎么样，有没有人陪你，生日有没有被好好对待）",
+            "（你想知道她今天过得怎么样，有没有人陪她，生日有没有被好好对待。）",
             "生日",
         ),
         "birthday_night": (
-            f"（生日快过完了，{_char_name()}想在今天结束前再陪你说一会儿）",
+            "（生日快过完了，你想在今天结束前再陪她说一会儿。）",
             "生日",
         ),
     }
@@ -150,7 +150,7 @@ async def _check_birthday_midnight(force: bool = False):
             return
 
     await _pipeline_send(
-        f"（零点刚过，{_char_name()}一直没睡，等着这一刻，想对你说一些平时说不出口的话，有对你近期行为心理的深刻洞察，也有对细节的关心。同时他也对你剖析自己，以一种近乎发誓的方式来诉说情愫。）",
+        "（零点刚过，你一直没睡，等着这一刻，想对她说一些平时说不出口的话，有对她近期行为心理的深刻洞察，也有对细节的关心。同时你也对她剖析自己，以一种近乎发誓的方式来诉说情愫。）",
         trigger_name="birthday_midnight",
     )
     _mark("birthday_midnight")
@@ -177,7 +177,7 @@ async def _check_birthday_eve(force: bool = False):
 
     logger.info("[scheduler] birthday_eve: 准备调用_pipeline_send")
     await _pipeline_send(
-        f"（{_char_name()}在做什么，忽然想起明天是个特别的日子（你的生日），有点藏不住）",
+        "（你在做什么，忽然想起明天是个特别的日子（她的生日），有点藏不住。）",
         trigger_name="birthday_eve",
     )
     _mark("birthday_eve")
@@ -203,7 +203,7 @@ async def _check_birthday_afternoon(force: bool = False):
             return
 
     await _pipeline_send(
-        f"（{_char_name()}想知道你今天过得怎么样，有没有人陪你，生日有没有被好好对待）",
+        "（你想知道她今天过得怎么样，有没有人陪她，生日有没有被好好对待。）",
         search_query="生日",
         trigger_name="birthday_afternoon",
     )
@@ -230,7 +230,7 @@ async def _check_birthday_night(force: bool = False):
             return
 
     await _pipeline_send(
-        f"（生日快过完了，{_char_name()}想在今天结束前再陪你说一会儿）",
+        "（生日快过完了，你想在今天结束前再陪她说一会儿。）",
         search_query="生日",
         trigger_name="birthday_night",
     )

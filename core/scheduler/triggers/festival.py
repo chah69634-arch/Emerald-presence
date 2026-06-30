@@ -93,32 +93,32 @@ def _get_today_festival(today: date | None = None) -> tuple[str, str] | None:
     # 以下节日保留硬编码
     # 白色情人节 3.14
     if m == 3 and d == 14:
-        return ("white_valentine", f"（{char}知道今天是白色情人节，没有特别说什么，只是待在这里）")
+        return ("white_valentine", "（你知道今天是白色情人节，没有特别说什么，只是待在这里。）")
 
     # 万圣节 10.31
     if m == 10 and d == 31:
-        return ("halloween", f"（外面好像有人在过万圣节，{char}对这个节日有点好奇）")
+        return ("halloween", "（外面好像有人在过万圣节，你对这个节日有点好奇。）")
 
     # 复活节
     easter = _easter(year)
     if today == easter:
-        return ("easter", f"（今天是复活节，{char}觉得这个节日有点有趣）")
+        return ("easter", "（今天是复活节，你觉得这个节日有点有趣。）")
 
     # Steam夏促 6.27
     if m == 6 and d == 27:
-        return ("steam_summer", f"（Steam好像开始打折了，{char}不太玩游戏，但还是淡淡地想到你可能会去看看）")
+        return ("steam_summer", "（Steam好像开始打折了，你不太玩游戏，但还是淡淡地想到她可能会去看看。）")
 
     # Steam冬促 12.19
     if m == 12 and d == 19:
-        return ("steam_winter", f"（Steam冬促大概又开始了，{char}不感兴趣，只是想到了你，于是随口一提）")
+        return ("steam_winter", "（Steam冬促大概又开始了，你不感兴趣，只是想到了她，于是随口一提。）")
 
     # 清明 4.4或4.5（简单处理用4.4）
     if m == 4 and d in (4, 5):
-        return ("qingming", f"（今天是清明，{char}感觉空气里有点不一样的东西）")
+        return ("qingming", "（今天是清明，你感觉空气里有点不一样的东西。）")
 
     # 除夕氛围感知（1月20-31日或2月1-5日，粗略感知"快过年了"）
     if (m == 1 and d >= 20) or (m == 2 and d <= 5):
-        return ("spring_eve", f"（{char}感觉年关快到了，街上好像有点不一样的气氛）")
+        return ("spring_eve", "（你感觉年关快到了，街上好像有点不一样的气氛。）")
 
     return None
 
@@ -200,7 +200,7 @@ async def _check_holiday_boost(force: bool = False):
         context_hint = f"\n{highlights}" if highlights else ""
 
         await _pipeline_send(
-            f"（{holiday_name}假期，{_char_name()}知道你没什么事，理直气壮地来找你）{context_hint}",
+            f"（{holiday_name}假期，你知道她没什么事，理直气壮地来找她。）{context_hint}",
             search_query="今天",
             trigger_name="holiday_boost",
         )
@@ -319,4 +319,4 @@ def _holiday_boost_prompt(today: date) -> str:
             context_hint = f"\n{highlights}" if highlights else ""
         except Exception:
             context_hint = ""
-    return f"（{holiday_name}假期，{_char_name()}知道你没什么事，理直气壮地来找你）{context_hint}"
+    return f"（{holiday_name}假期，你知道她没什么事，理直气壮地来找她。）{context_hint}"

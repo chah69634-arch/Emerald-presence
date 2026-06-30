@@ -74,7 +74,7 @@ def _make_reminder_execute(uid: str, item: dict):
 
         return await execute_prompt(
             trigger_name="reminders",
-            prompt_factory=lambda: f"备忘录提醒时间到了：{item['content']}，用{_char_name()}的方式提醒她",
+            prompt_factory=lambda: f"备忘录提醒时间到了：{item['content']}，用你自己的方式提醒她",
             dry_run=dry_run,
             would_mark=[],
             would_mark_done=[reminder_id] if reminder_id else [],

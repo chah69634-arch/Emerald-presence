@@ -66,9 +66,9 @@ def _make_period_execute(days_elapsed: int):
         from core.scheduler.execution import execute_prompt
 
         if 0 <= days_elapsed <= 7:
-            prompt = f"（{_char_name()}记得你的生理期第{days_elapsed}天）"
+            prompt = f"（你记得她生理期第{days_elapsed}天了，想关心一下。）"
         else:
-            prompt = f"（{_char_name()}想起你的生理期大概快到了）"
+            prompt = "（你想起她生理期大概快到了。）"
         return await execute_prompt(
             trigger_name="period_reminder",
             prompt_factory=lambda: prompt,
@@ -100,7 +100,7 @@ async def _check_period():
         if 0 <= days_elapsed <= 7:
             if _is_ready("period_reminder"):
                 await _pipeline_send(
-                    f"（{_char_name()}记得你的生理期第{days_elapsed}天）",
+                    f"（你记得她生理期第{days_elapsed}天了，想关心一下。）",
                     search_query="生理期",
                     trigger_name="period_reminder",
                 )
@@ -111,7 +111,7 @@ async def _check_period():
         elif 26 <= days_elapsed <= 30:
             if _is_ready("period_reminder"):
                 await _pipeline_send(
-                    f"（{_char_name()}想起你的生理期大概快到了）",
+                    "（你想起她生理期大概快到了。）",
                     search_query="生理期",
                     trigger_name="period_reminder",
                 )

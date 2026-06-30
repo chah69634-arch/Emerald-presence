@@ -127,7 +127,7 @@ def _make_topic_followup_execute(topic: LastMentionedTopic):
 
 def _topic_followup_prompt(topic: LastMentionedTopic) -> str:
     return (
-        f"（{_char_name()}想起最近这段还没有接住的事：{topic.context}\n"
-        f"请接着「{topic.topic}」轻轻问一句后来怎么样了。不要像总结旧档案，"
+        f"（你想起最近这段还没接住的事：{topic.context}\n"
+        f"顺着「{topic.topic}」轻轻问她一句后来怎么样了。别像总结旧档案，"
         f"要像顺着最近聊天自然想起来。）"
     )

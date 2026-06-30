@@ -4,7 +4,7 @@ import logging
 import random
 import time
 
-from core.scheduler.loop import _is_ready, _mark, _pipeline_send, _char_name
+from core.scheduler.loop import _is_ready, _mark, _pipeline_send
 from core.garden import manager as garden_manager
 
 logger = logging.getLogger(__name__)
@@ -69,14 +69,13 @@ async def _check_garden_daily() -> None:
 async def _emit(event: dict) -> None:
     etype = event["type"]
     name = event.get("name", "?")
-    char = _char_name()
 
     if etype == "harvest_expired":
         if random.random() < SAMPLE_TALK_PROB:
             if not _is_ready("garden_harvest_expired"):
                 return
             await _pipeline_send(
-                f"（{char}发现那株{name}放太久枯掉了，悄悄处理掉了）",
+                f"（你发现那株{name}放太久枯掉了，悄悄处理掉了。）",
                 trigger_name="garden_harvest_expired",
             )
             _mark("garden_harvest_expired")
@@ -87,7 +86,7 @@ async def _emit(event: dict) -> None:
             if not _is_ready("garden_vase_wilted"):
                 return
             await _pipeline_send(
-                f"（花瓶里那株{name}枯掉了，{char}默默把它收了）",
+                f"（花瓶里那株{name}枯掉了，你默默把它收了。）",
                 trigger_name="garden_vase_wilted",
             )
             _mark("garden_vase_wilted")
@@ -100,7 +99,7 @@ async def _emit(event: dict) -> None:
             if not _is_ready("garden_handle_ask"):
                 return
             await _pipeline_send(
-                f"（{char}捧着那株{name}，不确定该怎么办，想问问你）",
+                f"（你捧着那株{name}，不确定该怎么办，想问问她。）",
                 trigger_name="garden_handle_ask",
             )
             _mark("garden_handle_ask")
@@ -111,7 +110,7 @@ async def _emit(event: dict) -> None:
             language = event.get("language", "")
             tail = f"——{language}" if language else ""
             await _pipeline_send(
-                f"（{char}想把那株{name}送给你{tail}）",
+                f"（你想把那株{name}送给她{tail}。）",
                 trigger_name="garden_handle_gift",
             )
             _mark("garden_handle_gift")
@@ -123,7 +122,7 @@ async def _emit(event: dict) -> None:
                     return
                 verb = "做成干花" if action == "dry" else "放进了花瓶"
                 await _pipeline_send(
-                    f"（{char}把那株{name}{verb}，没有特别说什么）",
+                    f"（你把那株{name}{verb}，没有特别说什么。）",
                     trigger_name="garden_handle_self",
                 )
                 _mark("garden_handle_self")
@@ -218,20 +217,19 @@ _register_proposers()
 
 def _garden_daily_prompt(trigger_name: str, event: dict) -> str:
     name = event.get("name", "?")
-    char = _char_name()
     if trigger_name == "garden_harvest_expired":
-        return f"（{char}发现那株{name}放太久枯掉了，悄悄处理掉了）"
+        return f"（你发现那株{name}放太久枯掉了，悄悄处理掉了。）"
     if trigger_name == "garden_vase_wilted":
-        return f"（花瓶里那株{name}枯掉了，{char}默默把它收了）"
+        return f"（花瓶里那株{name}枯掉了，你默默把它收了。）"
     if trigger_name == "garden_handle_ask":
-        return f"（{char}捧着那株{name}，不确定该怎么办，想问问你）"
+        return f"（你捧着那株{name}，不确定该怎么办，想问问她。）"
     if trigger_name == "garden_handle_gift":
         language = event.get("language", "")
         tail = f"——{language}" if language else ""
-        return f"（{char}想把那株{name}送给你{tail}）"
+        return f"（你想把那株{name}送给她{tail}。）"
     action = event.get("handle_action")
     verb = "做成干花" if action == "dry" else "放进了花瓶"
-    return f"（{char}把那株{name}{verb}，没有特别说什么）"
+    return f"（你把那株{name}{verb}，没有特别说什么。）"
 
 
 def _make_garden_daily_execute(trigger_name: str, event: dict):

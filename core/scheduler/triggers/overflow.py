@@ -76,7 +76,7 @@ def _build_context_hint(signals: OverflowSignals) -> str:
 
 def _build_overflow_prompt(signals: OverflowSignals) -> str:
     return (
-        f"（内心状态：{_build_context_hint(signals)}。\n"
+        f"（你此刻的内心状态：{_build_context_hint(signals)}。\n"
         "这不是定时问候。顺着这个真实缘由，自然地联系她；可以说想到的事、"
         "当下的感受，或只简单问候一句。不要向她解释触发机制，也不要像客服回访。）"
     )

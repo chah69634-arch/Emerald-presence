@@ -70,7 +70,7 @@ async def _check_garden_water() -> None:
             if not _is_ready("garden_bloom"):
                 continue
             await _pipeline_send(
-                f"（{_char_name()}发现花园里那株{event['name']}开了，站在那里看了一会儿）",
+                f"（你发现花园里那株{event['name']}开了，站在那里看了一会儿。）",
                 trigger_name="garden_bloom",
             )
             _mark("garden_bloom")
@@ -124,7 +124,7 @@ def _make_garden_bloom_execute(event: dict):
 
         return await execute_prompt(
             trigger_name="garden_bloom",
-            prompt_factory=lambda: f"（{_char_name()}发现花园里那株{event['name']}开了，站在那里看了一会儿）",
+            prompt_factory=lambda: f"（你发现花园里那株{event['name']}开了，站在那里看了一会儿。）",
             dry_run=dry_run,
             would_mark=["garden_bloom"],
             reads_cache_ok=True,

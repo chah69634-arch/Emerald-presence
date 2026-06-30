@@ -186,7 +186,7 @@ def _build_dream_exit_prompt(
 ) -> str:
     if is_stale or tone == "neutral":
         return (
-            f"（{char_name}刚从一场梦回到现实。现在自然地向她打个招呼或道一句早安。"
+            "（你刚从一场梦回到现实。现在自然地向她打个招呼或道一句早安。"
             "不要引用梦里的具体内容，不要解释触发机制，也不要复述系统信息。）"
         )
 

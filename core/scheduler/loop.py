@@ -215,9 +215,8 @@ def _is_ready(name: str, *, char_id: str | None = None) -> bool:
     return elapsed >= _COOLDOWNS.get(name, 3600)
 
 
-def _mark(name: str, *, char_id: str | None = None):
-    """记录触发时间，同时持久化到 scheduler_cooldowns.json。"""
-    _last_trigger[_cooldown_key(name, char_id)] = time.time()
+def _persist_cooldowns() -> None:
+    """Persist _last_trigger to scheduler_cooldowns.json. Fail-soft."""
     try:
         import json
         from core.safe_write import safe_write_json
@@ -230,6 +229,34 @@ def _mark(name: str, *, char_id: str | None = None):
         safe_write_json(p, existing)
     except Exception as e:
         logger.warning(f"[scheduler] 冷却状态写入失败: {e}")
+
+
+def _mark(name: str, *, char_id: str | None = None):
+    """记录触发时间，同时持久化到 scheduler_cooldowns.json。"""
+    _last_trigger[_cooldown_key(name, char_id)] = time.time()
+    _persist_cooldowns()
+
+
+_GLOBAL_PROACTIVE_KEY = "__any_proactive__"
+
+
+def _mark_global_proactive() -> None:
+    """Record that a proactive message was just sent. Used by B1 global gap logic."""
+    _last_trigger[_GLOBAL_PROACTIVE_KEY] = time.time()
+    _persist_cooldowns()
+
+
+def _global_proactive_gap_ready(now_ts: float | None = None) -> bool:
+    """Return True if global cross-trigger gap has elapsed since last proactive send.
+
+    Gap defaults to global_proactive_min_gap_seconds (config) with ±20% jitter.
+    Emergency triggers bypass this check in gating._decide().
+    """
+    now_ts = now_ts or time.time()
+    last = _last_trigger.get(_GLOBAL_PROACTIVE_KEY, 0)
+    gap = float(_cfg().get("global_proactive_min_gap_seconds", 45 * 60))
+    jitter = gap * 0.2 * (random.random() * 2 - 1)
+    return (now_ts - last) >= (gap + jitter)
 
 
 def _owner_id() -> str:
